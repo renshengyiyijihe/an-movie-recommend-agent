@@ -2,15 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Annotation, END, START, StateGraph } from '@langchain/langgraph';
 import { ModelProvider } from '../model/model.provider';
 import { LangSmithProvider } from '../model/langsmith.provider';
+import { TavilyProvider } from '../model/tavily.provider';
 
-type StageName = 'parsePreferences' | 'search' | 'link' | 'supervisor';
-
-type Recommendation = {
-  name: string;
-  reason: string;
-  taobao: string;
-  jd: string;
-};
+type StageName = 'parsePreferences' | 'search' | 'supervisor';
 
 interface RecommendPayload {
   message: string;
@@ -30,7 +24,6 @@ interface WorkflowState {
   imageData?: string;
   preferences: string;
   searchResult: string;
-  linkResult: string;
   supervisorResult: string;
 }
 
@@ -55,10 +48,6 @@ const WorkflowStateAnnotation = Annotation.Root({
     reducer: (left: string, right: string) => right || left,
     default: () => '',
   }),
-  linkResult: Annotation<string>({
-    reducer: (left: string, right: string) => right || left,
-    default: () => '',
-  }),
   supervisorResult: Annotation<string>({
     reducer: (left: string, right: string) => right || left,
     default: () => '',
@@ -72,6 +61,7 @@ export class NoodleService {
   constructor(
     private readonly modelProvider: ModelProvider,
     private readonly langsmithProvider: LangSmithProvider,
+    private readonly tavilyProvider: TavilyProvider,
   ) {}
 
   async recommend(payload: RecommendPayload) {
@@ -106,7 +96,6 @@ export class NoodleService {
             stage_outputs: {
               preferences: result.preferences,
               searchResult: result.searchResult,
-              linkResult: result.linkResult,
             },
           },
           {
@@ -122,7 +111,6 @@ export class NoodleService {
         stageOutputs: {
           preferences: result.preferences,
           searchResult: result.searchResult,
-          linkResult: result.linkResult,
         },
         monitoring: {
           langsmith: langsmithEnabled,
@@ -137,27 +125,26 @@ export class NoodleService {
   private buildSystemPrompt() {
     return [
       '你是一个泡面推荐专家智能体。',
-      '根据用户描述的口味、价格、偏好，给出 3-4 个推荐，并附上淘宝和京东购买链接。',
+      '根据用户描述的口味、价格、偏好，给出 3-4 个推荐。',
       '如果用户提供了图片，请简要分析图片里的风格或情绪。',
-      '输出格式必须为 JSON，包含 fields: recommendations, explanation, links, fallback_reason。',
+      '输出格式必须为 JSON，包含 fields: recommendations, explanation, fallback_reason。',
     ].join('\n');
   }
 
   private async runLangGraphWorkflow(context: WorkflowContext) {
-    const graph = new StateGraph(WorkflowStateAnnotation);
+    let graph: any = new StateGraph(WorkflowStateAnnotation);
     const initialState: WorkflowState = {
       message: context.message,
       imageUrl: context.imageUrl,
       imageData: context.imageData,
       preferences: '',
       searchResult: '',
-      linkResult: '',
       supervisorResult: '',
     };
 
-    const stageOrder: StageName[] = ['parsePreferences', 'search', 'link', 'supervisor'];
+    const stageOrder: StageName[] = ['parsePreferences', 'search', 'supervisor'];
 
-    graph.addNode('parsePreferences', async (state: WorkflowState) => {
+    graph = graph.addNode('parsePreferences', async (state: WorkflowState) => {
       this.logger.log('开始阶段：偏好解析智能体');
       const content = await this.runAgentNode(
         'parsePreferences',
@@ -171,13 +158,9 @@ export class NoodleService {
       };
     });
 
-    graph.addNode('search', async (state: WorkflowState) => {
+    graph = graph.addNode('search', async (state: WorkflowState) => {
       this.logger.log('开始阶段：搜索智能体');
-      const content = await this.runAgentNode(
-        'search',
-        this.buildSearchPrompt(state),
-        this.getFallbackForStage('search'),
-      );
+      const content = await this.runTavilySearch(state);
       this.logger.log('完成阶段：搜索智能体');
 
       return {
@@ -185,21 +168,7 @@ export class NoodleService {
       };
     });
 
-    graph.addNode('link', async (state: WorkflowState) => {
-      this.logger.log('开始阶段：链接智能体');
-      const content = await this.runAgentNode(
-        'link',
-        this.buildLinkPrompt(state),
-        this.getFallbackForStage('link'),
-      );
-      this.logger.log('完成阶段：链接智能体');
-
-      return {
-        linkResult: content,
-      };
-    });
-
-    graph.addNode('supervisor', async (state: WorkflowState) => {
+    graph = graph.addNode('supervisor', async (state: WorkflowState) => {
       this.logger.log('开始阶段：监督智能体');
       const content = await this.runAgentNode(
         'supervisor',
@@ -213,19 +182,18 @@ export class NoodleService {
       };
     });
 
-    graph.addEdge(START, 'parsePreferences');
-    graph.addEdge('parsePreferences', 'search');
-    graph.addEdge('search', 'link');
-    graph.addEdge('link', 'supervisor');
-    graph.addEdge('supervisor', END);
+    graph = graph.addEdge(START, 'parsePreferences');
+    graph = graph.addEdge('parsePreferences', 'search');
+    graph = graph.addEdge('search', 'supervisor');
+    graph = graph.addEdge('supervisor', END);
 
     this.logger.log(`工作流执行顺序: ${stageOrder.join(' -> ')}`);
 
-    const result = await graph.invoke(initialState);
+    const compiledGraph = graph.compile();
+    const result = await compiledGraph.invoke(initialState);
     return {
       preferences: result.preferences || '',
       searchResult: result.searchResult || '',
-      linkResult: result.linkResult || '',
       supervisorResult: result.supervisorResult || '',
     };
   }
@@ -249,6 +217,50 @@ export class NoodleService {
     }
   }
 
+  private async runTavilySearch(state: WorkflowState) {
+    if (!this.tavilyProvider.isEnabled()) {
+      this.logger.warn('Tavily 未配置，搜索阶段使用兜底结果。');
+      return this.getFallbackForStage('search');
+    }
+
+    const query = this.buildTavilyQuery(state);
+
+    try {
+      const response = await this.tavilyProvider.search(query, {
+        search_depth: 'basic',
+        chunks_per_source: 3,
+        max_results: 4,
+        include_answer: false,
+        include_raw_content: false,
+      });
+
+      return JSON.stringify({
+        query: response.query,
+        answer: response.answer ?? '',
+        results: response.results.map((item) => ({
+          title: item.title,
+          url: item.url,
+          content: item.content ?? '',
+          score: item.score ?? 0,
+        })),
+        request_id: response.request_id ?? '',
+      });
+    } catch (error) {
+      this.logger.warn(`Tavily 搜索失败，使用兜底结果: ${(error as Error).message}`);
+      return this.getFallbackForStage('search');
+    }
+  }
+
+  private buildTavilyQuery(state: WorkflowState) {
+    const lines = [
+      '请根据以下用户偏好推荐适合的泡面。',
+      `用户偏好: ${state.preferences}`,
+      '请优先考虑口味、预算、辣度、方便性和健康倾向。',
+      '仅返回适合中国市场、可在线购买的泡面推荐。',
+    ];
+    return lines.filter(Boolean).join(' ');
+  }
+
   private buildParsePrompt(state: WorkflowState) {
     const lines = [
       '请从用户输入中提取结构化偏好，包括口味、预算、辣度偏好、方便程度、健康倾向、地方特色、图片风格描述。',
@@ -268,23 +280,14 @@ export class NoodleService {
     ].join('\n');
   }
 
-  private buildLinkPrompt(state: WorkflowState) {
-    return [
-      '你是链接智能体，为搜索结果中的每款泡面生成淘宝和京东搜索链接。',
-      `推荐结果: ${state.searchResult}`,
-      '输出 JSON，字段为 recommendations，每个 item 包含 name、taobao、jd。',
-    ].join('\n');
-  }
-
   private buildSupervisorPrompt(state: WorkflowState) {
     return [
-      '你是监督智能体，将搜索推荐与购物链接整合为最终答案。',
+      '你是监督智能体，将搜索结果整合为最终答案。',
       `用户输入: ${state.message}`,
       state.imageUrl ? `图片链接: ${state.imageUrl}` : '',
       state.imageData ? '附带已上传图片分析。' : '',
       `搜索结果: ${state.searchResult}`,
-      `链接结果: ${state.linkResult}`,
-      '输出 JSON，包含 recommendations、explanation、links、fallback_reason。',
+      '输出 JSON，包含 recommendations、explanation、fallback_reason。',
     ].join('\n');
   }
 
@@ -301,12 +304,6 @@ export class NoodleService {
           '你是搜索智能体。',
           '基于用户偏好推荐 3-4 款泡面。',
           '输出 JSON，不要包含多余文本。',
-        ].join('\n');
-      case 'link':
-        return [
-          '你是链接智能体。',
-          '为每个推荐项目生成淘宝和京东搜索链接。',
-          '只输出 JSON。',
         ].join('\n');
       case 'supervisor':
         return [
@@ -334,31 +331,15 @@ export class NoodleService {
             reason: '经典口碑，适合大众口味。',
           },
         ]);
-      case 'link':
-        return JSON.stringify([
-          {
-            name: '统一小当家麻辣牛肉面',
-            taobao: 'https://s.taobao.com/search?q=%E7%BB%9F%E4%B8%80%E5%B0%8F%E5%BD%93%E5%AE%B6%E9%BA%BB%E8%BE%A3%E7%89%9B%E8%82%89%E9%9D%A2',
-            jd: 'https://search.jd.com/Search?keyword=%E7%BB%9F%E4%B8%80%E5%B0%8F%E5%BD%93%E5%AE%B6%E9%BA%BB%E8%BE%A3%E7%89%9B%E8%82%89%E9%9D%A2',
-          },
-          {
-            name: '康师傅红烧牛肉面',
-            taobao: 'https://s.taobao.com/search?q=%E5%BA%B7%E5%B8%88%E5%A4%AB%E7%BB%8F%E5%85%B8%E7%BA%A2%E7%83%A7%E7%89%9B%E8%82%89%E9%9D%A2',
-            jd: 'https://search.jd.com/Search?keyword=%E5%BA%B7%E5%B8%88%E5%A4%AB%E7%BB%8F%E5%85%B8%E7%BA%A2%E7%83%A7%E7%89%9B%E8%82%89%E9%9D%A2',
-          },
-        ]);
       case 'supervisor':
         return JSON.stringify({
           recommendations: [
             {
               name: '统一小当家麻辣牛肉面',
               reason: '常见高性价比选择，适合广泛口味。',
-              taobao: 'https://s.taobao.com/search?q=%E7%BB%9F%E4%B8%80%E5%B0%8F%E5%BD%93%E5%AE%B6%E9%BA%BB%E8%BE%A3%E7%89%9B%E8%82%89%E9%9D%A2',
-              jd: 'https://search.jd.com/Search?keyword=%E7%BB%9F%E4%B8%80%E5%B0%8F%E5%BD%93%E5%AE%B6%E9%BA%BB%E8%BE%A3%E7%89%9B%E8%82%89%E9%9D%A2',
             },
           ],
           explanation: '当前模型不可用，使用默认推荐。',
-          links: { taobao: 'https://www.taobao.com', jd: 'https://www.jd.com' },
           fallback_reason: '模型未配置或调用失败。',
         });
       default:
@@ -387,21 +368,13 @@ export class NoodleService {
           {
             name: '统一小当家麻辣牛肉面',
             reason: '性价比高，适合喜欢微辣口味，易于购买。',
-            taobao: 'https://s.taobao.com/search?q=%E7%BB%9F%E4%B8%80%E5%B0%8F%E5%BD%93%E5%AE%B6%E9%BA%BB%E8%BE%A3%E7%89%9B%E8%82%89%E9%9D%A2',
-            jd: 'https://search.jd.com/Search?keyword=%E7%BB%9F%E4%B8%80%E5%B0%8F%E5%BD%93%E5%AE%B6%E9%BA%BB%E8%BE%A3%E7%89%9B%E8%82%89%E9%9D%A2',
           },
           {
             name: '康师傅经典红烧牛肉面',
             reason: '经典口碑，适合大众口味和日常囤货。',
-            taobao: 'https://s.taobao.com/search?q=%E5%BA%B7%E5%B8%88%E5%A4%AB%E7%BB%8F%E5%85%B8%E7%BA%A2%E7%83%A7%E7%89%9B%E8%82%89%E9%9D%A2',
-            jd: 'https://search.jd.com/Search?keyword=%E5%BA%B7%E5%B8%88%E5%A4%AB%E7%BB%8F%E5%85%B8%E7%BA%A2%E7%83%A7%E7%89%9B%E8%82%89%E9%9D%A2',
           },
         ],
         explanation: '因为缺少模型或请求失败，提供通用高口碑泡面推荐。',
-        links: {
-          taobao: 'https://www.taobao.com',
-          jd: 'https://www.jd.com',
-        },
         fallback_reason: '模型不可用或请求失败。',
       },
     };
@@ -420,15 +393,9 @@ export class NoodleService {
           {
             name: '统一小当家麻辣牛肉面',
             reason: '常见高性价比选择，适合广泛口味。',
-            taobao: 'https://s.taobao.com/search?q=%E7%BB%9F%E4%B8%80%E5%B0%8F%E5%BD%93%E5%AE%B6%E9%BA%BB%E8%BE%A3%E7%89%9B%E8%82%89%E9%9D%A2',
-            jd: 'https://search.jd.com/Search?keyword=%E7%BB%9F%E4%B8%80%E5%B0%8F%E5%BD%93%E5%AE%B6%E9%BA%BB%E8%BE%A3%E7%89%9B%E8%82%89%E9%9D%A2',
           },
         ],
         explanation: '解析失败，返回默认推荐。',
-        links: {
-          taobao: 'https://www.taobao.com',
-          jd: 'https://www.jd.com',
-        },
         fallback_reason: '无法解析模型输出。',
       };
     }

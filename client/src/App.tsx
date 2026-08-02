@@ -47,6 +47,7 @@ function App() {
       return;
     }
 
+    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
     const userMessage: ChatMessage = {
       role: 'user',
       text: message.trim(),
@@ -60,7 +61,7 @@ function App() {
     setError('');
 
     try {
-      const resp = await fetch('http://localhost:3001/api/noodle/recommend', {
+      const resp = await fetch(`${apiBaseUrl}/api/noodle/recommend`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: userMessage.text, imageData }),

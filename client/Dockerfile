@@ -5,7 +5,7 @@ WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@9 --activate
 
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile --ignore-workspace-root-check
+RUN pnpm install --frozen-lockfile
 
 COPY . .
 ARG VITE_API_BASE_URL=/

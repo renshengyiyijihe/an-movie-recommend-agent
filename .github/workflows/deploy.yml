@@ -20,7 +20,23 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            cd /opt/noodle-app
-            git pull origin main
-            docker compose down
+            set -e
+            REPO_URL="https://github.com/renshengyiyijihe/noodle-recommendation-agent.git"
+            DEPLOY_DIR="/opt/noodle-app"
+
+            mkdir -p /opt
+            if [ -d "$DEPLOY_DIR/.git" ]; then
+              cd "$DEPLOY_DIR"
+              git remote set-url origin "$REPO_URL"
+              git fetch origin main
+              git checkout main
+              git reset --hard origin/main
+            else
+              rm -rf "$DEPLOY_DIR"
+              git clone "$REPO_URL" "$DEPLOY_DIR"
+              cd "$DEPLOY_DIR"
+            fi
+
+            cd "$DEPLOY_DIR"
+            docker compose down || true
             docker compose up -d --build

@@ -1,12 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="泡面推荐图标">
   <rect x="4" y="4" width="56" height="56" rx="16" fill="#FFF7ED"/>
-  <path d="M18 18c0-4.4 3.6-8 8-8h12c4.4 0 8 3.6 8 8v10c0 7.7-6.3 14-14 14S18 35.7 18 28V18Z" fill="#F59E0B"/>
-  <path d="M22 20c0-2.8 2.2-5 5-5h10c2.8 0 5 2.2 5 5v8c0 4.4-3.6 8-8 8h-4c-4.4 0-8-3.6-8-8v-8Z" fill="#FFFDF8"/>
-  <path d="M24 24h16" stroke="#7C2D12" stroke-width="3" stroke-linecap="round"/>
-  <path d="M24 32c2.5 2.5 4.3 3.8 8 3.8s5.5-1.3 8-3.8" stroke="#FB923C" stroke-width="3" stroke-linecap="round"/>
-  <path d="M24 12c2 1.8 3.2 3.8 3.6 6.2" stroke="#EF4444" stroke-width="3" stroke-linecap="round"/>
-  <path d="M40 12c-1.8 1.8-3 3.8-3.4 6.2" stroke="#F97316" stroke-width="3" stroke-linecap="round"/>
-  <path d="M18 44c4.3 4.3 8.5 6.4 14 6.4s9.7-2.1 14-6.4" stroke="#8B5CF6" stroke-width="3" stroke-linecap="round"/>
-  <path d="M26 14c1.5 1.2 2.4 2.8 2.8 4.8" stroke="#FDE68A" stroke-width="2.5" stroke-linecap="round"/>
-  <path d="M38 14c-1.4 1.2-2.3 2.8-2.8 4.8" stroke="#FDE68A" stroke-width="2.5" stroke-linecap="round"/>
+  <ellipse cx="32" cy="44" rx="24" ry="10" fill="#F97316"/>
+  <path d="M12 44c0 5.5 10.7 10 20 10s20-4.5 20-10" fill="#FFFDF8"/>
+  <path d="M14 44c0 3.5 9.5 7 18 7s18-3.5 18-7" stroke="#F59E0B" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <path d="M14 44c0 0 8-16 18-16s18 16 18 16" fill="none" stroke="#F97316" stroke-width="4" stroke-linecap="round"/>
+
+  <path d="M22 30c2.5-3.5 6.5-5.5 10-5.5s7.5 2 10 5.5" stroke="#F59E0B" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <path d="M22 26c2.5-3.5 6.5-5.5 10-5.5s7.5 2 10 5.5" stroke="#F59E0B" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.8"/>
+
+  <path d="M18 22c1.5-2 4.5-4 9-5" stroke="#7C2D12" stroke-width="4" stroke-linecap="round"/>
+  <path d="M46 18c-1.5 1.5-3.5 3.2-6 4.2" stroke="#7C2D12" stroke-width="4" stroke-linecap="round"/>
+
+  <path d="M28 16c1.8-4 6.2-6.5 9.5-6.5" stroke="#D97706" stroke-width="4" stroke-linecap="round" opacity="0.85"/>
+  <path d="M34 16c1.8-4 6.2-6.5 9.5-6.5" stroke="#D97706" stroke-width="4" stroke-linecap="round" opacity="0.85"/>
+
+  <path d="M20 34c4.5 2 9 2.8 14 2.8s9.5-0.8 14-2.8" stroke="#F59E0B" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <path d="M18 46c5.5 3 12 4.5 18 4.5s12.5-1.5 18-4.5" stroke="#C2410C" stroke-width="3" fill="none" stroke-linecap="round"/>
 </svg>

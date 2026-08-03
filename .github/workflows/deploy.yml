@@ -69,13 +69,13 @@ jobs:
 
       - name: Deploy via SSH and send notification
         id: deploy
+        timeout-minutes: 60
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          timeout: 600
-          command_timeout: 1800
+          command_timeout: 60m
           script: |
             set -u
             REPO_URL="https://github.com/renshengyiyijihe/noodle-recommendation-agent.git"

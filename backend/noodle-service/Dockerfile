@@ -2,13 +2,16 @@ FROM node:24-alpine
 
 WORKDIR /app
 
-COPY noodle-service/package.json noodle-service/tsconfig.json ./
-RUN npm install
+RUN corepack enable && corepack prepare pnpm@10.15.0 --activate
+
+COPY noodle-service/package.json noodle-service/pnpm-lock.yaml noodle-service/tsconfig.json ./
+RUN --mount=type=cache,target=/root/.cache/pnpm-store \
+    pnpm install --frozen-lockfile --store-dir /root/.cache/pnpm-store
 
 COPY noodle-service/src ./src
 COPY proto ./proto
 
-RUN npm run build
+RUN pnpm run build
 
 EXPOSE 3001
 

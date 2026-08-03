@@ -1,65 +1,92 @@
-# Noodle Recommendation Agent
+# ASCII Art
+
+```text
+   ,---,                         ___                                ___                                                         ,--,                           
+,`--.' |                       ,--.'|_                            ,--.'|_                                                ,---,,--.'|                           
+|   :  :      ,---,            |  | :,'                   ,---,   |  | :,'               ,---,    ,---.     ,---.      ,---.'||  | :                           
+:   |  '  ,-+-. /  | .--.--.   :  : ' :               ,-+-. /  |  :  : ' :           ,-+-. /  |  '   ,'\\   '   ,'\\     |   | ::  : '               .--.--.    
+|   :  | ,--.'|'   |/  /    '.;__,'  /    ,--.--.    ,--.'|'   |.;__,'  /           ,--.'|'   | /   /   | /   /   |    |   | ||  ' |      ,---.   /  /    '   
+'   '  ;|   |  ,"' |  :  /`./|  |   |    /       \\  |   |  ,"' ||  |   |           |   |  ,"' |.   ; ,. :.   ; ,. :  ,--.__| |'  | |     /     \\ |  :  /`./   
+|   |  ||   | /  | |  :  ;_  :__,'| :   .--.  .-. | |   | /  | |:__,'| :           |   | /  | |'   | |: :'   | |: : /   ,'   ||  | :    /    /  ||  :  ;_     
+'   :  ;|   | |  | |\\  \\    `. '  : |__  \\__\\/ : . . |   | |  | |  '  : |__         |   | |  | |'   | .; :'   | .; :.   '  /  |'  : |__ .    ' / | \\  \\    `.  
+|   |  '|   | |  |/  `----.   \\|  | '.'| ," .--.; | |   | |  |/   |  | '.'|        |   | |  |/ |   :    ||   :    |'   ; |:  ||  | '.'|'   ;   /|  `----.   \\ 
+'   :  ||   | |--'  /  /`--'  /;  :    ;/  /  ,.  | |   | |--'    ;  :    ;        |   | |--'   \\   \\  /  \\   \\  / |   | '/  ';  :    ;'   |  / | /  /`--'  / 
+;   |.' |   |/     '--'.     / |  ,   /;  :   .'   \\|   |/        |  ,   /         |   |/        `----'    `----'  |   :    :||  ,   / |   :    |'--'.     /  
+'---'   '---'        `--'---'   ---`-' |  ,     .-./'---'          ---`-'          '---'                            \\   \\  /   ---`-'   \\   \\  /   `--'---'   
+                                        `--`---'                                                                     `----'              `----'               
+```
+
+## 项目简介
+
+Noodle Recommendation Agent 是一个面向“泡面推荐”的 AI 智能体项目。用户可以用自然语言描述口味、辣度、预算、使用场景，系统会自动分析需求、调用搜索能力，并给出结构化的推荐结果。
+
+项目同时支持上传图片，让系统在一定程度上结合视觉信息做更自然的理解与推荐。
+
+## 核心能力
+
+- 文本聊天式泡面推荐
+- 可选图片输入，辅助理解偏好
+- 用户注册、登录与 JWT 鉴权
+- 多阶段智能体工作流：偏好解析 -> 搜索 -> 监督汇总
+- 接入 LangSmith 追踪与 Tavily 搜索能力
+
+## 系统架构
+
+```text
+┌─────────────────────────────┐
+│      React + Vite Client    │
+│   轻量前端界面 / 聊天交互    │
+└──────────────┬──────────────┘
+               │ HTTP
+┌──────────────▼──────────────┐
+│      NestJS Backend         │
+├──────────────┬──────────────┤
+│ auth-service │ noodle-service│
+│  登录鉴权     │ 推荐工作流     │
+└───────┬──────┬───────────────┘
+        │      │
+        │      ├──────────────► Tavily Search
+        │      ├──────────────► LangSmith / LLM
+        │      └──────────────► Auth gRPC
+        │
+        └──────────────► PostgreSQL
+```
 
 ## 项目结构
 
-- backend/: NestJS 后端，提供泡面推荐接口
-- client/: React 前端，提供聊天页面
+```text
+noodle-recommendation-agent/
+├── backend/
+│   ├── auth-service/
+│   │   ├── src/
+│   │   │   ├── auth/
+│   │   │   └── main.ts
+│   │   └── package.json
+│   └── noodle-service/
+│       ├── src/
+│       │   ├── model/
+│       │   ├── noodle/
+│       │   └── main.ts
+│       └── package.json
+├── client/
+│   ├── src/
+│   │   ├── components/
+│   │   ├── store/
+│   │   └── App.tsx
+│   └── package.json
+├── docker-compose.yml
+└── README.md
+```
 
-## 后端
-
-- 入口: `backend/src/main.ts`
-- 统一模型入口: `backend/src/model/model.provider.ts`
-- 推荐逻辑: `backend/src/noodle/noodle.service.ts`
-- 无数据库、无队列、无 Redis
-
-## 前端
-
-- 入口: `client/src/main.tsx`
-- 聊天页面: `client/src/App.tsx`
-- 样式: `client/src/styles.css`
-
-## 运行
-
-### 启动全部服务
+## 快速运行
 
 ```bash
-docker compose up -d --build
+docker compose up --build
 ```
 
-### 访问 Portainer
+服务入口如下：
 
-启动后，可通过以下地址访问 Portainer 管理界面：
-
-```text
-http://你的服务器IP:9000
-```
-
-首次登录时需要创建管理员账号。
-
-1. 安装依赖
-
-   cd backend
-   pnpm install
-
-   cd ../client
-   pnpm install
-
-2. 启动后端
-
-   cd backend
-   pnpm run start:dev
-
-3. 启动前端
-
-   cd client
-   pnpm run dev
-
-## 配置
-
-后端可通过环境变量配置模型
-
-- `OPENAI_API_KEY` 或 `NVIDIA_API_KEY`
-- `NVIDIA_MODEL` 默认 `gpt-4o-mini`
-- `NVIDIA_BASE_URL` 默认 `https://api.openai.com/v1`
-
-如果没有可用模型，系统会返回兜底推荐。
+- 前端: http://localhost
+- 泡面服务: http://localhost:3001
+- 认证服务: http://localhost:3002
+- Portainer: http://localhost:9000

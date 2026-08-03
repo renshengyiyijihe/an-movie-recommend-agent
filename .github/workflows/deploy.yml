@@ -53,18 +53,31 @@ jobs:
         working-directory: client
         run: pnpm install --frozen-lockfile --prefer-offline
 
-      - name: Deploy via SSH
+      - name: Deploy via SSH and send notification
+        id: deploy
         uses: appleboy/ssh-action@v1.0.0
+        envs: |
+          GMAIL_USERNAME=${{ secrets.GMAIL_USERNAME }}
+          GMAIL_APP_PASSWORD=${{ secrets.GMAIL_APP_PASSWORD }}
+          GMAIL_TO=${{ secrets.GMAIL_TO }}
+          GITHUB_RUN_ID=${{ github.run_id }}
+          GITHUB_REPOSITORY=${{ github.repository }}
+          GITHUB_WORKFLOW=${{ github.workflow }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            set -e
+            set -u
             REPO_URL="https://github.com/renshengyiyijihe/noodle-recommendation-agent.git"
             DEPLOY_DIR="/opt/noodle-app"
+            LOG_FILE="/tmp/noodle-deploy.log"
+            SUMMARY_FILE="/tmp/noodle-deploy-summary.txt"
 
             mkdir -p /opt
+            : > "$LOG_FILE"
+            exec > >(tee -a "$LOG_FILE") 2>&1
+
             if [ -d "$DEPLOY_DIR/.git" ]; then
               cd "$DEPLOY_DIR"
               git remote set-url origin "$REPO_URL"
@@ -88,3 +101,49 @@ jobs:
 
             docker compose down || true
             docker compose up -d --build
+            deploy_status=$?
+
+            echo "DEPLOY_EXIT_CODE=$deploy_status"
+            tail -n 40 "$LOG_FILE" > "$SUMMARY_FILE"
+
+            export DEPLOY_STATUS="$deploy_status"
+            python <<'PY'
+            import os
+            import smtplib
+            from email.message import EmailMessage
+            from pathlib import Path
+
+            username = os.environ['GMAIL_USERNAME']
+            password = os.environ['GMAIL_APP_PASSWORD']
+            to_addr = os.environ['GMAIL_TO']
+            deploy_status = int(os.environ['DEPLOY_STATUS'])
+            status_text = 'SUCCESS' if deploy_status == 0 else 'FAILED'
+            emoji = '✅' if deploy_status == 0 else '❌'
+            summary = Path('/tmp/noodle-deploy-summary.txt').read_text(encoding='utf-8', errors='replace').strip() or '无日志摘要'
+            repo = 'renshengyiyijihe/noodle-recommendation-agent'
+            run_url = f"https://github.com/{repo}/actions/runs/{os.environ.get('GITHUB_RUN_ID', 'unknown')}"
+
+            subject = f"{emoji} [{status_text}] 部署通知 - {repo}"
+            body = f"""部署结果: {status_text}
+            仓库: {repo}
+            详情: {run_url}
+
+            日志摘要:
+            {summary}
+            """
+
+            msg = EmailMessage()
+            msg['From'] = username
+            msg['To'] = to_addr
+            msg['Subject'] = subject
+            msg.set_content(body)
+
+            with smtplib.SMTP('smtp.gmail.com', 587) as smtp:
+                smtp.starttls()
+                smtp.login(username, password)
+                smtp.send_message(msg)
+
+            print(f"Notification email sent to {to_addr} with status {status_text}")
+            PY
+
+            exit "$deploy_status"

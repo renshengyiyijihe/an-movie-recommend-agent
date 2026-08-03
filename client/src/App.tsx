@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { request } from './api';
 
 interface RecommendationItem {
   name: string;
@@ -47,7 +48,6 @@ function App() {
       return;
     }
 
-    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
     const userMessage: ChatMessage = {
       role: 'user',
       text: message.trim(),
@@ -61,12 +61,11 @@ function App() {
     setError('');
 
     try {
-      const resp = await fetch(`${apiBaseUrl}/api/noodle/recommend`, {
+      const result = await request<any>({
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMessage.text, imageData }),
+        url: '/api/noodle/recommend',
+        data: { message: userMessage.text, imageData },
       });
-      const result = await resp.json();
       const assistantItems = convertResultToMessages(result);
       setMessages((prev) => [...prev, ...assistantItems]);
     } catch {

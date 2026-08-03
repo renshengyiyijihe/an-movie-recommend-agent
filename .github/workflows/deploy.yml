@@ -104,7 +104,8 @@ jobs:
               cd "$DEPLOY_DIR"
             fi
 
-            cat > .env <<EOF
+            mkdir -p backend
+            cat > backend/.env <<EOF
             NVIDIA_API_KEY=${{ secrets.NVIDIA_API_KEY }}
             TAVILY_API_KEY=${{ secrets.TAVILY_API_KEY }}
             LANGSMITH_API_KEY=${{ secrets.LANGSMITH_API_KEY }}
@@ -123,15 +124,16 @@ jobs:
             tail -n 40 "$LOG_FILE" > "$SUMMARY_FILE"
 
             export DEPLOY_STATUS="$deploy_status"
+            set +e
             python <<'PY'
             import os
             import smtplib
             from email.message import EmailMessage
             from pathlib import Path
 
-            username = os.environ['GMAIL_USERNAME']
-            password = os.environ['GMAIL_APP_PASSWORD']
-            to_addr = os.environ['GMAIL_TO']
+            username = os.environ.get('GMAIL_USERNAME')
+            password = os.environ.get('GMAIL_APP_PASSWORD')
+            to_addr = os.environ.get('GMAIL_TO')
             deploy_status = int(os.environ['DEPLOY_STATUS'])
             status_text = 'SUCCESS' if deploy_status == 0 else 'FAILED'
             emoji = '✅' if deploy_status == 0 else '❌'
@@ -149,17 +151,24 @@ jobs:
             """
 
             msg = EmailMessage()
-            msg['From'] = username
-            msg['To'] = to_addr
+            msg['From'] = username or 'noreply@example.com'
+            msg['To'] = to_addr or 'unknown@example.com'
             msg['Subject'] = subject
             msg.set_content(body)
 
-            with smtplib.SMTP('smtp.gmail.com', 587) as smtp:
-                smtp.starttls()
-                smtp.login(username, password)
-                smtp.send_message(msg)
+            try:
+                if username and password and to_addr:
+                    with smtplib.SMTP('smtp.gmail.com', 587, timeout=30) as smtp:
+                        smtp.starttls()
+                        smtp.login(username, password)
+                        smtp.send_message(msg)
+                    print(f"Notification email sent to {to_addr} with status {status_text}")
+                else:
+                    print("Skipping email notification because Gmail credentials or recipient address are not configured.")
+            except Exception as exc:
+                print(f"Warning: failed to send notification email: {exc}")
 
-            print(f"Notification email sent to {to_addr} with status {status_text}")
             PY
+            set -e
 
             exit "$deploy_status"

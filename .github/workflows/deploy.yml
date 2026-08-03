@@ -13,6 +13,46 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: |
+            backend/package.json
+            backend/pnpm-lock.yaml
+            client/package.json
+            client/pnpm-lock.yaml
+
+      - name: Cache backend node_modules
+        uses: actions/cache@v4
+        id: backend-node-modules
+        with:
+          path: backend/node_modules
+          key: backend-node-modules-${{ runner.os }}-${{ hashFiles('backend/package.json', 'backend/pnpm-lock.yaml') }}
+
+      - name: Cache client node_modules
+        uses: actions/cache@v4
+        id: client-node-modules
+        with:
+          path: client/node_modules
+          key: client-node-modules-${{ runner.os }}-${{ hashFiles('client/package.json', 'client/pnpm-lock.yaml') }}
+
+      - name: Install backend dependencies
+        if: steps.backend-node-modules.outputs.cache-hit != 'true'
+        working-directory: backend
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Install client dependencies
+        if: steps.client-node-modules.outputs.cache-hit != 'true'
+        working-directory: client
+        run: pnpm install --frozen-lockfile --prefer-offline
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.0
         with:
@@ -42,6 +82,9 @@ jobs:
             TAVILY_API_KEY=${{ secrets.TAVILY_API_KEY }}
             LANGSMITH_API_KEY=${{ secrets.LANGSMITH_API_KEY }}
             EOF
+
+            export DOCKER_BUILDKIT=1
+            export COMPOSE_DOCKER_CLI_BUILD=1
 
             docker compose down || true
             docker compose up -d --build

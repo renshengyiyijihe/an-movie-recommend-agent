@@ -14,6 +14,8 @@ interface ChatMessage {
   imagePreview?: string;
 }
 
+const quickPrompts = ['我想吃麻辣，预算 20 元以内', '想要清淡一点，适合午饭', '有点想吃咸香和鸡蛋味'];
+
 function App() {
   const [message, setMessage] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -43,14 +45,19 @@ function App() {
     };
   }, [file]);
 
+  function renderMessageText(text: string) {
+    return text.split('\n').filter((line) => line.trim() !== '');
+  }
+
   async function sendMessage() {
-    if (!message.trim()) {
+    const trimmedMessage = message.trim();
+    if (!trimmedMessage) {
       return;
     }
 
     const userMessage: ChatMessage = {
       role: 'user',
-      text: message.trim(),
+      text: trimmedMessage,
       imagePreview: imagePreview || undefined,
     };
 
@@ -104,7 +111,7 @@ function App() {
       sections.push({ role: 'assistant', text: `兜底说明：\n${data.fallback_reason}` });
     }
 
-    if(data.message) {
+    if (data.message) {
       sections.push({ role: 'assistant', text: `${data.message}` });
     }
 
@@ -114,39 +121,69 @@ function App() {
   return (
     <div className="app-shell">
       <section className="chat-panel">
-        <header>
+        <header className="hero-header">
+          <div className="hero-badge">🍜 AI 泡面推荐</div>
           <div className="title-row">
             <div>
-              <h1>泡面智能推荐</h1>
-              <p>基于你的口味和预算，给出更适合的泡面选择。</p>
+              <h1>为你挑选下一碗更合适的泡面</h1>
+              <p>说说你的口味、预算和需求，马上帮你缩小选择范围。</p>
             </div>
+          </div>
+          <div className="quick-prompts">
+            {quickPrompts.map((prompt) => (
+              <button key={prompt} type="button" className="chip-button" onClick={() => setMessage(prompt)}>
+                {prompt}
+              </button>
+            ))}
           </div>
         </header>
 
         <div className="messages">
-          {messages.map((item, index) => (
-            <div key={`${item.role}-${index}`} className={`message ${item.role === 'user' ? 'user' : 'assistant'}`}>
-              <div className="message-role">{item.role === 'user' ? '你' : '智能体'}</div>
-              <div>{item.text}</div>
-              {item.imagePreview ? <img src={item.imagePreview} alt="uploaded preview" className="message-image" /> : null}
+          {messages.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-state-icon">🍜</div>
+              <h3>从一句简单的话开始</h3>
+              <p>比如“我想要辣一点，预算 15 元以内，适合熬夜吃”。</p>
             </div>
-          ))}
+          ) : (
+            messages.map((item, index) => (
+              <div key={`${item.role}-${index}`} className={`message ${item.role === 'user' ? 'user' : 'assistant'}`}>
+                <div className="message-role">{item.role === 'user' ? '你' : '智能体'}</div>
+                <div className="message-text">
+                  {renderMessageText(item.text).map((line, lineIndex) => (
+                    <p key={`${item.role}-${index}-${lineIndex}`}>{line}</p>
+                  ))}
+                </div>
+                {item.imagePreview ? <img src={item.imagePreview} alt="uploaded preview" className="message-image" /> : null}
+              </div>
+            ))
+          )}
         </div>
 
         <div className="input-area">
-          <textarea
-            value={message}
-            onChange={(event) => setMessage(event.target.value)}
-            placeholder="输入你的口味、预算、偏好，比如：我想吃麻辣、价格在 30 元以内、希望方便快捷。"
-          />
-          <label className="file-input">
-            <span>上传图片（可选）</span>
-            <input type="file" accept="image/png,image/jpeg" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
-          </label>
-          {imagePreview ? <img src={imagePreview} alt="图片预览" className="preview-image" /> : null}
-          <button type="button" onClick={sendMessage} disabled={loading}>
-            {loading ? '发送中...' : '发送给智能体'}
-          </button>
+          <div className="input-card">
+            <textarea
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  void sendMessage();
+                }
+              }}
+              placeholder="输入你的口味、预算、偏好，比如：我想吃麻辣、价格在 30 元以内、希望方便快捷。"
+            />
+            <div className="input-actions">
+              <label className="file-input">
+                <span>📷 上传图片（可选）</span>
+                <input type="file" accept="image/png,image/jpeg" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+              </label>
+              <button type="button" className="send-button" onClick={() => void sendMessage()} disabled={loading}>
+                {loading ? '发送中...' : '发送'}
+              </button>
+            </div>
+            {imagePreview ? <img src={imagePreview} alt="图片预览" className="preview-image" /> : null}
+          </div>
           {error ? <p className="error">{error}</p> : null}
         </div>
       </section>

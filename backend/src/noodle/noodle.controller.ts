@@ -1,7 +1,7 @@
 import { Body, Controller, Post } from '@nestjs/common';
 import { NoodleService } from './noodle.service';
 
-@Controller('api/noodle')
+@Controller('/noodle')
 export class NoodleController {
   constructor(private readonly noodleService: NoodleService) {}
 

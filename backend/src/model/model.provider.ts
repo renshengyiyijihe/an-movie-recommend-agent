@@ -10,17 +10,17 @@ export class ModelProvider {
       return this.model;
     }
 
-    const apiKey = process.env.OPENAI_API_KEY || process.env.NVIDIA_API_KEY;
+    const apiKey = process.env.NVIDIA_API_KEY;
     if (!apiKey) {
       return null;
     }
 
     this.model = new ChatOpenAI({
-      model: process.env.NVIDIA_MODEL || 'gpt-4o-mini',
+      model: 'gpt-4o-mini',
       temperature: 0.2,
       apiKey,
       configuration: {
-        baseURL: process.env.NVIDIA_BASE_URL || 'https://api.openai.com/v1',
+        baseURL: 'https://api.openai.com/v1',
       },
     });
 

@@ -56,17 +56,17 @@ jobs:
       - name: Deploy via SSH and send notification
         id: deploy
         uses: appleboy/ssh-action@v1.0.0
-        envs: |
-          GMAIL_USERNAME=${{ secrets.GMAIL_USERNAME }}
-          GMAIL_APP_PASSWORD=${{ secrets.GMAIL_APP_PASSWORD }}
-          GMAIL_TO=${{ secrets.GMAIL_TO }}
-          GITHUB_RUN_ID=${{ github.run_id }}
-          GITHUB_REPOSITORY=${{ github.repository }}
-          GITHUB_WORKFLOW=${{ github.workflow }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
+          envs: |
+            GMAIL_USERNAME=${{ secrets.GMAIL_USERNAME }}
+            GMAIL_APP_PASSWORD=${{ secrets.GMAIL_APP_PASSWORD }}
+            GMAIL_TO=${{ secrets.GMAIL_TO }}
+            GITHUB_RUN_ID=${{ github.run_id }}
+            GITHUB_REPOSITORY=${{ github.repository }}
+            GITHUB_WORKFLOW=${{ github.workflow }}
           script: |
             set -u
             REPO_URL="https://github.com/renshengyiyijihe/noodle-recommendation-agent.git"
@@ -99,9 +99,11 @@ jobs:
             export DOCKER_BUILDKIT=1
             export COMPOSE_DOCKER_CLI_BUILD=1
 
+            set +e
             docker compose down || true
             docker compose up -d --build
             deploy_status=$?
+            set -e
 
             echo "DEPLOY_EXIT_CODE=$deploy_status"
             tail -n 40 "$LOG_FILE" > "$SUMMARY_FILE"

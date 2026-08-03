@@ -9,6 +9,12 @@ const api = axios.create({
 });
 
 export async function request<T = unknown>(config: AxiosRequestConfig): Promise<T> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  if (!config.headers) config.headers = {};
+  if (token) {
+    // attach Bearer token when present
+    (config.headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
+  }
   const response = await api.request<T>(config);
   return response.data;
 }

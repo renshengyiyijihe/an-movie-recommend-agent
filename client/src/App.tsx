@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { request } from './api';
+import useAuth from './store/auth';
+import AuthModal from './components/AuthModal';
 
 interface RecommendationItem {
   name: string;
@@ -24,6 +26,11 @@ function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
+  const token = useAuth((s) => s.token);
+  const user = useAuth((s) => s.user);
+  const logout = useAuth((s) => s.logout);
 
   useEffect(() => {
     if (!file) {
@@ -52,6 +59,12 @@ function App() {
   async function sendMessage() {
     const trimmedMessage = message.trim();
     if (!trimmedMessage) {
+      return;
+    }
+
+    // require login before sending
+    if (!token) {
+      setShowAuthModal(true);
       return;
     }
 
@@ -125,8 +138,22 @@ function App() {
           <div className="hero-badge">🍜 AI 泡面推荐</div>
           <div className="title-row">
             <div>
+              <AuthModal visible={showAuthModal} onClose={() => setShowAuthModal(false)} />
               <h1>为你挑选下一碗更合适的泡面</h1>
               <p>说说你的口味、预算和需求，马上帮你缩小选择范围。</p>
+            </div>
+            <div className="auth-buttons" role="toolbar">
+              {token ? (
+                <>
+                  <div style={{ padding: '6px 10px', color: '#4b5563' }}>Hi, {user?.name ?? user?.email}</div>
+                  <button className="btn-outline" onClick={() => logout()}>登出</button>
+                </>
+              ) : (
+                <>
+                  <button className="btn-outline" onClick={() => setShowAuthModal(true)}>登录</button>
+                  <button className="btn-primary" onClick={() => setShowAuthModal(true)}>注册</button>
+                </>
+              )}
             </div>
           </div>
           <div className="quick-prompts">

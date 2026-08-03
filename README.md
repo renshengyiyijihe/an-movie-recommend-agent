@@ -20,6 +20,22 @@
 
 ## 运行
 
+### 启动全部服务
+
+```bash
+docker compose up -d --build
+```
+
+### 访问 Portainer
+
+启动后，可通过以下地址访问 Portainer 管理界面：
+
+```text
+http://你的服务器IP:9000
+```
+
+首次登录时需要创建管理员账号。
+
 1. 安装依赖
 
    cd backend

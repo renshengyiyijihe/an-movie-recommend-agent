@@ -124,6 +124,16 @@ function App() {
           </div>
         </header>
 
+        <div className="messages">
+          {messages.map((item, index) => (
+            <div key={`${item.role}-${index}`} className={`message ${item.role === 'user' ? 'user' : 'assistant'}`}>
+              <div className="message-role">{item.role === 'user' ? '你' : '智能体'}</div>
+              <div>{item.text}</div>
+              {item.imagePreview ? <img src={item.imagePreview} alt="uploaded preview" className="message-image" /> : null}
+            </div>
+          ))}
+        </div>
+
         <div className="input-area">
           <textarea
             value={message}
@@ -139,16 +149,6 @@ function App() {
             {loading ? '发送中...' : '发送给智能体'}
           </button>
           {error ? <p className="error">{error}</p> : null}
-        </div>
-
-        <div className="messages">
-          {messages.map((item, index) => (
-            <div key={`${item.role}-${index}`} className={`message ${item.role === 'user' ? 'user' : 'assistant'}`}>
-              <div className="message-role">{item.role === 'user' ? '你' : '智能体'}</div>
-              <div>{item.text}</div>
-              {item.imagePreview ? <img src={item.imagePreview} alt="uploaded preview" className="message-image" /> : null}
-            </div>
-          ))}
         </div>
       </section>
     </div>

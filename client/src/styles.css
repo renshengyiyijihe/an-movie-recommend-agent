@@ -57,7 +57,7 @@ body {
 .input-area {
   display: grid;
   gap: 12px;
-  margin-bottom: 18px;
+  margin-top: 18px;
 }
 
 textarea {
@@ -114,11 +114,12 @@ button:disabled {
 
 .messages {
   flex: 1;
-  overflow: auto;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 12px;
   padding-right: 4px;
+  padding-bottom: 4px;
 }
 
 .message {

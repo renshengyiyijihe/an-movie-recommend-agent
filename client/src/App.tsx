@@ -89,7 +89,7 @@ function App() {
       const recommendationText = data.recommendations
         .map(
           (item: RecommendationItem, index: number) =>
-            `${index + 1}. ${item.name}\n理由: ${item.reason}\n淘宝: ${item.taobao}\n京东: ${item.jd}`,
+            `${index + 1}. ${item.name}\n理由: ${item.reason}`,
         )
         .join('\n\n');
 
@@ -104,8 +104,8 @@ function App() {
       sections.push({ role: 'assistant', text: `兜底说明：\n${data.fallback_reason}` });
     }
 
-    if (sections.length === 0) {
-      sections.push({ role: 'assistant', text: JSON.stringify(data, null, 2) });
+    if(data.message) {
+      sections.push({ role: 'assistant', text: `${data.message}` });
     }
 
     return sections;

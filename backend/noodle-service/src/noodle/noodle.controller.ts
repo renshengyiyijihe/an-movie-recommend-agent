@@ -1,4 +1,4 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Headers, Post } from '@nestjs/common';
 import { NoodleService } from './noodle.service';
 
 @Controller('/noodle')
@@ -7,13 +7,13 @@ export class NoodleController {
 
   @Post('recommend')
   async recommend(
-    @Body()
-    payload: {
+    @Body() payload: {
       message: string;
       imageUrl?: string;
       imageData?: string;
     },
+    @Headers('authorization') authorization?: string,
   ) {
-    return this.noodleService.recommend(payload);
+    return this.noodleService.recommend(payload, authorization);
   }
 }

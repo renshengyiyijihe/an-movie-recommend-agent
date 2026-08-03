@@ -2,6 +2,7 @@
   "name": "noodle-recommendation-agent-client",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.15.0",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
@@ -13,12 +14,12 @@
     "@mantine/core": "^7.0.0",
     "@mantine/hooks": "^7.0.0",
     "axios": "^1.7.9",
-    "zustand": "^4.4.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "zustand": "^4.4.0"
   },
   "devDependencies": {
-    "@types/react": "^18.3.3",
+    "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
     "typescript": "^5.5.4",

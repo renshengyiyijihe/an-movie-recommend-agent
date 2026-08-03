@@ -16,7 +16,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 10.15.0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -24,17 +24,26 @@ jobs:
           node-version: 24
           cache: pnpm
           cache-dependency-path: |
-            backend/package.json
-            backend/pnpm-lock.yaml
+            backend/auth-service/package.json
+            backend/auth-service/pnpm-lock.yaml
+            backend/noodle-service/package.json
+            backend/noodle-service/pnpm-lock.yaml
             client/package.json
             client/pnpm-lock.yaml
 
-      - name: Cache backend node_modules
+      - name: Cache auth-service node_modules
         uses: actions/cache@v4
-        id: backend-node-modules
+        id: auth-node-modules
         with:
-          path: backend/node_modules
-          key: backend-node-modules-${{ runner.os }}-${{ hashFiles('backend/package.json', 'backend/pnpm-lock.yaml') }}
+          path: backend/auth-service/node_modules
+          key: auth-node-modules-${{ runner.os }}-${{ hashFiles('backend/auth-service/package.json', 'backend/auth-service/pnpm-lock.yaml') }}
+
+      - name: Cache noodle-service node_modules
+        uses: actions/cache@v4
+        id: noodle-node-modules
+        with:
+          path: backend/noodle-service/node_modules
+          key: noodle-node-modules-${{ runner.os }}-${{ hashFiles('backend/noodle-service/package.json', 'backend/noodle-service/pnpm-lock.yaml') }}
 
       - name: Cache client node_modules
         uses: actions/cache@v4
@@ -43,9 +52,14 @@ jobs:
           path: client/node_modules
           key: client-node-modules-${{ runner.os }}-${{ hashFiles('client/package.json', 'client/pnpm-lock.yaml') }}
 
-      - name: Install backend dependencies
-        if: steps.backend-node-modules.outputs.cache-hit != 'true'
-        working-directory: backend
+      - name: Install auth-service dependencies
+        if: steps.auth-node-modules.outputs.cache-hit != 'true'
+        working-directory: backend/auth-service
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Install noodle-service dependencies
+        if: steps.noodle-node-modules.outputs.cache-hit != 'true'
+        working-directory: backend/noodle-service
         run: pnpm install --frozen-lockfile --prefer-offline
 
       - name: Install client dependencies

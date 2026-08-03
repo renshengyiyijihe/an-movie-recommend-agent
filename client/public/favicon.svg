@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="泡面推荐图标">
+  <rect x="4" y="4" width="56" height="56" rx="16" fill="#FFF7ED"/>
+  <path d="M18 18c0-4.4 3.6-8 8-8h12c4.4 0 8 3.6 8 8v10c0 7.7-6.3 14-14 14S18 35.7 18 28V18Z" fill="#F59E0B"/>
+  <path d="M22 20c0-2.8 2.2-5 5-5h10c2.8 0 5 2.2 5 5v8c0 4.4-3.6 8-8 8h-4c-4.4 0-8-3.6-8-8v-8Z" fill="#FFFDF8"/>
+  <path d="M24 24h16" stroke="#7C2D12" stroke-width="3" stroke-linecap="round"/>
+  <path d="M24 32c2.5 2.5 4.3 3.8 8 3.8s5.5-1.3 8-3.8" stroke="#FB923C" stroke-width="3" stroke-linecap="round"/>
+  <path d="M24 12c2 1.8 3.2 3.8 3.6 6.2" stroke="#EF4444" stroke-width="3" stroke-linecap="round"/>
+  <path d="M40 12c-1.8 1.8-3 3.8-3.4 6.2" stroke="#F97316" stroke-width="3" stroke-linecap="round"/>
+  <path d="M18 44c4.3 4.3 8.5 6.4 14 6.4s9.7-2.1 14-6.4" stroke="#8B5CF6" stroke-width="3" stroke-linecap="round"/>
+  <path d="M26 14c1.5 1.2 2.4 2.8 2.8 4.8" stroke="#FDE68A" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M38 14c-1.4 1.2-2.3 2.8-2.8 4.8" stroke="#FDE68A" stroke-width="2.5" stroke-linecap="round"/>
+</svg>

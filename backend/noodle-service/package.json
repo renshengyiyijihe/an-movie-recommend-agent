@@ -1,14 +1,16 @@
 {
-  "name": "noodle-recommendation-agent-backend",
+  "name": "noodle-service",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.15.0",
   "scripts": {
-    "start:dev": "nest start --watch",
-    "start": "nest start",
     "build": "nest build",
-    "lint": "eslint '{src,test}/**/*.ts' --fix"
+    "start": "node dist/main.js",
+    "start:dev": "nest start --watch"
   },
   "dependencies": {
+    "@grpc/grpc-js": "^1.8.17",
+    "@grpc/proto-loader": "^0.7.5",
     "@langchain/core": "^1.2.3",
     "@langchain/langgraph": "^1.4.8",
     "@langchain/openai": "^1.5.5",

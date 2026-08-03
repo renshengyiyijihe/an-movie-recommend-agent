@@ -7,7 +7,7 @@ async function bootstrap() {
   app.enableCors();
   const port = Number(process.env.PORT ?? 3001);
   await app.listen(port, '0.0.0.0');
-  console.log(`Backend running on http://0.0.0.0:${port}`);
+  console.log(`Noodle service running on http://0.0.0.0:${port}`);
 }
 
 bootstrap();

@@ -3,6 +3,7 @@ import { Annotation, END, START, StateGraph } from '@langchain/langgraph';
 import { ModelProvider } from '../model/model.provider';
 import { LangSmithProvider } from '../model/langsmith.provider';
 import { TavilyProvider } from '../model/tavily.provider';
+import { AuthGrpcClient } from './auth.grpc';
 
 type StageName = 'parsePreferences' | 'search' | 'supervisor';
 
@@ -84,9 +85,10 @@ export class NoodleService {
     private readonly modelProvider: ModelProvider,
     private readonly langsmithProvider: LangSmithProvider,
     private readonly tavilyProvider: TavilyProvider,
+    private readonly authGrpcClient: AuthGrpcClient,
   ) {}
 
-  async recommend(payload: RecommendPayload) {
+  async recommend(payload: RecommendPayload, authorization?: string) {
     const fallback = this.buildFallbackResponse(payload);
 
     const intent = await this.classifyIntent(payload.message);

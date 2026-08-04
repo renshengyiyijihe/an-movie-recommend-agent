@@ -1,6 +1,6 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { join } from 'path';
-import { Client, credentials, loadPackageDefinition } from '@grpc/grpc-js';
+import { credentials, loadPackageDefinition } from '@grpc/grpc-js';
 import { loadSync } from '@grpc/proto-loader';
 
 interface ValidateTokenResponse {

@@ -1,10 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ChatOpenAI } from '@langchain/openai';
-
 
 @Injectable()
 export class ModelProvider {
   private model: ChatOpenAI | null = null;
+  private readonly logger = new Logger(ModelProvider.name);
 
   getModel() {
     if (this.model) {
@@ -13,6 +13,7 @@ export class ModelProvider {
 
     const apiKey = process.env.NVIDIA_API_KEY;
     if (!apiKey) {
+      this.logger.error('NVIDIA_API_KEY is not set in environment variables.');
       return null;
     }
 

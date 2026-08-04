@@ -1,6 +1,11 @@
 import 'reflect-metadata';
+import * as dotenv from 'dotenv';
+import * as path from 'node:path';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+
+const envPath = path.resolve(process.cwd(), '.env');
+dotenv.config({ path: envPath });
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);

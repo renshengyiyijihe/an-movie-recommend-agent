@@ -143,11 +143,7 @@ function App() {
         <div className="auth-buttons" role="toolbar">
           {token ? (
             <>
-              <div className="user-pill">
-                <span className="user-pill__label">当前用户</span>
-                <strong>{user?.username ?? user?.email}</strong>
-              </div>
-              <button className="btn-outline btn-logout" onClick={() => logout()}>登出</button>
+              <button className="btn-logout" onClick={() => logout()} aria-label="登出">登出</button>
             </>
           ) : (
             <>

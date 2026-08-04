@@ -115,6 +115,12 @@ jobs:
             TAVILY_API_KEY=${{ secrets.TAVILY_API_KEY }}
             LANGSMITH_API_KEY=${{ secrets.LANGSMITH_API_KEY }}
             EOF
+            mkdir -p backend/noodle-service
+            cat > backend/noodle-service/.env <<EOF
+            NVIDIA_API_KEY=${{ secrets.NVIDIA_API_KEY }}
+            TAVILY_API_KEY=${{ secrets.TAVILY_API_KEY }}
+            LANGSMITH_API_KEY=${{ secrets.LANGSMITH_API_KEY }}
+            EOF
 
             export DOCKER_BUILDKIT=1
             export COMPOSE_DOCKER_CLI_BUILD=1

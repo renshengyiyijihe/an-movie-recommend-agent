@@ -1,16 +1,16 @@
 import 'reflect-metadata';
 import * as dotenv from 'dotenv';
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 
-const envPath = path.resolve(__dirname, '../../.env');
-const envResult = dotenv.config({ path: envPath });
-
-if (envResult.error) {
-  console.error(`[env] failed to load ${envPath}:`, envResult);
-} else {
+const envPath = path.resolve(process.cwd(), '.env');
+if (fs.existsSync(envPath)) {
+  dotenv.config({ path: envPath });
   console.log(`[env] loaded ${envPath}`);
+} else {
+  console.log(`[env] no .env file at ${envPath}, using existing process.env values`);
 }
 
 async function bootstrap() {

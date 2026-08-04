@@ -106,6 +106,9 @@ jobs:
               cd "$DEPLOY_DIR"
             fi
 
+            COMMIT_TITLE="$(git log -1 --pretty=format:%s)"
+            export COMMIT_TITLE
+
             mkdir -p backend
             cat > backend/.env <<EOF
             NVIDIA_API_KEY=${{ secrets.NVIDIA_API_KEY }}
@@ -146,9 +149,11 @@ jobs:
             repo = 'renshengyiyijihe/noodle-recommendation-agent'
             run_url = f"https://github.com/{repo}/actions/runs/{os.environ.get('GITHUB_RUN_ID', 'unknown')}"
 
-            subject = f"{emoji} [{status_text}] 部署通知 - {repo}"
+            commit_title = os.environ.get('COMMIT_TITLE', 'unknown commit')
+            subject = f"{emoji} [{status_text}] 部署通知 - {repo} - {commit_title}"
             body = f"""部署结果: {status_text}
             仓库: {repo}
+            提交标题: {commit_title}
             详情: {run_url}
 
             日志摘要:

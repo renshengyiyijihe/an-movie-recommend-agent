@@ -3,15 +3,21 @@ import useAuth from '../store/auth';
 
 interface Props {
   visible: boolean;
+  mode: 'login' | 'register';
   onClose: () => void;
+  onSwitchMode: () => void;
 }
 
-export default function AuthModal({ visible, onClose }: Props) {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export default function AuthModal({ visible, mode, onClose, onSwitchMode }: Props) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
   const [error, setError] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [usernameError, setUsernameError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const login = useAuth((s) => s.login);
@@ -19,24 +25,44 @@ export default function AuthModal({ visible, onClose }: Props) {
 
   if (!visible) return null;
 
+  function validateEmail(value: string) {
+    const trimmed = value.trim();
+    if (!trimmed) return '请输入邮箱';
+    if (!EMAIL_RE.test(trimmed)) return '请输入有效的邮箱格式';
+    return '';
+  }
+
+  function validatePassword(value: string) {
+    if (!value) return '请输入密码';
+    if (value.length < 6) return '密码至少 6 位';
+    return '';
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+
+    const trimmedEmail = email.trim();
+    const trimmedPassword = password.trim();
+    const trimmedUsername = username.trim();
+
+    const nextEmailError = validateEmail(trimmedEmail);
+    const nextUsernameError = mode === 'register' && !trimmedUsername ? '请输入用户名' : '';
+    const nextPasswordError = validatePassword(trimmedPassword);
+    setEmailError(nextEmailError);
+    setUsernameError(nextUsernameError);
+    setPasswordError(nextPasswordError);
+
+    if (nextEmailError || nextUsernameError || nextPasswordError) {
+      return;
+    }
+
+    setLoading(true);
     try {
-      if (!email || !password) {
-        setError('请填写邮箱和密码');
-        return;
-      }
-      setLoading(true);
       if (mode === 'login') {
-        await login(email, password);
+        await login(trimmedEmail, trimmedPassword);
       } else {
-        if (!name) {
-          setError('请填写姓名');
-          setLoading(false);
-          return;
-        }
-        await register(name, email, password);
+        await register(trimmedUsername, trimmedEmail, trimmedPassword);
       }
       onClose();
     } catch (err: any) {
@@ -54,22 +80,60 @@ export default function AuthModal({ visible, onClose }: Props) {
         <form onSubmit={handleSubmit} className="auth-form">
           {mode === 'register' ? (
             <label>
-              姓名
-              <input value={name} onChange={(e) => setName(e.target.value)} />
+              用户名
+              <input
+                value={username}
+                aria-invalid={Boolean(usernameError || error)}
+                onChange={(e) => {
+                  setUsername(e.target.value);
+                  setUsernameError('');
+                  if (error) setError('');
+                }}
+                placeholder="取一个好记的用户名"
+              />
+              {usernameError ? <div className="field-error">{usernameError}</div> : null}
             </label>
           ) : null}
           <label>
             邮箱
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <input
+              type="email"
+              value={email}
+              inputMode="email"
+              autoComplete="email"
+              aria-invalid={Boolean(emailError || error)}
+              onChange={(e) => {
+                const nextValue = e.target.value;
+                setEmail(nextValue);
+                setEmailError(validateEmail(nextValue));
+                if (error) setError('');
+              }}
+              onBlur={() => setEmailError(validateEmail(email))}
+              placeholder="name@example.com"
+            />
+            {emailError ? <div className="field-error">{emailError}</div> : null}
           </label>
           <label>
             密码
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            <input
+              type="password"
+              value={password}
+              aria-invalid={Boolean(passwordError || error)}
+              onChange={(e) => {
+                const nextValue = e.target.value;
+                setPassword(nextValue);
+                setPasswordError(validatePassword(nextValue));
+                if (error) setError('');
+              }}
+              onBlur={() => setPasswordError(validatePassword(password))}
+              placeholder="至少 6 位"
+            />
+            {passwordError ? <div className="field-error">{passwordError}</div> : null}
           </label>
           {error ? <div className="auth-error">{error}</div> : null}
           <div className="auth-actions">
             <button type="submit" className="btn-primary" disabled={loading}>{loading ? '处理中...' : mode === 'login' ? '登录' : '注册'}</button>
-            <button type="button" className="btn-outline" onClick={() => setMode(mode === 'login' ? 'register' : 'login')}>{mode === 'login' ? '去注册' : '去登录'}</button>
+            <button type="button" className="btn-outline" onClick={onSwitchMode}>{mode === 'login' ? '去注册' : '去登录'}</button>
           </div>
         </form>
       </div>

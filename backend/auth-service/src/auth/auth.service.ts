@@ -35,12 +35,12 @@ export class AuthService implements OnModuleInit {
     const passwordHash = await bcrypt.hash(dto.password, 10);
     const result = await pool.query(
       'INSERT INTO users (name,email,password_hash) VALUES ($1, $2, $3) RETURNING id, name, email',
-      [dto.name, dto.email, passwordHash],
+      [dto.username, dto.email, passwordHash],
     );
 
     const user = result.rows[0];
     const token = this.signToken(user);
-    return { token, user };
+    return { token, user: { id: user.id, username: user.name, email: user.email } };
   }
 
   async login(dto: LoginDto) {
@@ -56,13 +56,13 @@ export class AuthService implements OnModuleInit {
     }
 
     const token = this.signToken(user);
-    return { token, user: { id: user.id, name: user.name, email: user.email } };
+    return { token, user: { id: user.id, username: user.name, email: user.email } };
   }
 
   validateToken(token: string) {
     try {
       const payload = jwt.verify(token, JWT_SECRET) as any;
-      return { ok: true, user: { id: payload.sub, name: payload.name, email: payload.email } };
+      return { ok: true, user: { id: payload.sub, username: payload.username ?? payload.name, email: payload.email } };
     } catch {
       return { ok: false, error: 'invalid_token' };
     }
@@ -70,7 +70,7 @@ export class AuthService implements OnModuleInit {
 
   private signToken(user: any) {
     return jwt.sign(
-      { sub: user.id, email: user.email, name: user.name },
+      { sub: user.id, email: user.email, username: user.name ?? user.username },
       JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN } as jwt.SignOptions,
     );

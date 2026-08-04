@@ -26,7 +26,8 @@ function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
 
   const token = useAuth((s) => s.token);
   const user = useAuth((s) => s.user);
@@ -64,7 +65,7 @@ function App() {
 
     // require login before sending
     if (!token) {
-      setShowAuthModal(true);
+      setShowLoginModal(true);
       return;
     }
 
@@ -133,27 +134,51 @@ function App() {
 
   return (
     <div className="app-shell">
+      <div className="top-bar">
+        <div className="top-bar__title">🍜 AI 泡面推荐</div>
+        <div className="auth-buttons" role="toolbar">
+          {token ? (
+            <>
+              <div className="user-pill">
+                <span className="user-pill__label">当前用户</span>
+                <strong>{user?.username ?? user?.email}</strong>
+              </div>
+              <button className="btn-outline" onClick={() => logout()}>登出</button>
+            </>
+          ) : (
+            <>
+              <button className="btn-outline" onClick={() => setShowLoginModal(true)}>登录</button>
+              <button className="btn-primary" onClick={() => setShowRegisterModal(true)}>注册</button>
+            </>
+          )}
+        </div>
+      </div>
+
       <section className="chat-panel">
+        <AuthModal
+          visible={showLoginModal}
+          mode="login"
+          onClose={() => setShowLoginModal(false)}
+          onSwitchMode={() => {
+            setShowLoginModal(false);
+            setShowRegisterModal(true);
+          }}
+        />
+        <AuthModal
+          visible={showRegisterModal}
+          mode="register"
+          onClose={() => setShowRegisterModal(false)}
+          onSwitchMode={() => {
+            setShowRegisterModal(false);
+            setShowLoginModal(true);
+          }}
+        />
+
         <header className="hero-header">
-          <div className="hero-badge">🍜 AI 泡面推荐</div>
           <div className="title-row">
             <div>
-              <AuthModal visible={showAuthModal} onClose={() => setShowAuthModal(false)} />
               <h1>为你挑选下一碗更合适的泡面</h1>
               <p>说说你的口味、预算和需求，马上帮你缩小选择范围。</p>
-            </div>
-            <div className="auth-buttons" role="toolbar">
-              {token ? (
-                <>
-                  <div style={{ padding: '6px 10px', color: '#4b5563' }}>Hi, {user?.name ?? user?.email}</div>
-                  <button className="btn-outline" onClick={() => logout()}>登出</button>
-                </>
-              ) : (
-                <>
-                  <button className="btn-outline" onClick={() => setShowAuthModal(true)}>登录</button>
-                  <button className="btn-primary" onClick={() => setShowAuthModal(true)}>注册</button>
-                </>
-              )}
             </div>
           </div>
           <div className="quick-prompts">

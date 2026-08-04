@@ -10,7 +10,7 @@ RUN --mount=type=cache,target=/root/.cache/pnpm-store \
     pnpm install --frozen-lockfile --store-dir /root/.cache/pnpm-store
 
 COPY noodle-service/src ./src
-COPY noodle-service/proto ./proto
+COPY proto ./proto
 
 RUN pnpm run build
 

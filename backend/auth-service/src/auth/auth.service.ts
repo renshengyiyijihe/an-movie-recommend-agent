@@ -1,4 +1,5 @@
 import { Injectable, ConflictException, UnauthorizedException, OnModuleInit } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
 import { Pool } from 'pg';
@@ -18,7 +19,7 @@ export class AuthService implements OnModuleInit {
 
   private async ensureTable() {
     await pool.query(`CREATE TABLE IF NOT EXISTS users (
-      id UUID PRIMARY KEY DEFAULT random_uuid(),
+      id UUID PRIMARY KEY,
       name TEXT NOT NULL,
       email TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
@@ -33,9 +34,10 @@ export class AuthService implements OnModuleInit {
     }
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
+    const id = randomUUID();
     const result = await pool.query(
-      'INSERT INTO users (name,email,password_hash) VALUES ($1, $2, $3) RETURNING id, name, email',
-      [dto.username, dto.email, passwordHash],
+      'INSERT INTO users (id, name, email, password_hash) VALUES ($1, $2, $3, $4) RETURNING id, name, email',
+      [id, dto.username, dto.email, passwordHash],
     );
 
     const user = result.rows[0];

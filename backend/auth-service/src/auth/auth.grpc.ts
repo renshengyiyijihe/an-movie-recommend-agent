@@ -26,7 +26,6 @@ export class AuthGrpcServer implements OnModuleInit {
     const bindAddress = process.env.AUTH_GRPC_BIND ?? '0.0.0.0:50051';
     server.bindAsync(bindAddress, ServerCredentials.createInsecure(), (err, port) => {
       if (err) throw err;
-      server.start();
       console.log(`Auth gRPC server listening on ${bindAddress}`);
     });
   }

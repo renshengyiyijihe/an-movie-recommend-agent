@@ -147,7 +147,7 @@ function App() {
                 <span className="user-pill__label">当前用户</span>
                 <strong>{user?.username ?? user?.email}</strong>
               </div>
-              <button className="btn-outline" onClick={() => logout()}>登出</button>
+              <button className="btn-outline btn-logout" onClick={() => logout()}>登出</button>
             </>
           ) : (
             <>

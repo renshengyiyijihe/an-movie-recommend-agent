@@ -15,6 +15,19 @@ export async function request<T = unknown>(config: AxiosRequestConfig): Promise<
     // attach Bearer token when present
     (config.headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
   }
-  const response = await api.request<T>(config);
-  return response.data;
+
+  try {
+    const response = await api.request<T>(config);
+    return response.data;
+  } catch (error: any) {
+    const serverMessage = error?.response?.data?.message;
+    if (serverMessage) {
+      throw new Error(serverMessage);
+    }
+    const statusText = error?.response?.statusText;
+    if (statusText) {
+      throw new Error(statusText);
+    }
+    throw error;
+  }
 }

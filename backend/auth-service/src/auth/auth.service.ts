@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, UnauthorizedException, OnModuleInit } from '@nestjs/common';
+import { Injectable, ConflictException, UnauthorizedException, OnModuleInit, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
@@ -13,7 +13,10 @@ const pool = new Pool({ connectionString: process.env.POSTGRES_URL ?? 'postgresq
 
 @Injectable()
 export class AuthService implements OnModuleInit {
+  private readonly logger = new Logger(AuthService.name);
+
   async onModuleInit() {
+    this.logger.log('Starting auth service and verifying users table.');
     await this.ensureTable();
   }
 
@@ -46,18 +49,24 @@ export class AuthService implements OnModuleInit {
   }
 
   async login(dto: LoginDto) {
+    this.logger.log(`Login attempt for email: ${dto.email}`);
     const result = await pool.query('SELECT id, name, email, password_hash FROM users WHERE email = $1', [dto.email]);
     const user = result.rows[0];
+    const errorMessage = '邮箱或密码错误，请确认后重试。';
+
     if (!user) {
-      throw new UnauthorizedException('invalid_credentials');
+      this.logger.warn(`Login failed: user not found for email ${dto.email}`);
+      throw new UnauthorizedException(errorMessage);
     }
 
     const valid = await bcrypt.compare(dto.password, user.password_hash);
     if (!valid) {
-      throw new UnauthorizedException('invalid_credentials');
+      this.logger.warn(`Login failed: invalid password for email ${dto.email}`);
+      throw new UnauthorizedException(errorMessage);
     }
 
     const token = this.signToken(user);
+    this.logger.log(`Login successful for email: ${dto.email}`);
     return { token, user: { id: user.id, username: user.name, email: user.email } };
   }
 

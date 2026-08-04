@@ -50,9 +50,17 @@ input {
 }
 
 .top-bar__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-weight: 700;
   color: #111827;
   font-size: 1.05rem;
+}
+
+.top-bar__icon {
+  display: block;
+  flex-shrink: 0;
 }
 
 .chat-panel {
@@ -227,8 +235,8 @@ textarea:focus {
 }
 
 .empty-state-icon {
-  font-size: 2rem;
-  margin-bottom: 6px;
+  display: block;
+  margin-bottom: 8px;
 }
 
 .empty-state h3 {

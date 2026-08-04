@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { request } from './api';
 import useAuth from './store/auth';
 import AuthModal from './components/AuthModal';
+import AppLogo from './components/AppLogo';
 
 interface RecommendationItem {
   name: string;
@@ -135,7 +136,10 @@ function App() {
   return (
     <div className="app-shell">
       <div className="top-bar">
-        <div className="top-bar__title">🍜 AI 泡面推荐</div>
+        <div className="top-bar__title">
+          <AppLogo className="top-bar__icon" size={24} />
+          <span>AI 泡面推荐</span>
+        </div>
         <div className="auth-buttons" role="toolbar">
           {token ? (
             <>
@@ -193,7 +197,7 @@ function App() {
         <div className="messages">
           {messages.length === 0 ? (
             <div className="empty-state">
-              <div className="empty-state-icon">🍜</div>
+              <AppLogo className="empty-state-icon" size={44} />
               <h3>从一句简单的话开始</h3>
               <p>比如“我想要辣一点，预算 15 元以内，适合熬夜吃”。</p>
             </div>

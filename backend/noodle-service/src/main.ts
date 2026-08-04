@@ -6,7 +6,7 @@ import { NestFactory } from '@nestjs/core';
 
 const envPath = path.resolve(process.cwd(), '.env');
 if (fs.existsSync(envPath)) {
-  dotenv.config({ path: envPath });
+  dotenv.config({ path: envPath, override: true });
   console.log(`[env] loaded ${envPath}`);
 } else {
   console.log(`[env] no .env file at ${envPath}, using existing process.env values`);

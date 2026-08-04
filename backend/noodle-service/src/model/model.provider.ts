@@ -13,6 +13,7 @@ export class ModelProvider {
 
     const apiKey = process.env.NVIDIA_API_KEY;
     if (!apiKey) {
+      this.logger.log('process.env', process.env);
       this.logger.error('NVIDIA_API_KEY is not set in environment variables.');
       return null;
     }

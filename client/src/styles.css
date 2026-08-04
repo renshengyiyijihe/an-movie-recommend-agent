@@ -272,6 +272,14 @@ textarea:focus {
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
 }
 
+.message.assistant-error {
+  background: #fff1f2;
+  color: #991b1b;
+  align-self: flex-start;
+  border-color: #f8c1c5;
+  box-shadow: 0 8px 24px rgba(220, 38, 38, 0.08);
+}
+
 .message-role {
   font-size: 0.78rem;
   margin-bottom: 6px;

@@ -162,7 +162,7 @@ export class NoodleService {
       '你是一个泡面推荐专家智能体。',
       '根据用户描述的口味、价格、偏好，给出 3-4 个推荐。',
       '如果用户提供了图片，请简要分析图片里的风格或情绪。',
-      '输出格式必须为 JSON，包含 fields: recommendations, explanation, fallback_reason。',
+      '输出格式必须为 JSON，包含 fields: recommendations, explanation。如无法生成推荐，可使用 fallback_reason 说明失败原因。',
     ].join('\n');
   }
 
@@ -467,7 +467,7 @@ export class NoodleService {
       promptState.imageUrl ? `图片链接: ${promptState.imageUrl}` : '',
       promptState.imageData ? '附带已上传图片分析。' : '',
       `搜索结果: ${promptState.searchResult}`,
-      '输出 JSON，包含 recommendations、explanation、fallback_reason。',
+      '输出 JSON，包含 recommendations 和 explanation。仅在无法生成推荐时，使用 fallback_reason 说明原因。',
     ].join('\n');
   }
 
@@ -530,16 +530,7 @@ export class NoodleService {
           request_id: 'fallback',
         });
       case 'supervisor':
-        return JSON.stringify({
-          recommendations: [
-            {
-              name: '统一小当家麻辣牛肉面',
-              reason: '常见高性价比选择，适合广泛口味。',
-            },
-          ],
-          explanation: '当前模型不可用，使用默认推荐。',
-          fallback_reason: '模型未配置或调用失败。',
-        });
+        return JSON.stringify({});
       default:
         return '无法获取推荐。';
     }
@@ -615,17 +606,7 @@ export class NoodleService {
     return {
       type: 'fallback',
       data: {
-        recommendations: [
-          {
-            name: '统一小当家麻辣牛肉面',
-            reason: '性价比高，适合喜欢微辣口味，易于购买。',
-          },
-          {
-            name: '康师傅经典红烧牛肉面',
-            reason: '经典口碑，适合大众口味和日常囤货。',
-          },
-        ],
-        explanation: '因为缺少模型或请求失败，提供通用高口碑泡面推荐。',
+        message: '推荐失败，模型当前不可用，请稍后重试。',
         fallback_reason: '模型不可用或请求失败。',
       },
     };
@@ -640,13 +621,7 @@ export class NoodleService {
       return JSON.parse(firstJson[0]);
     } catch {
       return {
-        recommendations: [
-          {
-            name: '统一小当家麻辣牛肉面',
-            reason: '常见高性价比选择，适合广泛口味。',
-          },
-        ],
-        explanation: '解析失败，返回默认推荐。',
+        message: '解析失败，无法生成推荐。',
         fallback_reason: '无法解析模型输出。',
       };
     }

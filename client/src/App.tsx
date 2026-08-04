@@ -12,8 +12,9 @@ interface RecommendationItem {
 }
 
 interface ChatMessage {
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'assistant-error';
   text: string;
+  type?: 'recommendation' | 'explanation' | 'fallback' | 'error';
   imagePreview?: string;
 }
 
@@ -92,7 +93,7 @@ function App() {
       setMessages((prev) => [...prev, ...assistantItems]);
     } catch {
       setError('请求后端失败，请检查服务是否启动');
-      setMessages((prev) => [...prev, { role: 'assistant', text: '请求失败，请稍后再试。' }]);
+      setMessages((prev) => [...prev, { role: 'assistant-error', text: '请求失败，请稍后再试。', type: 'error' }]);
     } finally {
       setLoading(false);
       setImageData('');
@@ -101,13 +102,13 @@ function App() {
 
   function convertResultToMessages(result: any): ChatMessage[] {
     if (!result?.data) {
-      return [{ role: 'assistant', text: '未收到有效响应，请重试。' }];
+      return [{ role: 'assistant-error', text: '未收到有效响应，请重试。', type: 'error' }];
     }
 
     const { data } = result;
     const sections: ChatMessage[] = [];
 
-    if (data.recommendations) {
+    if (data.recommendations && Array.isArray(data.recommendations) && data.recommendations.length > 0) {
       const recommendationText = data.recommendations
         .map(
           (item: RecommendationItem, index: number) =>
@@ -115,19 +116,40 @@ function App() {
         )
         .join('\n\n');
 
-      sections.push({ role: 'assistant', text: `推荐结果：\n${recommendationText}` });
+      sections.push({
+        role: 'assistant',
+        text: `推荐结果：\n${recommendationText}`,
+        type: 'recommendation',
+      });
     }
 
     if (data.explanation) {
-      sections.push({ role: 'assistant', text: `推荐说明：\n${data.explanation}` });
+      sections.push({
+        role: 'assistant',
+        text: `推荐说明：\n${data.explanation}`,
+        type: 'explanation',
+      });
     }
 
-    if (data.fallback_reason) {
-      sections.push({ role: 'assistant', text: `兜底说明：\n${data.fallback_reason}` });
+    if ((!data.recommendations || data.recommendations.length === 0) && data.fallback_reason) {
+      sections.push({
+        role: 'assistant-error',
+        text: `兜底说明：\n${data.fallback_reason}`,
+        type: 'fallback',
+      });
     }
 
     if (data.message) {
-      sections.push({ role: 'assistant', text: `${data.message}` });
+      const role = data.fallback_reason ? 'assistant-error' : 'assistant';
+      sections.push({
+        role,
+        text: `${data.message}`,
+        type: data.fallback_reason ? 'fallback' : 'explanation',
+      });
+    }
+
+    if (sections.length === 0) {
+      return [{ role: 'assistant-error', text: '无法生成推荐内容，请稍后重试。', type: 'error' }];
     }
 
     return sections;
@@ -199,8 +221,12 @@ function App() {
             </div>
           ) : (
             messages.map((item, index) => (
-              <div key={`${item.role}-${index}`} className={`message ${item.role === 'user' ? 'user' : 'assistant'}`}>
-                <div className="message-role">{item.role === 'user' ? '你' : '智能体'}</div>
+              <div
+                key={`${item.role}-${index}`}
+                className={`message ${item.role === 'user' ? 'user' : item.role === 'assistant-error' ? 'assistant-error' : 'assistant'}`}>
+                <div className="message-role">
+                  {item.role === 'user' ? '你' : item.role === 'assistant-error' ? '智能体（异常）' : '智能体'}
+                </div>
                 <div className="message-text">
                   {renderMessageText(item.text).map((line, lineIndex) => (
                     <p key={`${item.role}-${index}-${lineIndex}`}>{line}</p>

@@ -4,8 +4,14 @@ import * as path from 'node:path';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 
-const envPath = path.resolve(process.cwd(), '.env');
-dotenv.config({ path: envPath });
+const envPath = path.resolve(__dirname, '../../.env');
+const envResult = dotenv.config({ path: envPath });
+
+if (envResult.error) {
+  console.error(`[env] failed to load ${envPath}:`, envResult);
+} else {
+  console.log(`[env] loaded ${envPath}`);
+}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);

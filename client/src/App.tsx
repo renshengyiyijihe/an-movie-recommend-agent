@@ -131,21 +131,20 @@ function App() {
       });
     }
 
-    if ((!data.recommendations || data.recommendations.length === 0) && data.fallback_reason) {
+    if ((!data.recommendations || data.recommendations.length === 0) && (data.message || data.fallback_reason)) {
       sections.push({
         role: 'assistant-error',
-        text: `兜底说明：\n${data.fallback_reason}`,
+        text: data.message ? `${data.message}` : `兜底说明：\n${data.fallback_reason}`,
         type: 'fallback',
       });
-    }
-
-    if (data.message) {
-      const role = data.fallback_reason ? 'assistant-error' : 'assistant';
-      sections.push({
-        role,
-        text: `${data.message}`,
-        type: data.fallback_reason ? 'fallback' : 'explanation',
-      });
+    } else {
+      if (data.message) {
+        sections.push({
+          role: 'assistant',
+          text: `${data.message}`,
+          type: 'explanation',
+        });
+      }
     }
 
     if (sections.length === 0) {

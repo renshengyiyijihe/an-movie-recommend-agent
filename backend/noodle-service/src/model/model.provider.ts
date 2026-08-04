@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ChatOpenAI } from '@langchain/openai';
 
+
 @Injectable()
 export class ModelProvider {
   private model: ChatOpenAI | null = null;
@@ -16,11 +17,11 @@ export class ModelProvider {
     }
 
     this.model = new ChatOpenAI({
-      model: 'gpt-4o-mini',
-      temperature: 0.2,
+      model: "z-ai/glm-5.2",
+      temperature: 0.3,
       apiKey,
       configuration: {
-        baseURL: 'https://api.openai.com/v1',
+        baseURL: 'https://integrate.api.nvidia.com/v1',
       },
     });
 

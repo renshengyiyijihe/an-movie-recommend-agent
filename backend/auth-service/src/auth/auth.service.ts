@@ -52,17 +52,16 @@ export class AuthService implements OnModuleInit {
     this.logger.log(`Login attempt for email: ${dto.email}`);
     const result = await pool.query('SELECT id, name, email, password_hash FROM users WHERE email = $1', [dto.email]);
     const user = result.rows[0];
-    const errorMessage = '邮箱或密码错误，请确认后重试。';
 
     if (!user) {
       this.logger.warn(`Login failed: user not found for email ${dto.email}`);
-      throw new UnauthorizedException(errorMessage);
+      throw new UnauthorizedException('邮箱不存在，请确认后重试。');
     }
 
     const valid = await bcrypt.compare(dto.password, user.password_hash);
     if (!valid) {
       this.logger.warn(`Login failed: invalid password for email ${dto.email}`);
-      throw new UnauthorizedException(errorMessage);
+      throw new UnauthorizedException('密码错误，请确认后重试。');
     }
 
     const token = this.signToken(user);

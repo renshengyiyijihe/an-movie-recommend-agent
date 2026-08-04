@@ -1,5 +1,5 @@
 import { Injectable, ConflictException, UnauthorizedException, OnModuleInit } from '@nestjs/common';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
 import { Pool } from 'pg';
 import { RegisterDto } from './dto/register.dto';

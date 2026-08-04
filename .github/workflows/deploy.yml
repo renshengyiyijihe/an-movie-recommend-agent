@@ -115,10 +115,13 @@ jobs:
 
             export DOCKER_BUILDKIT=1
             export COMPOSE_DOCKER_CLI_BUILD=1
+            export COMPOSE_PROJECT_NAME="noodle-app"
 
             set +e
-            docker compose down || true
-            docker compose up -d --build
+            docker compose down --remove-orphans || true
+            docker rm -f noodle-app-postgres-1 noodle-app-auth-service-1 noodle-app-noodle-service-1 noodle-app-frontend-1 noodle-app-portainer-1 2>/dev/null || true
+            docker rm -f noodle-recommendation-agent-postgres-1 noodle-recommendation-agent-auth-service-1 noodle-recommendation-agent-noodle-service-1 noodle-recommendation-agent-frontend-1 noodle-recommendation-agent-portainer-1 2>/dev/null || true
+            docker compose up -d --build --remove-orphans
             deploy_status=$?
             set -e
 

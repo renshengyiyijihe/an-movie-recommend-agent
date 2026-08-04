@@ -352,6 +352,11 @@ textarea:focus {
   background: rgba(245, 243, 255, 0.9);
   border: 1px solid #e5d7ff;
   color: #3730a3;
+  min-width: 120px;
+}
+.user-pill__name {
+  font-size: 0.95rem;
+  font-weight: 700;
 }
 .user-pill__label {
   font-size: 0.72rem;

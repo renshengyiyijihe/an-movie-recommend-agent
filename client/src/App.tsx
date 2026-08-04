@@ -165,6 +165,10 @@ function App() {
         <div className="auth-buttons" role="toolbar">
           {token ? (
             <>
+              <div className="user-pill" aria-label="当前登录用户">
+                <span className="user-pill__name">{user?.username ?? '用户'}</span>
+                <span className="user-pill__label">已登录</span>
+              </div>
               <button className="btn-logout" onClick={() => logout()} aria-label="登出">登出</button>
             </>
           ) : (

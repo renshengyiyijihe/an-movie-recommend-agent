@@ -3,7 +3,6 @@ import * as dotenv from 'dotenv';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
 
 const envPath = path.resolve(process.cwd(), '.env');
 if (fs.existsSync(envPath)) {
@@ -14,6 +13,7 @@ if (fs.existsSync(envPath)) {
 }
 
 async function bootstrap() {
+  const { AppModule } = await import('./app.module');
   const app = await NestFactory.create(AppModule);
   app.enableCors();
   const port = Number(process.env.PORT ?? 3001);

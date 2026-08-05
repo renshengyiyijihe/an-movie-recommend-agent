@@ -56,6 +56,7 @@ export class TavilyProvider {
 
   async search(query: string, options: Partial<TavilySearchRequest> = {}): Promise<TavilySearchResponse> {
     if (!this.apiKey) {
+      this.logger.error('Tavily API key is not configured.');
       throw new Error('Tavily API key is not configured.');
     }
 
@@ -78,6 +79,7 @@ export class TavilyProvider {
       include_usage: options.include_usage ?? false,
     };
 
+    this.logger.log(`Tavily search request: queryLength=${body.query.length}, max_results=${body.max_results}`);
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -94,6 +96,7 @@ export class TavilyProvider {
     }
 
     const json = (await response.json()) as TavilySearchResponse;
+    this.logger.log(`Tavily search response success: request_id=${json.request_id ?? 'unknown'} results=${json.results?.length ?? 0}`);
     return json;
   }
 }

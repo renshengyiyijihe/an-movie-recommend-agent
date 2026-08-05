@@ -89,11 +89,15 @@ export class NoodleService {
   ) {}
 
   async recommend(payload: RecommendPayload, authorization?: string) {
+    this.logger.log(`recommend request received: messageLength=${payload.message?.length ?? 0}, hasImage=${Boolean(payload.imageUrl || payload.imageData)}, authHeader=${authorization ? 'present' : 'absent'}`);
     const fallback = this.buildFallbackResponse(payload);
+
+    const authResult = authorization ? await this.validateAuthorization(authorization) : { ok: false, error: 'no_authorization_header' };
+    this.logger.log(`authorization check: ok=${authResult.ok}, error=${authResult.error ?? 'none'}, user=${authResult.user?.email ?? 'anonymous'}`);
 
     const intent = await this.classifyIntent(payload.message);
     if (intent !== 'noodle_recommendation') {
-      this.logger.warn(`Non-noodle request rejected: ${payload.message}`);
+      this.logger.warn(`Non-noodle request rejected: ${this.truncateText(payload.message, 200)}`);
       return {
         type: 'reject',
         data: {
@@ -115,22 +119,24 @@ export class NoodleService {
     };
 
     try {
+      this.logger.log('Starting noodle recommendation workflow');
       const result = await this.runLangGraphWorkflow(context);
+      this.logger.log(`Workflow finished: preferencesLength=${result.preferences.length}, searchResultLength=${result.searchResult.length}, supervisorResultLength=${result.supervisorResult.length}`);
 
       const langsmithEnabled = !!this.langsmithProvider.getClient();
       if (langsmithEnabled) {
         await this.langsmithProvider.createRun(
           '泡面推荐请求',
           {
-            user_message: payload.message,
+            user_message: this.truncateText(payload.message, 500),
             has_image: !!payload.imageData,
             image_url: payload.imageUrl ?? undefined,
           },
           {
-            supervisor_output: result.supervisorResult,
+            supervisor_output: this.truncateText(result.supervisorResult, 1000),
             stage_outputs: {
-              preferences: result.preferences,
-              searchResult: result.searchResult,
+              preferences: this.truncateText(result.preferences, 1000),
+              searchResult: this.truncateText(result.searchResult, 1000),
             },
           },
           {
@@ -140,9 +146,11 @@ export class NoodleService {
         );
       }
 
+      const parsed = this.parseRecommendation(result.supervisorResult);
+      this.logger.log(`Recommendation result ready: parsedType=${typeof parsed}, langsmith=${langsmithEnabled}`);
       return {
         type: 'success',
-        data: this.parseRecommendation(result.supervisorResult),
+        data: parsed,
         stageOutputs: {
           preferences: result.preferences,
           searchResult: result.searchResult,
@@ -168,7 +176,9 @@ export class NoodleService {
 
   private async classifyIntent(message: string): Promise<IntentType> {
     const normalized = message.trim();
+    this.logger.log(`classifyIntent start: messageLength=${normalized.length}`);
     if (!normalized) {
+      this.logger.warn('classifyIntent rejected empty message');
       return 'out_of_scope';
     }
 
@@ -176,12 +186,14 @@ export class NoodleService {
     const matched = keywords.some((keyword) => normalized.includes(keyword));
 
     if (matched) {
+      this.logger.log('classifyIntent decided by keyword matching');
       return 'noodle_recommendation';
     }
 
     try {
       const model = this.modelProvider.getModel();
       if (!model) {
+        this.logger.warn('classifyIntent could not run because model is unavailable');
         return 'out_of_scope';
       }
 
@@ -191,10 +203,35 @@ export class NoodleService {
       ]);
 
       const text = this.extractText(response.content).trim().toLowerCase();
-      return text.includes('noodle_recommendation') ? 'noodle_recommendation' : 'out_of_scope';
+      const intent = text.includes('noodle_recommendation') ? 'noodle_recommendation' : 'out_of_scope';
+      this.logger.log(`classifyIntent finished: intent=${intent}, rawResponse=${this.truncateText(text, 200)}`);
+      return intent;
     } catch (error) {
       this.logger.warn(`意图识别失败，默认拒绝: ${(error as Error).message}`);
       return 'out_of_scope';
+    }
+  }
+
+  private async validateAuthorization(authorization: string): Promise<{ ok: boolean; user?: { id: string; email: string }; error?: string }> {
+    this.logger.log(`validateAuthorization start: authLength=${authorization.length}`);
+    const token = authorization.replace(/^Bearer\s+/i, '').trim();
+    if (!token) {
+      this.logger.warn('validateAuthorization failed: no bearer token found');
+      return { ok: false, error: 'no_token' };
+    }
+
+    try {
+      const response = await this.authGrpcClient.validateToken(token);
+      if (!response.ok) {
+        this.logger.warn(`validateAuthorization failed: ${response.error ?? 'unknown error'}`);
+        return { ok: false, error: response.error ?? 'invalid_token' };
+      }
+
+      this.logger.log(`validateAuthorization success: user=${response.user?.email ?? response.user?.id ?? 'unknown'}`);
+      return { ok: true, user: { id: response.user?.id ?? '', email: response.user?.email ?? '' } };
+    } catch (error) {
+      this.logger.error('validateAuthorization exception', error as Error);
+      return { ok: false, error: 'grpc_error' };
     }
   }
 
@@ -292,6 +329,7 @@ export class NoodleService {
     }
 
     const query = this.buildTavilyQuery(state);
+    this.logger.log(`runTavilySearch start: queryLength=${query.length}`);
 
     return this.runWithRetry(
       'search',
@@ -304,7 +342,9 @@ export class NoodleService {
           include_raw_content: false,
         });
 
-        return this.buildStructuredSearchSummary(response);
+        const summary = this.buildStructuredSearchSummary(response);
+        this.logger.log(`runTavilySearch success: requestId=${response.request_id ?? 'unknown'} results=${response.results?.length ?? 0}`);
+        return summary;
       },
       this.getFallbackForStage('search'),
     );

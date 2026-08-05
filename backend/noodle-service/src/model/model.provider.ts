@@ -13,11 +13,11 @@ export class ModelProvider {
 
     const apiKey = process.env.NVIDIA_API_KEY;
     if (!apiKey) {
-      this.logger.log('process.env', JSON.stringify(process.env));
-      this.logger.error('NVIDIA_API_KEY is not set in environment variables.');
+      this.logger.error('NVIDIA_API_KEY is not set. Model provider unavailable.');
       return null;
     }
 
+    this.logger.log('Initializing LLM model provider');
     this.model = new ChatOpenAI({
       model: "z-ai/glm-5.2",
       temperature: 0.3,
@@ -27,6 +27,7 @@ export class ModelProvider {
       },
     });
 
+    this.logger.log('LLM model provider configured successfully');
     return this.model;
   }
 }

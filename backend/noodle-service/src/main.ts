@@ -17,6 +17,7 @@ if (fs.existsSync(envPath)) {
 async function bootstrap() {
   logger.log('Bootstrapping noodle service');
   const { AppModule } = await import('./app.module');
+  logger.log('process.env', JSON.stringify(process.env));
   const app = await NestFactory.create(AppModule);
   app.enableCors();
   const port = Number(process.env.PORT ?? 3001);

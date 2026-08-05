@@ -250,12 +250,14 @@ export class NoodleService {
 
     graph = graph.addNode('parsePreferences', async (state: WorkflowState) => {
       this.logger.log('开始阶段：偏好解析智能体');
+      const prompt = this.buildParsePrompt(state);
+      this.logger.log(`parsePreferences prompt: length=${prompt.length} preview=${this.truncateText(prompt,120)}`);
       const content = await this.runAgentNode(
         'parsePreferences',
-        this.buildParsePrompt(state),
+        prompt,
         this.getFallbackForStage('parsePreferences'),
       );
-      this.logger.log('完成阶段：偏好解析智能体');
+      this.logger.log(`完成阶段：偏好解析智能体, resultLength=${(content || '').length} preview=${this.truncateText(content,120)}`);
 
       return {
         preferences: content,
@@ -274,12 +276,14 @@ export class NoodleService {
 
     graph = graph.addNode('supervisor', async (state: WorkflowState) => {
       this.logger.log('开始阶段：监督智能体');
+      const prompt = this.buildSupervisorPrompt(state);
+      this.logger.log(`supervisor prompt: length=${prompt.length} preview=${this.truncateText(prompt,120)}`);
       const content = await this.runAgentNode(
         'supervisor',
-        this.buildSupervisorPrompt(state),
+        prompt,
         this.getFallbackForStage('supervisor'),
       );
-      this.logger.log('完成阶段：监督智能体');
+      this.logger.log(`完成阶段：监督智能体, resultLength=${(content || '').length} preview=${this.truncateText(content,120)}`);
 
       return {
         supervisorResult: content,
@@ -309,6 +313,8 @@ export class NoodleService {
       return fallback;
     }
 
+    this.logger.log(`runAgentNode start: stage=${stage} promptLength=${prompt.length}`);
+
     return this.runWithRetry(
       stage,
       async () => {
@@ -316,7 +322,9 @@ export class NoodleService {
           ['system', this.buildStageInstruction(stage)],
           ['human', this.truncateText(prompt, MAX_PROMPT_TEXT_LENGTH)],
         ]);
-        return this.extractText(response.content);
+        const text = this.extractText(response.content);
+        this.logger.log(`runAgentNode response: stage=${stage} responseLength=${text.length} preview=${this.truncateText(text,200)}`);
+        return text;
       },
       fallback,
     );
@@ -579,7 +587,10 @@ export class NoodleService {
   private async runWithRetry<T>(stage: StageName, operation: () => Promise<T>, fallback: T): Promise<T> {
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
-        return await operation();
+        this.logger.log(`Stage ${stage} attempt ${attempt} started`);
+        const result = await operation();
+        this.logger.log(`Stage ${stage} attempt ${attempt} succeeded`);
+        return result;
       } catch (error) {
         this.logger.warn(`Stage ${stage} attempt ${attempt}/${MAX_RETRIES} failed: ${(error as Error).message}`);
 

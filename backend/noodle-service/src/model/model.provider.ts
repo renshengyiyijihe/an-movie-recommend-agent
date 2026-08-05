@@ -33,6 +33,9 @@ class OpenAIModelWrapper {
         model: this.modelName,
         messages: formatted,
         temperature: this.temperature,
+        top_p: 1,
+        max_tokens: 16384,
+        seed: 42,
       });
     } catch (error) {
       Logger.error("Error invoking model:", error);

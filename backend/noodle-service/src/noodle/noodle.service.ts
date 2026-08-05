@@ -199,7 +199,7 @@ export class NoodleService {
 
       const response = await model.invoke([
         ['system', '你是一个意图分类器。请判断用户问题是否与“泡面推荐”相关。只输出一个词：noodle_recommendation 或 out_of_scope。'],
-        ['human', `用户输入: ${normalized}`],
+        ['user', `用户输入: ${normalized}`],
       ]);
 
       const text = this.extractText(response.content).trim().toLowerCase();
@@ -320,7 +320,7 @@ export class NoodleService {
       async () => {
         const response = await model.invoke([
           ['system', this.buildStageInstruction(stage)],
-          ['human', this.truncateText(prompt, MAX_PROMPT_TEXT_LENGTH)],
+          ['user', this.truncateText(prompt, MAX_PROMPT_TEXT_LENGTH)],
         ]);
         const text = this.extractText(response.content);
         this.logger.log(`runAgentNode response: stage=${stage} responseLength=${text.length} preview=${this.truncateText(text,200)}`);

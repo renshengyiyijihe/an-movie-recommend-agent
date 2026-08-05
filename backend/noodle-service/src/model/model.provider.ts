@@ -1,7 +1,14 @@
 import { Injectable, Logger } from "@nestjs/common";
 import OpenAI from "openai";
 
-type ChatMessage = [string, string];
+type ChatRole = "system" | "user" | "assistant";
+
+type ChatMessage = [ChatRole, string];
+
+type OpenAIChatMessage = {
+  role: ChatRole;
+  content: string;
+};
 
 class OpenAIModelWrapper {
   constructor(
@@ -11,20 +18,27 @@ class OpenAIModelWrapper {
   ) {}
 
   async invoke(messages: ChatMessage[]) {
-    const completion = await this.client.chat.completions.create({
-      model: "z-ai/glm-5.2",
-      messages: [{ role: "user", content: "你好" }],
-    });
-    Logger.log("completion", completion, JSON.stringify(completion));
+    const formatted: OpenAIChatMessage[] = messages.map(([role, content]) => ({
+      role,
+      content,
+    }));
 
-    const formatted = messages.map(([role, content]) => ({ role, content }));
+    let resp;
 
-    // Use chat completions; adapt to OpenAI SDK response shape
-    const resp = await this.client.chat.completions.create({
-      model: this.modelName,
-      messages: formatted as any,
-      temperature: this.temperature,
-    });
+    Logger.log("formatted messages:", formatted);
+    // Use chat completions; OpenAI SDK expects messages as objects with role/content
+    try {
+      Logger.log(`Model invocation start`);
+      resp = await this.client.chat.completions.create({
+        model: this.modelName,
+        messages: formatted,
+        temperature: this.temperature,
+      });
+    } catch (error) {
+      Logger.error("Error invoking model:", error);
+      throw error;
+    }
+    Logger.log(`Model invocation completed`);
 
     const anyResp: any = resp;
     const text =
@@ -55,7 +69,7 @@ export class ModelProvider {
     }
 
     const baseURL = "https://integrate.api.nvidia.com/v1";
-    const modelName = "deepseek-ai/deepseek-v4-flash";
+    const modelName = "z-ai/glm-5.2";
     const temperature = process.env.NVIDIA_TEMPERATURE
       ? Number(process.env.NVIDIA_TEMPERATURE)
       : 0.3;

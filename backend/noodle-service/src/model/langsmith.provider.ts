@@ -29,7 +29,17 @@ export class LangSmithProvider {
     return this.client;
   }
 
-  async createRun(name: string, input: Record<string, unknown>, output?: Record<string, unknown>, extra?: Record<string, unknown>) {
+  isEnabled() {
+    return !!this.getClient();
+  }
+
+  async createRun(
+    name: string,
+    input: Record<string, unknown>,
+    output?: Record<string, unknown>,
+    extra?: Record<string, unknown>,
+    runType: string = 'tool',
+  ) {
     const client = this.getClient();
     if (!client) {
       this.logger.warn('LangSmith client not configured; skipping run creation');
@@ -40,11 +50,11 @@ export class LangSmithProvider {
       name,
       inputs: input,
       outputs: output,
-      run_type: 'tool',
+      run_type: runType,
       extra,
     });
 
-    this.logger.log(`LangSmith run created: ${name}`);
+    this.logger.log(`LangSmith run created: ${name} (type=${runType})`);
     return true;
   }
 }

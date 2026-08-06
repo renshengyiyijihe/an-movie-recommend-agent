@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import OpenAI from "openai";
+import { LangSmithProvider } from "./langsmith.provider";
 
 type ChatRole = "system" | "user" | "assistant";
 
@@ -15,6 +16,7 @@ class OpenAIModelWrapper {
     private client: OpenAI,
     private modelName: string,
     private temperature = 0.3,
+    private langsmithProvider?: LangSmithProvider,
   ) {}
 
   async invoke(messages: ChatMessage[]) {
@@ -47,6 +49,26 @@ class OpenAIModelWrapper {
       anyResp?.choices?.[0]?.text ??
       "";
 
+    if (this.langsmithProvider?.isEnabled()) {
+      await this.langsmithProvider.createRun(
+        'LLM Chat Completion',
+        {
+          model: this.modelName,
+          messages: formatted,
+        },
+        {
+          response: String(text),
+          raw_response: JSON.stringify(anyResp),
+        },
+        {
+          llm: true,
+          model: this.modelName,
+          run_stage: 'chat_completion',
+        },
+        'llm',
+      );
+    }
+
     return { content: String(text) };
   }
 }
@@ -55,6 +77,8 @@ class OpenAIModelWrapper {
 export class ModelProvider {
   private model: OpenAIModelWrapper | null = null;
   private readonly logger = new Logger(ModelProvider.name);
+
+  constructor(private readonly langsmithProvider: LangSmithProvider) {}
 
   getModel() {
     if (this.model) {
@@ -80,10 +104,10 @@ export class ModelProvider {
     const client = new OpenAI({
       apiKey,
       baseURL,
-      logLevel:"debug"
+      logLevel: "info"
     });
 
-    this.model = new OpenAIModelWrapper(client, modelName, temperature);
+    this.model = new OpenAIModelWrapper(client, modelName, temperature, this.langsmithProvider);
 
     this.logger.log(`OpenAI model provider configured: model=${modelName}`);
     return this.model;

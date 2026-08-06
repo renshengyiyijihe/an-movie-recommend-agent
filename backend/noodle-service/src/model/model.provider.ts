@@ -70,7 +70,7 @@ export class ModelProvider {
       return null;
     }
 
-    const baseURL = "https://integrate.api.nvidia.com/v1";
+    const baseURL = "https://integrate.api.nvidia.com/v1/chat/completions";
     const modelName = "z-ai/glm-5.2";
     const temperature = process.env.NVIDIA_TEMPERATURE
       ? Number(process.env.NVIDIA_TEMPERATURE)

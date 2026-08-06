@@ -64,6 +64,7 @@ export class ModelProvider {
     }
 
     const apiKey = process.env.NVIDIA_API_KEY;
+    Logger.log('process.env:', JSON.stringify(process.env, null, 2));
     if (!apiKey) {
       this.logger.error(
         "NVIDIA_API_KEY is not set. Model provider unavailable.",
@@ -78,7 +79,14 @@ export class ModelProvider {
       : 0.3;
 
     this.logger.log("Initializing OpenAI client");
-    const client = new OpenAI({ apiKey, baseURL });
+    const client = new OpenAI({
+      apiKey,
+      baseURL,
+      defaultHeaders: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+    });
 
     this.model = new OpenAIModelWrapper(client, modelName, temperature);
 

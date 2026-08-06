@@ -121,7 +121,7 @@ export class NoodleService {
     try {
       this.logger.log('Starting noodle recommendation workflow');
       const result = await this.runLangGraphWorkflow(context);
-      this.logger.log(`Workflow finished: preferencesLength=${result.preferences.length}, searchResultLength=${result.searchResult.length}, supervisorResultLength=${result.supervisorResult.length}`);
+      this.logger.log(`Workflow finished: result${JSON.stringify(result)}`);
 
       const langsmithEnabled = !!this.langsmithProvider.getClient();
       if (langsmithEnabled) {
@@ -249,7 +249,7 @@ export class NoodleService {
     const stageOrder: StageName[] = ['parsePreferences', 'search', 'supervisor'];
 
     graph = graph.addNode('parsePreferences', async (state: WorkflowState) => {
-      this.logger.log('开始阶段：偏好解析智能体');
+      this.logger.log(`开始阶段：偏好解析智能体，state: ${JSON.stringify(state)}`);
       const prompt = this.buildParsePrompt(state);
       this.logger.log(`parsePreferences prompt: length=${prompt.length} preview=${this.truncateText(prompt,120)}`);
       const content = await this.runAgentNode(
@@ -265,9 +265,9 @@ export class NoodleService {
     });
 
     graph = graph.addNode('search', async (state: WorkflowState) => {
-      this.logger.log('开始阶段：搜索智能体');
+      this.logger.log(`开始阶段：搜索智能体，state: ${JSON.stringify(state)}`);
       const content = await this.runTavilySearch(state);
-      this.logger.log('完成阶段：搜索智能体');
+      this.logger.log(`完成阶段：搜索智能体，state: ${JSON.stringify(state)}`);
 
       return {
         searchResult: content,
@@ -275,7 +275,7 @@ export class NoodleService {
     });
 
     graph = graph.addNode('supervisor', async (state: WorkflowState) => {
-      this.logger.log('开始阶段：监督智能体');
+      this.logger.log(`开始阶段：监督智能体，state: ${JSON.stringify(state)}`);
       const prompt = this.buildSupervisorPrompt(state);
       this.logger.log(`supervisor prompt: length=${prompt.length} preview=${this.truncateText(prompt,120)}`);
       const content = await this.runAgentNode(

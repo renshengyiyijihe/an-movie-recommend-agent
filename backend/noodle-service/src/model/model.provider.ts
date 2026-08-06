@@ -80,10 +80,7 @@ export class ModelProvider {
     const client = new OpenAI({
       apiKey,
       baseURL,
-      defaultHeaders: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
+      logLevel:"debug"
     });
 
     this.model = new OpenAIModelWrapper(client, modelName, temperature);

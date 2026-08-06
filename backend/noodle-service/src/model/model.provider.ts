@@ -104,7 +104,7 @@ export class ModelProvider {
     const client = new OpenAI({
       apiKey,
       baseURL,
-      logLevel: "info"
+      // logLevel: "debug"
     });
 
     this.model = new OpenAIModelWrapper(client, modelName, temperature, this.langsmithProvider);

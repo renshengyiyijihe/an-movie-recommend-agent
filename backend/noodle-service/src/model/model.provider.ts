@@ -33,9 +33,7 @@ class OpenAIModelWrapper {
         model: this.modelName,
         messages: formatted,
         temperature: this.temperature,
-        top_p: 1,
         max_tokens: 16384,
-        seed: 42,
       });
     } catch (error) {
       Logger.error("Error invoking model:", error);
@@ -64,7 +62,7 @@ export class ModelProvider {
     }
 
     const apiKey = process.env.NVIDIA_API_KEY;
-    Logger.log('process.env:', JSON.stringify(process.env, null, 2));
+    Logger.log( `apiKey: ${apiKey}; process.env: ${JSON.stringify(process.env)}`);
     if (!apiKey) {
       this.logger.error(
         "NVIDIA_API_KEY is not set. Model provider unavailable.",

@@ -110,6 +110,11 @@ jobs:
             export COMMIT_TITLE
 
             mkdir -p backend/movie-service
+            cat > backend/.env <<EOF
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            POSTGRES_URL=postgresql://postgres:password@postgres:5432/anmovie_db
+            EOF
+
             cat > backend/movie-service/.env <<EOF
             NVIDIA_API_KEY=${{ secrets.NVIDIA_API_KEY }}
             TMDB_API_KEY=${{ secrets.TMDB_API_KEY }}

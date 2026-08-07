@@ -42,6 +42,7 @@ class OpenAIModelWrapper {
       throw error;
     }
     Logger.log(`Model invocation completed`);
+    Logger.log(`Model response: ${JSON.stringify(resp)} --- ${JSON.stringify(resp?.choices)}`);
 
     const anyResp: any = resp;
     const text =

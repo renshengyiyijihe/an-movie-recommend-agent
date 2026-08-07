@@ -105,6 +105,7 @@ export class ModelProvider {
     const client = new OpenAI({
       apiKey,
       baseURL,
+      maxRetries: 0,
       logLevel: "debug"
     });
 

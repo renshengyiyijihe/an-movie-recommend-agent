@@ -128,8 +128,7 @@ jobs:
 
             set +e
             docker compose down --remove-orphans || true
-            docker rm -f movie-app-postgres-1 movie-app-auth-service-1 movie-app-movie-service-1 movie-app-frontend-1 movie-app-portainer-1 2>/dev/null || true
-            docker rm -f an-movie-postgres-1 an-movie-auth-service-1 an-movie-movie-service-1 an-movie-frontend-1 an-movie-portainer-1 2>/dev/null || true
+            docker rm -f  an-movie-postgres-1 an-movie-auth-service-1 an-movie-movie-service-1 an-movie-frontend-1 an-movie-portainer-1 portainer 2>/dev/null || true
             docker compose up -d --build --remove-orphans
             deploy_status=$?
             set -e

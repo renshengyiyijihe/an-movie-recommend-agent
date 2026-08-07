@@ -26,8 +26,8 @@ jobs:
           cache-dependency-path: |
             backend/auth-service/package.json
             backend/auth-service/pnpm-lock.yaml
-            backend/noodle-service/package.json
-            backend/noodle-service/pnpm-lock.yaml
+            backend/movie-service/package.json
+            backend/movie-service/pnpm-lock.yaml
             client/package.json
             client/pnpm-lock.yaml
 
@@ -38,12 +38,12 @@ jobs:
           path: backend/auth-service/node_modules
           key: auth-node-modules-${{ runner.os }}-${{ hashFiles('backend/auth-service/package.json', 'backend/auth-service/pnpm-lock.yaml') }}
 
-      - name: Cache noodle-service node_modules
+      - name: Cache movie-service node_modules
         uses: actions/cache@v4
-        id: noodle-node-modules
+        id: movie-node-modules
         with:
-          path: backend/noodle-service/node_modules
-          key: noodle-node-modules-${{ runner.os }}-${{ hashFiles('backend/noodle-service/package.json', 'backend/noodle-service/pnpm-lock.yaml') }}
+          path: backend/movie-service/node_modules
+          key: movie-node-modules-${{ runner.os }}-${{ hashFiles('backend/movie-service/package.json', 'backend/movie-service/pnpm-lock.yaml') }}
 
       - name: Cache client node_modules
         uses: actions/cache@v4
@@ -57,9 +57,9 @@ jobs:
         working-directory: backend/auth-service
         run: pnpm install --frozen-lockfile --prefer-offline
 
-      - name: Install noodle-service dependencies
-        if: steps.noodle-node-modules.outputs.cache-hit != 'true'
-        working-directory: backend/noodle-service
+      - name: Install movie-service dependencies
+        if: steps.movie-node-modules.outputs.cache-hit != 'true'
+        working-directory: backend/movie-service
         run: pnpm install --frozen-lockfile --prefer-offline
 
       - name: Install client dependencies
@@ -79,9 +79,9 @@ jobs:
           script: |
             set -u
             REPO_URL="https://github.com/renshengyiyijihe/noodle-recommendation-agent.git"
-            DEPLOY_DIR="/opt/noodle-app"
-            LOG_FILE="/tmp/noodle-deploy.log"
-            SUMMARY_FILE="/tmp/noodle-deploy-summary.txt"
+            DEPLOY_DIR="/opt/an-movie"
+            LOG_FILE="/tmp/an-movie-deploy.log"
+            SUMMARY_FILE="/tmp/an-movie-deploy-summary.txt"
 
             export GMAIL_USERNAME="${{ secrets.GMAIL_USERNAME }}"
             export GMAIL_APP_PASSWORD="${{ secrets.GMAIL_APP_PASSWORD }}"
@@ -109,20 +109,22 @@ jobs:
             COMMIT_TITLE="$(git log -1 --pretty=format:%s)"
             export COMMIT_TITLE
 
-            mkdir -p backend/noodle-service
-            cat > backend/noodle-service/.env <<EOF
+            mkdir -p backend/movie-service
+            cat > backend/movie-service/.env <<EOF
             NVIDIA_API_KEY=${{ secrets.NVIDIA_API_KEY }}
-            TAVILY_API_KEY=${{ secrets.TAVILY_API_KEY }}
+            TMDB_API_KEY=${{ secrets.TMDB_API_KEY }}
             LANGSMITH_API_KEY=${{ secrets.LANGSMITH_API_KEY }}
             LANGSMITH_TRACING=true
             EOF
 
             export DOCKER_BUILDKIT=1
             export COMPOSE_DOCKER_CLI_BUILD=1
-            export COMPOSE_PROJECT_NAME="noodle-app"
+            export COMPOSE_PROJECT_NAME="an-movie"
 
             set +e
             docker compose down --remove-orphans || true
+            docker rm -f movie-app-postgres-1 movie-app-auth-service-1 movie-app-movie-service-1 movie-app-frontend-1 movie-app-portainer-1 2>/dev/null || true
+            docker rm -f an-movie-postgres-1 an-movie-auth-service-1 an-movie-movie-service-1 an-movie-frontend-1 an-movie-portainer-1 2>/dev/null || true
             docker rm -f noodle-app-postgres-1 noodle-app-auth-service-1 noodle-app-noodle-service-1 noodle-app-frontend-1 noodle-app-portainer-1 2>/dev/null || true
             docker rm -f noodle-recommendation-agent-postgres-1 noodle-recommendation-agent-auth-service-1 noodle-recommendation-agent-noodle-service-1 noodle-recommendation-agent-frontend-1 noodle-recommendation-agent-portainer-1 2>/dev/null || true
             docker compose up -d --build --remove-orphans
@@ -146,7 +148,7 @@ jobs:
             deploy_status = int(os.environ['DEPLOY_STATUS'])
             status_text = 'SUCCESS' if deploy_status == 0 else 'FAILED'
             emoji = '✅' if deploy_status == 0 else '❌'
-            summary = Path('/tmp/noodle-deploy-summary.txt').read_text(encoding='utf-8', errors='replace').strip() or '无日志摘要'
+            summary = Path('/tmp/an-movie-deploy-summary.txt').read_text(encoding='utf-8', errors='replace').strip() or '无日志摘要'
             repo = 'renshengyiyijihe/noodle-recommendation-agent'
             run_url = f"https://github.com/{repo}/actions/runs/{os.environ.get('GITHUB_RUN_ID', 'unknown')}"
 

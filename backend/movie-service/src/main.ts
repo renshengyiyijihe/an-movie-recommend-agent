@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 
-const logger = new Logger('NoodleServiceBootstrap');
+const logger = new Logger('MovieServiceBootstrap');
 const envPath = path.resolve(process.cwd(), '.env');
 if (fs.existsSync(envPath)) {
   dotenv.config({ path: envPath });
@@ -15,17 +15,17 @@ if (fs.existsSync(envPath)) {
 }
 
 async function bootstrap() {
-  logger.log('Bootstrapping noodle service');
+  logger.log('Bootstrapping movie service');
   const { AppModule } = await import('./app.module');
   logger.log('process.env', JSON.stringify(process.env));
   const app = await NestFactory.create(AppModule);
   app.enableCors();
   const port = Number(process.env.PORT ?? 3001);
   await app.listen(port, '0.0.0.0');
-  logger.log(`Noodle service running on http://0.0.0.0:${port}`);
+  logger.log(`Movie service running on http://0.0.0.0:${port}`);
 }
 
 bootstrap().catch((error) => {
-  logger.error('Noodle service bootstrap failed', error as Error);
+  logger.error('Movie service bootstrap failed', error as Error);
   process.exit(1);
 });

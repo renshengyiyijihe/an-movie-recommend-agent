@@ -1,11 +1,11 @@
 import { Body, Controller, Headers, Logger, Post } from '@nestjs/common';
-import { NoodleService } from './noodle.service';
+import { MovieService } from './movie.service';
 
-@Controller('/noodle')
-export class NoodleController {
-  private readonly logger = new Logger(NoodleController.name);
+@Controller('/movie')
+export class MovieController {
+  private readonly logger = new Logger(MovieController.name);
 
-  constructor(private readonly noodleService: NoodleService) {}
+  constructor(private readonly movieService: MovieService) {}
 
   @Post('recommend')
   async recommend(
@@ -17,6 +17,6 @@ export class NoodleController {
     @Headers('authorization') authorization?: string,
   ) {
     this.logger.log(`recommend request: messageLength=${payload.message?.length ?? 0}, hasImage=${Boolean(payload.imageUrl || payload.imageData)}, authorization=${authorization ? 'present' : 'none'}`);
-    return this.noodleService.recommend(payload, authorization);
+    return this.movieService.recommend(payload, authorization);
   }
 }

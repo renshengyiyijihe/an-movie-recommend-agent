@@ -18,7 +18,7 @@ interface ChatMessage {
   imagePreview?: string;
 }
 
-const quickPrompts = ['我想吃麻辣，预算 20 元以内', '想要清淡一点，适合午饭', '有点想吃咸香和鸡蛋味'];
+const quickPrompts = ['想看一部科幻大片，时长2小时以内', '想要轻松爱情片，适合晚上放松', '推荐几部张力强、节奏快的动作片'];
 
 function App() {
   const [message, setMessage] = useState('');
@@ -86,7 +86,7 @@ function App() {
     try {
       const result = await request<any>({
         method: 'POST',
-        url: '/api/noodle/recommend',
+        url: '/api/movie/recommend',
         data: { message: userMessage.text, imageData },
       });
       const assistantItems = convertResultToMessages(result);
@@ -159,7 +159,7 @@ function App() {
       <div className="top-bar">
         <div className="top-bar__title">
           <AppLogo className="top-bar__icon" size={24} />
-          <span>AI 泡面推荐</span>
+          <span>An-movie</span>
         </div>
         <div className="auth-buttons" role="toolbar">
           {token ? (
@@ -201,8 +201,8 @@ function App() {
         <header className="hero-header">
           <div className="title-row">
             <div>
-              <h1>为你挑选下一碗更合适的泡面</h1>
-              <p>说说你的口味、预算和需求，马上帮你缩小选择范围。</p>
+              <h1>为你挑选你喜欢的电影</h1>
+              <p>说出你的口味、风格和观影需求，马上帮你推荐合适影片。</p>
             </div>
           </div>
           <div className="quick-prompts">
@@ -219,7 +219,7 @@ function App() {
             <div className="empty-state">
               <AppLogo className="empty-state-icon" size={44} />
               <h3>从一句简单的话开始</h3>
-              <p>比如“我想要辣一点，预算 15 元以内，适合熬夜吃”。</p>
+              <p>比如“想看一部剧情片，时长2小时以内，最好有温情结局”。</p>
             </div>
           ) : (
             messages.map((item, index) => (
@@ -251,7 +251,7 @@ function App() {
                   void sendMessage();
                 }
               }}
-              placeholder="输入你的口味、预算、偏好，比如：我想吃麻辣、价格在 30 元以内、希望方便快捷。"
+              placeholder="输入你的观影偏好、类型或心情，比如：想看科幻片，2小时以内，有精彩视觉效果。"
             />
             <div className="input-actions">
               <label className="file-input">

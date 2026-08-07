@@ -1,8 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+﻿import { Injectable, Logger } from '@nestjs/common';
 import { Annotation, END, START, StateGraph } from '@langchain/langgraph';
 import { ModelProvider } from '../model/model.provider';
 import { LangSmithProvider } from '../model/langsmith.provider';
-import { TavilyProvider } from '../model/tavily.provider';
+import { TmdbProvider } from '../model/tmdb.provider';
 import { AuthGrpcClient } from './auth.grpc';
 
 type StageName = 'parsePreferences' | 'search' | 'supervisor';
@@ -28,21 +28,22 @@ interface WorkflowState {
   supervisorResult: string;
 }
 
-interface TavilySearchItem {
+interface TmdbSearchItem {
   title?: string;
   url?: string;
-  content?: string;
+  overview?: string;
   score?: number;
+  release_date?: string;
+  poster_url?: string;
 }
 
-interface TavilySearchResponse {
+interface TmdbSearchResponse {
   query?: string;
-  answer?: string;
-  results?: TavilySearchItem[];
+  results?: TmdbSearchItem[];
   request_id?: string;
 }
 
-type IntentType = 'noodle_recommendation' | 'out_of_scope';
+type IntentType = 'movie_recommendation' | 'out_of_scope';
 
 const MAX_PROMPT_TEXT_LENGTH = 2500;
 const MAX_SEARCH_RESULT_LENGTH = 4000;
@@ -78,13 +79,13 @@ const WorkflowStateAnnotation = Annotation.Root({
 });
 
 @Injectable()
-export class NoodleService {
-  private readonly logger = new Logger(NoodleService.name);
+export class MovieService {
+  private readonly logger = new Logger(MovieService.name);
 
   constructor(
     private readonly modelProvider: ModelProvider,
     private readonly langsmithProvider: LangSmithProvider,
-    private readonly tavilyProvider: TavilyProvider,
+    private readonly tmdbProvider: TmdbProvider,
     private readonly authGrpcClient: AuthGrpcClient,
   ) {}
 
@@ -96,12 +97,12 @@ export class NoodleService {
     this.logger.log(`authorization check: ok=${authResult.ok}, error=${authResult.error ?? 'none'}, user=${authResult.user?.email ?? 'anonymous'}`);
 
     const intent = await this.classifyIntent(payload.message);
-    if (intent !== 'noodle_recommendation') {
-      this.logger.warn(`Non-noodle request rejected: ${this.truncateText(payload.message, 200)}`);
+    if (intent !== 'movie_recommendation') {
+      this.logger.warn(`Non-movie request rejected: ${this.truncateText(payload.message, 200)}`);
       return {
         type: 'reject',
         data: {
-          message: '我主要负责泡面推荐。如果你想问口味、预算、辣度或推荐泡面，我可以继续帮你。',
+          message: '我主要负责电影推荐。如果你想问电影类型、演员、风格、时长或推荐电影，我可以继续帮你。',
         },
       };
     }
@@ -119,14 +120,14 @@ export class NoodleService {
     };
 
     try {
-      this.logger.log('Starting noodle recommendation workflow');
+      this.logger.log('Starting movie recommendation workflow');
       const result = await this.runLangGraphWorkflow(context);
       this.logger.log(`Workflow finished: result${JSON.stringify(result)}`);
 
       const langsmithEnabled = !!this.langsmithProvider.getClient();
       if (langsmithEnabled) {
         await this.langsmithProvider.createRun(
-          '泡面推荐请求',
+          '电影推荐请求',
           {
             user_message: this.truncateText(payload.message, 500),
             has_image: !!payload.imageData,
@@ -141,7 +142,7 @@ export class NoodleService {
           },
           {
             stage: 'workflow',
-            langchain_workflow: 'noodle_recommendation',
+            langchain_workflow: 'movie_recommendation',
           },
         );
       }
@@ -167,9 +168,9 @@ export class NoodleService {
 
   private buildSystemPrompt() {
     return [
-      '你是一个泡面推荐专家智能体。',
-      '根据用户描述的口味、价格、偏好，给出 3-4 个推荐。',
-      '如果用户提供了图片，请简要分析图片里的风格或情绪。',
+      '你是一个电影推荐专家智能体。',
+      '根据用户描述的影片类型、心情、演员、时长、评分偏好，给出 3-4 个推荐。',
+      '如果用户提供了图片，请简要分析图片里的风格、场景或情绪。',
       '输出格式必须为 JSON，包含 fields: recommendations, explanation。如无法生成推荐，可使用 fallback_reason 说明失败原因。',
     ].join('\n');
   }
@@ -182,12 +183,12 @@ export class NoodleService {
       return 'out_of_scope';
     }
 
-    const keywords = ['泡面', '面条', '推荐', '口味', '辣度', '预算', '方便', '健康', '吃什么'];
+    const keywords = ['电影', '影片', '推荐', '演员', '类型', '时长', '评分', '剧情', '风格', '想看', '爱好'];
     const matched = keywords.some((keyword) => normalized.includes(keyword));
 
     if (matched) {
       this.logger.log('classifyIntent decided by keyword matching');
-      return 'noodle_recommendation';
+      return 'movie_recommendation';
     }
 
     try {
@@ -198,12 +199,12 @@ export class NoodleService {
       }
 
       const response = await model.invoke([
-        ['system', '你是一个意图分类器。请判断用户问题是否与“泡面推荐”相关。只输出一个词：noodle_recommendation 或 out_of_scope。'],
+        ['system', '你是一个意图分类器。请判断用户问题是否与“电影推荐”相关。只输出一个词：movie_recommendation 或 out_of_scope。'],
         ['user', `用户输入: ${normalized}`],
       ]);
 
       const text = this.extractText(response.content).trim().toLowerCase();
-      const intent = text.includes('noodle_recommendation') ? 'noodle_recommendation' : 'out_of_scope';
+      const intent = text.includes('movie_recommendation') ? 'movie_recommendation' : 'out_of_scope';
       this.logger.log(`classifyIntent finished: intent=${intent}, rawResponse=${this.truncateText(text, 200)}`);
       return intent;
     } catch (error) {
@@ -266,7 +267,7 @@ export class NoodleService {
 
     graph = graph.addNode('search', async (state: WorkflowState) => {
       this.logger.log(`开始阶段：搜索智能体，state: ${JSON.stringify(state)}`);
-      const content = await this.runTavilySearch(state);
+      const content = await this.runTmdbSearch(state);
       this.logger.log(`完成阶段：搜索智能体，state: ${JSON.stringify(state)}`);
 
       return {
@@ -330,55 +331,48 @@ export class NoodleService {
     );
   }
 
-  private async runTavilySearch(state: WorkflowState) {
-    if (!this.tavilyProvider.isEnabled()) {
-      this.logger.warn('Tavily 未配置，搜索阶段使用兜底结果。');
+  private async runTmdbSearch(state: WorkflowState) {
+    if (!this.tmdbProvider.isEnabled()) {
+      this.logger.warn('TMDB 未配置，搜索阶段使用兜底结果。');
       return this.getFallbackForStage('search');
     }
 
-    const query = this.buildTavilyQuery(state);
-    this.logger.log(`runTavilySearch start: queryLength=${query.length}`);
+    const query = this.buildTmdbQuery(state);
+    this.logger.log(`runTmdbSearch start: queryLength=${query.length}`);
 
     return this.runWithRetry(
       'search',
       async () => {
-        const response = await this.tavilyProvider.search(query, {
-          search_depth: 'basic',
-          chunks_per_source: 3,
+        const response = await this.tmdbProvider.search(query, {
           max_results: 4,
-          include_answer: false,
-          include_raw_content: false,
         });
 
         const summary = this.buildStructuredSearchSummary(response);
-        this.logger.log(`runTavilySearch success: requestId=${response.request_id ?? 'unknown'} results=${response.results?.length ?? 0}`);
+        this.logger.log(`runTmdbSearch success: requestId=${response.request_id ?? 'unknown'} results=${response.results?.length ?? 0}`);
         return summary;
       },
       this.getFallbackForStage('search'),
     );
   }
 
-  private buildStructuredSearchSummary(response: TavilySearchResponse) {
+  private buildStructuredSearchSummary(response: TmdbSearchResponse) {
     const results = (response.results ?? []).slice(0, 4).map((item) => {
       const title = this.normalizeText(item.title);
-      const content = this.normalizeText(item.content);
-      const summary = this.summarizeText(content, 140);
+      const overview = this.normalizeText(item.overview);
+      const summary = this.summarizeText(overview, 140);
 
       return {
         title,
         url: item.url ?? '',
-        brand: this.inferBrand(title),
-        price: this.inferPrice(content, title),
-        flavor: this.inferFlavor(content, title),
+        release_date: item.release_date ?? '',
+        rating: item.score ?? undefined,
         summary,
-        relevanceScore: typeof item.score === 'number' ? item.score : undefined,
-        truncated: content.length > 220,
+        truncated: overview.length > 220,
       };
     });
 
     return JSON.stringify({
       query: this.normalizeText(response.query),
-      answer: this.normalizeText(response.answer),
       results,
       missing_fields: this.findMissingFields(results),
       request_id: response.request_id ?? '',
@@ -406,52 +400,7 @@ export class NoodleService {
     return `${normalized.slice(0, maxLength)}...`;
   }
 
-  private inferBrand(title: string): string {
-    const normalized = title.toLowerCase();
-    if (normalized.includes('统一')) return '统一';
-    if (normalized.includes('康师傅')) return '康师傅';
-    if (normalized.includes('白象')) return '白象';
-    if (normalized.includes('今麦郎')) return '今麦郎';
-    if (normalized.includes('日清')) return '日清';
-    if (normalized.includes('老坛')) return '老坛';
-    return '';
-  }
-
-  private inferPrice(content: string, title: string): string {
-    const combined = `${title} ${content}`.toLowerCase();
-    if (combined.includes('元')) {
-      const match = combined.match(/(\d+(?:\.\d+)?)(?:元|块|人民币)/);
-      if (match) {
-        return `${match[1]}元`;
-      }
-    }
-
-    if (combined.includes('价格') || combined.includes('售价')) {
-      return '价格信息较少';
-    }
-
-    return '';
-  }
-
-  private inferFlavor(content: string, title: string): string {
-    const combined = `${title} ${content}`.toLowerCase();
-    const flavorKeywords = [
-      ['辣', '辣味', '麻辣', '香辣', '红油', '微辣', '中辣', '重辣'],
-      ['酸', '酸辣', '番茄', '酸甜'],
-      ['香', '牛肉', '海鲜', '鸡肉', '蔬菜', '乌冬', '骨汤'],
-      ['清淡', '清爽', '淡', '原味'],
-    ];
-
-    for (const group of flavorKeywords) {
-      if (group.some((keyword) => combined.includes(keyword))) {
-        return group[0];
-      }
-    }
-
-    return '';
-  }
-
-  private findMissingFields(results: Array<{ brand: string; price: string; flavor: string; summary: string }>) {
+  private findMissingFields(results: Array<{ title: string; url: string; release_date: string; rating?: number; summary: string }>) {
     const missing = new Set<string>();
 
     if (results.length === 0) {
@@ -459,14 +408,14 @@ export class NoodleService {
     }
 
     results.forEach((item, index) => {
-      if (!item.brand) {
-        missing.add(`results[${index}].brand`);
+      if (!item.title) {
+        missing.add(`results[${index}].title`);
       }
-      if (!item.price) {
-        missing.add(`results[${index}].price`);
+      if (!item.url) {
+        missing.add(`results[${index}].url`);
       }
-      if (!item.flavor) {
-        missing.add(`results[${index}].flavor`);
+      if (!item.release_date) {
+        missing.add(`results[${index}].release_date`);
       }
       if (!item.summary) {
         missing.add(`results[${index}].summary`);
@@ -476,12 +425,11 @@ export class NoodleService {
     return Array.from(missing);
   }
 
-  private buildTavilyQuery(state: WorkflowState) {
+  private buildTmdbQuery(state: WorkflowState) {
     const lines = [
-      '请根据以下用户偏好推荐适合的泡面。',
+      '请根据以下用户偏好搜索电影。',
       `用户偏好: ${state.preferences}`,
-      '请优先考虑口味、预算、辣度、方便性和健康倾向。',
-      '仅返回适合中国市场、可在线购买的泡面推荐。',
+      '优先考虑类型、剧情、演员、时长和评分偏好。',
     ];
     return lines.filter(Boolean).join(' ');
   }
@@ -489,11 +437,11 @@ export class NoodleService {
   private buildParsePrompt(state: WorkflowState) {
     const promptState = this.buildPromptState(state);
     const lines = [
-      '请从用户输入中提取结构化偏好，包括口味、预算、辣度偏好、方便程度、健康倾向、地方特色、图片风格描述。',
+      '请从用户输入中提取结构化偏好，包括电影类型、剧情风格、演员偏好、时长、评分、语言、观看场景和情绪。',
       `用户输入: ${promptState.message}`,
       promptState.imageUrl ? `图片链接: ${promptState.imageUrl}` : '',
       promptState.imageData ? '已上传图片，请分析其情绪和风格。' : '',
-      '输出必须是 JSON，例如: {"taste":"香辣","budget":"50元以内","spicy":"中辣","convenience":"追求快捷","health":"适中"}',
+      '输出必须是 JSON，例如: {"genre":"科幻","mood":"紧张刺激","actors":"汤姆·克鲁斯","length":"2小时以内","rating":"8分以上"}',
     ];
     return lines.filter(Boolean).join('\n');
   }
@@ -501,9 +449,9 @@ export class NoodleService {
   private buildSearchPrompt(state: WorkflowState) {
     const promptState = this.buildPromptState(state);
     return [
-      '你是搜索智能体，根据提取的偏好推荐 3-4 款泡面。',
+      '你是搜索智能体，根据提取的偏好推荐 3-4 部电影。',
       `用户偏好: ${promptState.preferences}`,
-      '推荐结果应包含名称、口味描述、价格区间、适合人群、为何适合该偏好。输出 JSON。',
+      '推荐结果应包含名称、类型、发行年份、评分、理由和为什么适合该偏好。输出 JSON。',
     ].join('\n');
   }
 
@@ -524,13 +472,13 @@ export class NoodleService {
       case 'parsePreferences':
         return [
           '你是偏好提取智能体。',
-          '从用户输入中提取口味、预算、辣度偏好、方便程度、健康倾向和情绪。',
+          '从用户输入中提取电影类型、剧情风格、演员偏好、时长、评分和情绪。',
           '输出必须是简洁的 JSON 对象，不包含额外解释。',
         ].join('\n');
       case 'search':
         return [
           '你是搜索智能体。',
-          '基于用户偏好推荐 3-4 款泡面。',
+          '基于用户偏好推荐 3-4 部电影。',
           '输出 JSON，不要包含多余文本。',
         ].join('\n');
       case 'supervisor':
@@ -547,30 +495,25 @@ export class NoodleService {
   private getFallbackForStage(stage: StageName) {
     switch (stage) {
       case 'parsePreferences':
-        return JSON.stringify({ taste: '普遍口味', budget: '中等', spicy: '微辣', convenience: '方便', health: '适中' });
+        return JSON.stringify({ genre: '剧情', mood: '温暖', actors: '', length: '2小时以内', rating: '7分以上' });
       case 'search':
         return JSON.stringify({
-          query: '默认泡面推荐',
-          answer: '使用默认推荐列表',
+          query: '默认电影推荐',
           results: [
             {
-              title: '统一小当家麻辣牛肉面',
+              title: '小欢喜',
               url: '',
-              brand: '统一',
-              price: '10-15元',
-              flavor: '微辣',
-              summary: '性价比高，适合喜欢微辣口味的用户。',
-              relevanceScore: 0.9,
+              release_date: '2019',
+              rating: 8.2,
+              summary: '温暖治愈，适合想要轻松剧情的用户。',
               truncated: false,
             },
             {
-              title: '康师傅红烧牛肉面',
+              title: '哪吒之魔童降世',
               url: '',
-              brand: '康师傅',
-              price: '8-12元',
-              flavor: '香浓',
-              summary: '经典口碑，适合大众口味。',
-              relevanceScore: 0.8,
+              release_date: '2019',
+              rating: 7.8,
+              summary: '热血奇幻，适合喜欢动作和视觉效果的用户。',
               truncated: false,
             },
           ],
@@ -593,40 +536,25 @@ export class NoodleService {
         return result;
       } catch (error) {
         this.logger.warn(`Stage ${stage} attempt ${attempt}/${MAX_RETRIES} failed: ${(error as Error).message}`);
-
-        if (attempt === MAX_RETRIES) {
-          break;
-        }
-
+        if (attempt === MAX_RETRIES) break;
         await new Promise((resolve) => setTimeout(resolve, RETRY_BACKOFF_MS * attempt));
       }
     }
-
     this.logger.warn(`Stage ${stage} failed after ${MAX_RETRIES} attempts, using fallback`);
     return fallback;
   }
 
   private truncateText(text: string | undefined, maxLength = MAX_PROMPT_TEXT_LENGTH): string {
-    if (!text) {
-      return '';
-    }
-
-    if (text.length <= maxLength) {
-      return text;
-    }
-
+    if (!text) return '';
+    if (text.length <= maxLength) return text;
     return `${text.slice(0, maxLength)}\n...[truncated]`;
   }
 
   private sanitizeImageData(imageData?: string): string | undefined {
-    if (!imageData) {
-      return undefined;
-    }
-
+    if (!imageData) return undefined;
     if (imageData.length > MAX_IMAGE_DATA_LENGTH) {
       return `[image-data-truncated:${imageData.length} chars]`;
     }
-
     return imageData;
   }
 
@@ -643,13 +571,9 @@ export class NoodleService {
   private extractText(content: unknown): string {
     if (typeof content === 'string') return content;
     if (Array.isArray(content)) {
-      return content
-        .map((item) => (typeof item === 'string' ? item : JSON.stringify(item)))
-        .join('\n');
+      return content.map((item) => (typeof item === 'string' ? item : JSON.stringify(item))).join('\n');
     }
-    if (typeof content === 'object' && content !== null) {
-      return JSON.stringify(content);
-    }
+    if (typeof content === 'object' && content !== null) return JSON.stringify(content);
     return String(content ?? '');
   }
 
@@ -666,9 +590,7 @@ export class NoodleService {
   private parseRecommendation(text: string) {
     try {
       const firstJson = text.match(/\{[\s\S]*\}/);
-      if (!firstJson) {
-        throw new Error('No JSON found');
-      }
+      if (!firstJson) throw new Error('No JSON found');
       return JSON.parse(firstJson[0]);
     } catch {
       return {

@@ -46,15 +46,20 @@ export class LangSmithProvider {
       return null;
     }
 
-    await client.createRun({
-      name,
-      inputs: input,
-      outputs: output,
-      run_type: runType,
-      extra,
-    });
+    try {
+      await client.createRun({
+        name,
+        inputs: input,
+        outputs: output,
+        run_type: runType,
+        extra,
+      });
 
-    this.logger.log(`LangSmith run created: ${name} (type=${runType})`);
-    return true;
+      this.logger.log(`LangSmith run created: ${name} (type=${runType})`);
+      return true;
+    } catch (error) {
+      this.logger.warn(`LangSmith run creation failed for ${name}: ${(error as Error).message}`);
+      return false;
+    }
   }
 }

@@ -50,6 +50,9 @@ class OpenAIModelWrapper {
       anyResp?.choices?.[0]?.text ??
       "";
 
+    Logger.log(`Model response text: ${JSON.stringify(text)}`);
+
+
     if (this.langsmithProvider?.isEnabled()) {
       await this.langsmithProvider.createRun(
         'LLM Chat Completion',

@@ -87,7 +87,20 @@ function App() {
       const result = await request<any>({
         method: 'POST',
         url: '/api/movie/recommend',
-        data: { message: userMessage.text, imageData },
+        data: {
+          message: userMessage.text,
+          preferences: {
+            genre: '',
+            mood: '',
+            actors: '',
+            length: '',
+            rating: '',
+            language: '',
+            scene: '',
+            theme: '',
+          },
+          imageData,
+        },
       });
       const assistantItems = convertResultToMessages(result);
       setMessages((prev) => [...prev, ...assistantItems]);

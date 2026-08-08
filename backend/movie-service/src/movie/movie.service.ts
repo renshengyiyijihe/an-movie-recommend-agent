@@ -1,20 +1,36 @@
 ﻿import { Injectable, Logger } from '@nestjs/common';
 import { Annotation, END, START, StateGraph } from '@langchain/langgraph';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
 import { ModelProvider } from '../model/model.provider';
 import { LangSmithProvider } from '../model/langsmith.provider';
-import { TmdbProvider } from '../model/tmdb.provider';
+import { TmdbProvider, TmdbDiscoverMovieQueryParamsDto, type TMDBDiscoverMovieQueryParams } from '../model/tmdb.provider';
 import { AuthGrpcClient } from './auth.grpc';
+import { genreToTmdbGenreIdMap, languageToTmdbLanguageMap } from './config';
 
 type StageName = 'parsePreferences' | 'search' | 'supervisor';
 
+interface MoviePreference {
+  genre?: string;
+  mood?: string;
+  actors?: string;
+  length?: string;
+  rating?: string;
+  language?: string;
+  scene?: string;
+  theme?: string;
+}
+
 interface RecommendPayload {
   message: string;
+  preferences?: MoviePreference;
   imageUrl?: string;
   imageData?: string;
 }
 
 interface WorkflowContext {
   message: string;
+  preferences?: MoviePreference;
   imageUrl?: string;
   imageData?: string;
 }
@@ -28,6 +44,11 @@ interface WorkflowState {
   supervisorResult: string;
 }
 
+interface TmdbSearchRequest {
+  params?: Partial<TMDBDiscoverMovieQueryParams>;
+  query?: string;
+}
+
 interface TmdbSearchItem {
   title?: string;
   url?: string;
@@ -38,7 +59,7 @@ interface TmdbSearchItem {
 }
 
 interface TmdbSearchResponse {
-  query?: string;
+  query?: string | Partial<TMDBDiscoverMovieQueryParams>;
   results?: TmdbSearchItem[];
   request_id?: string;
 }
@@ -91,7 +112,8 @@ export class MovieService {
 
   async recommend(payload: RecommendPayload, authorization?: string) {
     this.logger.log(`recommend request received: messageLength=${payload.message?.length ?? 0}, hasImage=${Boolean(payload.imageUrl || payload.imageData)}, authHeader=${authorization ? 'present' : 'absent'}`);
-    const fallback = this.buildFallbackResponse(payload);
+    const preferences = this.normalizePreferences(payload.preferences);
+    const fallback = this.buildFallbackResponse(payload, preferences);
 
     const authResult = authorization ? await this.validateAuthorization(authorization) : { ok: false, error: 'no_authorization_header' };
     this.logger.log(`authorization check: ok=${authResult.ok}, error=${authResult.error ?? 'none'}, user=${authResult.user?.email ?? 'anonymous'}`);
@@ -102,6 +124,7 @@ export class MovieService {
       return {
         type: 'reject',
         data: {
+          preferences,
           message: '我主要负责电影推荐。如果你想问电影类型、演员、风格、时长或推荐电影，我可以继续帮你。',
         },
       };
@@ -115,6 +138,7 @@ export class MovieService {
 
     const context: WorkflowContext = {
       message: payload.message,
+      preferences,
       imageUrl: payload.imageUrl,
       imageData: payload.imageData,
     };
@@ -147,11 +171,17 @@ export class MovieService {
         );
       }
 
-      const parsed = this.parseRecommendation(result.supervisorResult);
+      const parsed = this.parseRecommendation(result.supervisorResult, preferences);
       this.logger.log(`Recommendation result ready: parsedType=${typeof parsed}, langsmith=${langsmithEnabled}`);
       return {
         type: 'success',
-        data: parsed,
+        data: {
+          preferences: parsed.preferences,
+          recommendations: parsed.recommendations,
+          explanation: parsed.explanation,
+          message: parsed.message,
+          fallback_reason: parsed.fallback_reason,
+        },
         stageOutputs: {
           preferences: result.preferences,
           searchResult: result.searchResult,
@@ -242,7 +272,7 @@ export class MovieService {
       message: this.truncateText(context.message, MAX_PROMPT_TEXT_LENGTH),
       imageUrl: context.imageUrl,
       imageData: this.sanitizeImageData(context.imageData),
-      preferences: '',
+      preferences: this.stringifyPreferences(context.preferences),
       searchResult: '',
       supervisorResult: '',
     };
@@ -251,17 +281,12 @@ export class MovieService {
 
     graph = graph.addNode('parsePreferences', async (state: WorkflowState) => {
       this.logger.log(`开始阶段：偏好解析智能体，state: ${JSON.stringify(state)}`);
-      const prompt = this.buildParsePrompt(state);
-      this.logger.log(`parsePreferences prompt: length=${prompt.length} preview=${this.truncateText(prompt,120)}`);
-      const content = await this.runAgentNode(
-        'parsePreferences',
-        prompt,
-        this.getFallbackForStage('parsePreferences'),
-      );
+      const content = await this.runPreferenceExtractionWithValidation(state);
       this.logger.log(`完成阶段：偏好解析智能体, resultLength=${(content || '').length} preview=${this.truncateText(content,120)}`);
 
+      const parsedPreferences = this.parseStructuredPreferences(content, state);
       return {
-        preferences: content,
+        preferences: this.stringifyPreferences(parsedPreferences),
       };
     });
 
@@ -337,13 +362,19 @@ export class MovieService {
       return this.getFallbackForStage('search');
     }
 
-    const query = this.buildTmdbQuery(state);
-    this.logger.log(`runTmdbSearch start: queryLength=${query.length}`);
+    const request = this.buildTmdbQuery(state);
+    this.logger.log(`runTmdbSearch start: queryLength=${request.query?.length ?? 0}`);
+
+    const validationError = await this.validateTmdbQueryParams(request.params ?? {});
+    if (validationError) {
+      this.logger.warn(`TMDB query params validation failed before search: ${validationError}`);
+      return this.getFallbackForStage('search');
+    }
 
     return this.runWithRetry(
       'search',
       async () => {
-        const response = await this.tmdbProvider.search(query, {
+        const response = await this.tmdbProvider.search(request.params ?? {}, {
           max_results: 4,
         });
 
@@ -372,7 +403,7 @@ export class MovieService {
     });
 
     return JSON.stringify({
-      query: this.normalizeText(response.query),
+      query: typeof response.query === 'string' ? this.normalizeText(response.query) : this.normalizeText(JSON.stringify(response.query ?? {})),
       results,
       missing_fields: this.findMissingFields(results),
       request_id: response.request_id ?? '',
@@ -425,23 +456,35 @@ export class MovieService {
     return Array.from(missing);
   }
 
-  private buildTmdbQuery(state: WorkflowState) {
-    const lines = [
-      '请根据以下用户偏好搜索电影。',
-      `用户偏好: ${state.preferences}`,
-      '优先考虑类型、剧情、演员、时长和评分偏好。',
-    ];
-    return lines.filter(Boolean).join(' ');
+  private buildTmdbQuery(state: WorkflowState): TmdbSearchRequest {
+    const preferences = this.normalizePreferences(state.preferences);
+    const params = this.buildTmdbQueryParamsFromPreferences(preferences);
+
+    const query = [preferences.genre, preferences.mood, preferences.actors, preferences.theme, preferences.scene]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+
+    return {
+      params: Object.keys(params).length > 0 ? params : undefined,
+      query: query || '电影推荐',
+    };
   }
 
   private buildParsePrompt(state: WorkflowState) {
     const promptState = this.buildPromptState(state);
+    const existingPreferences = this.stringifyPreferences(this.normalizePreferences(promptState.preferences));
     const lines = [
-      '请从用户输入中提取结构化偏好，包括电影类型、剧情风格、演员偏好、时长、评分、语言、观看场景和情绪。',
+      '请从用户输入中提取结构化偏好。',
+      '必须输出一个纯 JSON 对象，字段仅限：genre, mood, actors, length, rating, language, scene, theme。',
+      '如果某项无法确定，请使用空字符串。',
+      '生成后必须能被转换为 TMDBDiscoverMovieQueryParams 兼容的查询结构。',
+      '例如：genre 需要是类型字符串，rating 需要是可提取评分值的字符串，length 需要是时长字符串。',
       `用户输入: ${promptState.message}`,
       promptState.imageUrl ? `图片链接: ${promptState.imageUrl}` : '',
       promptState.imageData ? '已上传图片，请分析其情绪和风格。' : '',
-      '输出必须是 JSON，例如: {"genre":"科幻","mood":"紧张刺激","actors":"汤姆·克鲁斯","length":"2小时以内","rating":"8分以上"}',
+      `已知偏好: ${existingPreferences}`,
+      '输出示例: {"genre":"科幻","mood":"紧张刺激","actors":"汤姆·克鲁斯","length":"2小时以内","rating":"8分以上","language":"英文","scene":"适合晚上看","theme":"成长"}',
     ];
     return lines.filter(Boolean).join('\n');
   }
@@ -462,8 +505,9 @@ export class MovieService {
       `用户输入: ${promptState.message}`,
       promptState.imageUrl ? `图片链接: ${promptState.imageUrl}` : '',
       promptState.imageData ? '附带已上传图片分析。' : '',
+      `用户偏好: ${promptState.preferences}`,
       `搜索结果: ${promptState.searchResult}`,
-      '输出 JSON，包含 recommendations 和 explanation。仅在无法生成推荐时，使用 fallback_reason 说明原因。',
+      '输出 JSON，包含 recommendations、explanation、preferences。仅在无法生成推荐时，使用 fallback_reason 说明原因。',
     ].join('\n');
   }
 
@@ -472,8 +516,9 @@ export class MovieService {
       case 'parsePreferences':
         return [
           '你是偏好提取智能体。',
-          '从用户输入中提取电影类型、剧情风格、演员偏好、时长、评分和情绪。',
-          '输出必须是简洁的 JSON 对象，不包含额外解释。',
+          '从用户输入中提取电影类型、剧情风格、演员偏好、时长、评分、语言、观看场景和情绪。',
+          '输出必须是一个纯 JSON 对象，字段仅限 genre, mood, actors, length, rating, language, scene, theme。',
+          '如果无法确定，请使用空字符串。',
         ].join('\n');
       case 'search':
         return [
@@ -495,7 +540,7 @@ export class MovieService {
   private getFallbackForStage(stage: StageName) {
     switch (stage) {
       case 'parsePreferences':
-        return JSON.stringify({ genre: '剧情', mood: '温暖', actors: '', length: '2小时以内', rating: '7分以上' });
+        return this.stringifyPreferences({ genre: '剧情', mood: '温暖', actors: '', length: '2小时以内', rating: '7分以上' });
       case 'search':
         return JSON.stringify({
           query: '默认电影推荐',
@@ -577,25 +622,247 @@ export class MovieService {
     return String(content ?? '');
   }
 
-  private buildFallbackResponse(payload: RecommendPayload) {
+  private buildFallbackResponse(payload: RecommendPayload, preferences: MoviePreference) {
     return {
       type: 'fallback',
       data: {
+        preferences,
         message: '推荐失败，模型当前不可用，请稍后重试。',
         fallback_reason: '模型不可用或请求失败。',
       },
     };
   }
 
-  private parseRecommendation(text: string) {
+  private async runPreferenceExtractionWithValidation(state: WorkflowState): Promise<string> {
+    const basePrompt = this.buildParsePrompt(state);
+    const fallback = this.getFallbackForStage('parsePreferences');
+    let lastError = '';
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      const prompt = attempt === 1
+        ? basePrompt
+        : `${basePrompt}\n\n上一次生成的数据结构校验失败：${lastError}\n请严格按照要求重新生成一个只包含 genre, mood, actors, length, rating, language, scene, theme 的 JSON 对象，并确保字段值可被成功映射到 TMDB 查询参数。`;
+
+      const content = await this.runAgentNode('parsePreferences', prompt, fallback);
+      const parsed = this.tryParseJsonObject(content);
+      if (!parsed) {
+        lastError = '返回内容不是合法的 JSON 对象。';
+        this.logger.warn(`parsePreferences validation failed on attempt ${attempt}: ${lastError}`);
+        continue;
+      }
+
+      const preferences = this.normalizePreferences(parsed);
+      const tmdbQueryParams = this.buildTmdbQueryParamsFromPreferences(preferences);
+      const validationError = await this.validateTmdbQueryParams(tmdbQueryParams);
+      if (!validationError) {
+        return content;
+      }
+
+      lastError = validationError;
+      this.logger.warn(`parsePreferences validation failed on attempt ${attempt}: ${lastError}`);
+    }
+
+    return fallback;
+  }
+
+  private parseStructuredPreferences(content: string, state: WorkflowState): MoviePreference {
+    const parsed = this.tryParseJsonObject(content);
+    const fromState = this.normalizePreferences(state.preferences);
+    return this.mergePreferences(fromState, parsed ?? {});
+  }
+
+  private normalizePreferences(preferences?: Partial<MoviePreference> | string | null): MoviePreference {
+    if (!preferences) {
+      return {};
+    }
+
+    if (typeof preferences === 'string') {
+      const trimmed = preferences.trim();
+      if (!trimmed) {
+        return {};
+      }
+
+      const parsed = this.tryParseJsonObject(trimmed);
+      if (parsed) {
+        return this.normalizePreferences(parsed);
+      }
+
+      return {};
+    }
+
+    return {
+      genre: this.normalizePreferenceValue(preferences.genre),
+      mood: this.normalizePreferenceValue(preferences.mood),
+      actors: this.normalizePreferenceValue(preferences.actors),
+      length: this.normalizePreferenceValue(preferences.length),
+      rating: this.normalizePreferenceValue(preferences.rating),
+      language: this.normalizePreferenceValue(preferences.language),
+      scene: this.normalizePreferenceValue(preferences.scene),
+      theme: this.normalizePreferenceValue(preferences.theme),
+    };
+  }
+
+  private mergePreferences(base: MoviePreference, incoming: Partial<MoviePreference> = {}): MoviePreference {
+    return {
+      genre: this.normalizePreferenceValue(incoming.genre ?? base.genre),
+      mood: this.normalizePreferenceValue(incoming.mood ?? base.mood),
+      actors: this.normalizePreferenceValue(incoming.actors ?? base.actors),
+      length: this.normalizePreferenceValue(incoming.length ?? base.length),
+      rating: this.normalizePreferenceValue(incoming.rating ?? base.rating),
+      language: this.normalizePreferenceValue(incoming.language ?? base.language),
+      scene: this.normalizePreferenceValue(incoming.scene ?? base.scene),
+      theme: this.normalizePreferenceValue(incoming.theme ?? base.theme),
+    };
+  }
+
+  private stringifyPreferences(preferences?: Partial<MoviePreference>): string {
+    return JSON.stringify(this.normalizePreferences(preferences));
+  }
+
+  private normalizePreferenceValue(value: unknown): string {
+    if (typeof value === 'string') {
+      return value.trim();
+    }
+    if (value === undefined || value === null) {
+      return '';
+    }
+    return String(value).trim();
+  }
+
+  private tryParseJsonObject(value: string): Partial<MoviePreference> | null {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const firstJson = trimmed.match(/\{[\s\S]*\}/);
+    const candidate = firstJson ? firstJson[0] : trimmed;
+
     try {
-      const firstJson = text.match(/\{[\s\S]*\}/);
-      if (!firstJson) throw new Error('No JSON found');
-      return JSON.parse(firstJson[0]);
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return this.normalizePreferences(parsed as Partial<MoviePreference>);
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  private buildTmdbQueryParamsFromPreferences(preferences: MoviePreference): Partial<TMDBDiscoverMovieQueryParams> {
+    const params: Partial<TMDBDiscoverMovieQueryParams> = {};
+
+    if (preferences.genre) {
+      const genreId = this.mapGenreToTmdbGenreId(preferences.genre);
+      if (genreId) {
+        params.with_genres = genreId;
+      }
+    }
+
+    if (preferences.rating) {
+      const rating = this.extractNumber(preferences.rating);
+      if (rating !== null) {
+        params['vote_average.gte'] = rating;
+      }
+    }
+
+    if (preferences.length) {
+      const runtime = this.extractRuntimeMinutes(preferences.length);
+      if (runtime !== null) {
+        params['with_runtime.lte'] = runtime;
+      }
+    }
+
+    if (preferences.language) {
+      const language = this.mapLanguageToTmdb(preferences.language);
+      if (language) {
+        params.with_original_language = language;
+      }
+    }
+
+    return params;
+  }
+
+  private async validateTmdbQueryParams(params: Partial<TMDBDiscoverMovieQueryParams>): Promise<string | null> {
+    if (!params || typeof params !== 'object' || Array.isArray(params)) {
+      return 'TMDB 查询参数必须是一个对象。';
+    }
+
+    const dto = plainToInstance(TmdbDiscoverMovieQueryParamsDto, params);
+    const errors = await validate(dto, {
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      stopAtFirstError: true,
+    });
+
+    if (errors.length === 0) {
+      return null;
+    }
+
+    const firstError = errors[0];
+    const message = firstError.constraints ? Object.values(firstError.constraints)[0] : '参数校验失败';
+    return message;
+  }
+
+  private mapGenreToTmdbGenreId(genre: string): string | undefined {
+    const normalized = genre.trim().toLowerCase();
+    return genreToTmdbGenreIdMap[normalized];
+  }
+
+  private extractNumber(value: string): number | null {
+    const match = value.match(/(\d+(?:\.\d+)?)/);
+    if (!match) {
+      return null;
+    }
+    return Number(match[1]);
+  }
+
+  private extractRuntimeMinutes(value: string): number | null {
+    const normalized = value.toLowerCase();
+    const match = normalized.match(/(\d+(?:\.\d+)?)/);
+    if (!match) {
+      return null;
+    }
+
+    const number = Number(match[1]);
+    if (normalized.includes('小时') || normalized.includes('hr') || normalized.includes('h')) {
+      return Math.round(number * 60);
+    }
+
+    if (normalized.includes('分钟') || normalized.includes('min') || normalized.includes('m')) {
+      return Math.round(number);
+    }
+
+    return null;
+  }
+
+  private mapLanguageToTmdb(language: string): string | undefined {
+    const normalized = language.trim().toLowerCase();
+    return languageToTmdbLanguageMap[normalized];
+  }
+
+  private parseRecommendation(text: string, preferences: MoviePreference) {
+    try {
+      const parsed = this.tryParseJsonObject(text);
+      if (!parsed) {
+        throw new Error('No JSON found');
+      }
+
+      const parsedObject = parsed as Record<string, unknown>;
+      return {
+        preferences: this.normalizePreferences((parsedObject.preferences as Partial<MoviePreference> | undefined) ?? preferences),
+        recommendations: Array.isArray(parsedObject.recommendations) ? parsedObject.recommendations : [],
+        explanation: typeof parsedObject.explanation === 'string' ? parsedObject.explanation : '',
+        message: typeof parsedObject.message === 'string' ? parsedObject.message : '',
+        fallback_reason: typeof parsedObject.fallback_reason === 'string' ? parsedObject.fallback_reason : '',
+      };
     } catch {
       return {
+        preferences: this.normalizePreferences(preferences),
+        recommendations: [],
         message: '解析失败，无法生成推荐。',
         fallback_reason: '无法解析模型输出。',
+        explanation: '',
       };
     }
   }

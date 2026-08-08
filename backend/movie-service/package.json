@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.8.17",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.2",
     "@grpc/proto-loader": "^0.7.5",
     "@langchain/core": "^1.2.3",
     "@langchain/langgraph": "^1.4.8",

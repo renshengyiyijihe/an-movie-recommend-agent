@@ -11,6 +11,16 @@ export class MovieController {
   async recommend(
     @Body() payload: {
       message: string;
+      preferences?: {
+        genre?: string;
+        mood?: string;
+        actors?: string;
+        length?: string;
+        rating?: string;
+        language?: string;
+        scene?: string;
+        theme?: string;
+      };
       imageUrl?: string;
       imageData?: string;
     },

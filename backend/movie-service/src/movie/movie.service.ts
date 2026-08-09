@@ -779,18 +779,30 @@ export class MovieService {
         prompt,
         fallback,
       );
-      const parsed = this.tryParseJsonObject(content);
+      this.logger.log(
+        `[parsePreferences] attempt ${attempt} rawContentLength=${content.length} content=${content}`,
+      );
+      const parsed = this.tryParseJsonObject<Partial<MoviePreference>>(
+        content,
+        `parsePreferences-attempt-${attempt}`,
+      );
       if (!parsed) {
         lastError = "返回内容不是合法的 JSON 对象。";
         this.logger.warn(
-          `parsePreferences validation failed on attempt ${attempt}: ${lastError}`,
+          `[parsePreferences] attempt ${attempt} failed: ${lastError}`,
         );
         continue;
       }
 
+      this.logger.log(
+        `[parsePreferences] attempt ${attempt} parsedPreferences=${JSON.stringify(parsed)}`,
+      );
       const preferences = this.normalizePreferences(parsed);
       const tmdbQueryParams =
         this.buildTmdbQueryParamsFromPreferences(preferences);
+      this.logger.log(
+        `[parsePreferences] attempt ${attempt} tmdbQueryParams=${JSON.stringify(tmdbQueryParams)}`,
+      );
       const validationError =
         await this.validateTmdbQueryParams(tmdbQueryParams);
       if (!validationError) {
@@ -799,7 +811,7 @@ export class MovieService {
 
       lastError = validationError;
       this.logger.warn(
-        `parsePreferences validation failed on attempt ${attempt}: ${lastError}`,
+        `[parsePreferences] attempt ${attempt} validation failed: ${lastError}`,
       );
     }
 
@@ -810,9 +822,19 @@ export class MovieService {
     content: string,
     state: WorkflowState,
   ): MoviePreference {
-    const parsed = this.tryParseJsonObject(content);
+    this.logger.log(
+      `[parseStructuredPreferences] start: contentLength=${content.length} content=${content}`,
+    );
+    const parsed = this.tryParseJsonObject<Partial<MoviePreference>>(
+      content,
+      "parseStructuredPreferences",
+    );
     const fromState = this.normalizePreferences(state.preferences);
-    return this.mergePreferences(fromState, parsed ?? {});
+    const merged = this.mergePreferences(fromState, parsed ?? {});
+    this.logger.log(
+      `[parseStructuredPreferences] parsed=${JSON.stringify(parsed ?? {})} merged=${JSON.stringify(merged)}`,
+    );
+    return merged;
   }
 
   private normalizePreferences(
@@ -828,11 +850,23 @@ export class MovieService {
         return {};
       }
 
-      const parsed = this.tryParseJsonObject(trimmed);
+      this.logger.log(
+        `[normalizePreferences] parsing string input: length=${trimmed.length} content=${trimmed}`,
+      );
+      const parsed = this.tryParseJsonObject<Partial<MoviePreference>>(
+        trimmed,
+        "normalizePreferences",
+      );
       if (parsed) {
+        this.logger.log(
+          `[normalizePreferences] parsed string input -> ${JSON.stringify(parsed)}`,
+        );
         return this.normalizePreferences(parsed);
       }
 
+      this.logger.warn(
+        `[normalizePreferences] failed to parse string input: ${trimmed}`,
+      );
       return {};
     }
 
@@ -880,24 +914,159 @@ export class MovieService {
     return String(value).trim();
   }
 
-  private tryParseJsonObject(value: string): Partial<MoviePreference> | null {
+  private tryParseJsonObject<T = Partial<MoviePreference>>(
+    value: string,
+    stage = "unknown",
+  ): T | null {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      this.logger.warn(`[${stage}] empty input for JSON parse`);
+      return null;
+    }
+
+    this.logger.log(
+      `[${stage}] parse start: inputLength=${trimmed.length} content=${trimmed}`,
+    );
+    const candidate = this.extractJsonCandidate(trimmed);
+    this.logger.log(
+      `[${stage}] candidateLength=${candidate?.length ?? 0} candidate=${candidate}`,
+    );
+    if (!candidate) {
+      this.logger.warn(`[${stage}] no JSON candidate extracted`);
+      return null;
+    }
+
+    try {
+      const sanitized = this.sanitizeJsonLikeText(candidate);
+      this.logger.log(
+        `[${stage}] sanitizedLength=${sanitized.length} sanitized=${sanitized}`,
+      );
+      const parsed = JSON.parse(sanitized);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        this.logger.log(
+          `[${stage}] parsed object successfully: ${JSON.stringify(parsed)}`,
+        );
+        return parsed as T;
+      }
+      this.logger.warn(`[${stage}] parsed value is not a plain object`);
+      return null;
+    } catch (error) {
+      this.logger.warn(
+        `[${stage}] JSON parse failed: ${(error as Error).message}`,
+      );
+      return null;
+    }
+  }
+
+  private extractJsonCandidate(value: string): string | null {
     const trimmed = value.trim();
     if (!trimmed) {
       return null;
     }
 
-    const firstJson = trimmed.match(/\{[\s\S]*\}/);
-    const candidate = firstJson ? firstJson[0] : trimmed;
-
-    try {
-      const parsed = JSON.parse(candidate);
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        return this.normalizePreferences(parsed as Partial<MoviePreference>);
-      }
-      return null;
-    } catch {
-      return null;
+    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    if (fenced?.[1]) {
+      this.logger.log(
+        `[extractJsonCandidate] found fenced JSON block: length=${fenced[1].trim().length}`,
+      );
+      return fenced[1].trim();
     }
+
+    const start = trimmed.indexOf("{");
+    const end = trimmed.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      this.logger.log(
+        `[extractJsonCandidate] sliced from ${start} to ${end}`,
+      );
+      return trimmed.slice(start, end + 1);
+    }
+
+    this.logger.warn(`[extractJsonCandidate] no JSON braces found`);
+    return trimmed;
+  }
+
+  private sanitizeJsonLikeText(value: string): string {
+    let text = value.trim();
+    this.logger.log(
+      `[sanitizeJsonLikeText] inputLength=${text.length} input=${text}`,
+    );
+    text = text.replace(/^```(?:json)?/i, "").replace(/```$/i, "");
+    text = text.replace(/[\u0000-\u001f]/g, (char) => {
+      if (char === "\n" || char === "\r" || char === "\t") {
+        return char;
+      }
+      return " ";
+    });
+
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      text = text.slice(start, end + 1);
+    }
+
+    let result = "";
+    let inString = false;
+    let escaped = false;
+
+    for (let index = 0; index < text.length; index += 1) {
+      const char = text[index];
+
+      if (escaped) {
+        result += char;
+        escaped = false;
+        continue;
+      }
+
+      if (char === "\\") {
+        result += char;
+        escaped = true;
+        continue;
+      }
+
+      if (char === '"') {
+        if (!inString) {
+          inString = true;
+          result += char;
+          continue;
+        }
+
+        const next = this.peekNonWhitespaceChar(text, index + 1);
+        const shouldCloseString =
+          next === ":" || next === "," || next === "}" || next === "]" || next === undefined;
+
+        if (shouldCloseString) {
+          inString = false;
+          result += char;
+          continue;
+        }
+
+        result += '\\"';
+        continue;
+      }
+
+      if (char === "\n" || char === "\r" || char === "\t") {
+        result += " ";
+        continue;
+      }
+
+      result += char;
+    }
+
+    this.logger.log(
+      `[sanitizeJsonLikeText] outputLength=${result.length} output=${result}`,
+    );
+    return result;
+  }
+
+  private peekNonWhitespaceChar(text: string, startIndex: number): string | undefined {
+    for (let index = startIndex; index < text.length; index += 1) {
+      const char = text[index];
+      if (/\s/.test(char)) {
+        continue;
+      }
+      return char;
+    }
+    return undefined;
   }
 
   private buildTmdbQueryParamsFromPreferences(
@@ -1007,13 +1176,20 @@ export class MovieService {
   }
 
   private parseRecommendation(text: string, preferences: MoviePreference) {
-    this.logger.log(`parseRecommendation start: text ->> ${text } \n preferences=${JSON.stringify(preferences)}`);
+    this.logger.log(
+      `[parseRecommendation] start: textLength=${text.length} text=${text} preferences=${JSON.stringify(preferences)}`,
+    );
     try {
-      const parsed = this.tryParseJsonObject(text);
+      const parsed = this.tryParseJsonObject<Record<string, unknown>>(
+        text,
+        "parseRecommendation",
+      );
       if (!parsed) {
         throw new Error("No JSON found");
       }
-      this.logger.log(`parseRecommendation parsed JSON: ${JSON.stringify(parsed)}`);
+      this.logger.log(
+        `[parseRecommendation] parsed JSON: ${JSON.stringify(parsed)}`,
+      );
       const parsedObject = parsed as Record<string, unknown>;
       return {
         preferences: this.normalizePreferences(
@@ -1034,7 +1210,10 @@ export class MovieService {
             ? parsedObject.fallback_reason
             : "",
       };
-    } catch {
+    } catch (err) {
+      this.logger.error(
+        `[parseRecommendation] failed to parse JSON, returning fallback. err ->> ${JSON.stringify(err)}`,
+      );
       return {
         preferences: this.normalizePreferences(preferences),
         recommendations: [],

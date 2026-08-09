@@ -118,6 +118,7 @@ jobs:
             cat > backend/movie-service/.env <<EOF
             NVIDIA_API_KEY=${{ secrets.NVIDIA_API_KEY }}
             TMDB_API_KEY=${{ secrets.TMDB_API_KEY }}
+            TMDB_API_URL=${{ secrets.TMDB_API_URL }}
             LANGSMITH_API_KEY=${{ secrets.LANGSMITH_API_KEY }}
             LANGSMITH_TRACING=true
             EOF

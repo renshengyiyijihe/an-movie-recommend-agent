@@ -575,20 +575,8 @@ export class TmdbProvider {
     const json = await response.json();
     const results = (Array.isArray(json.results) ? json.results : [])
       .slice(0, options.max_results ?? 4)
-      .map((item: any) => ({
-        title: item.title || item.original_title || "未知电影",
-        url: item.id ? `https://www.themoviedb.org/movie/${item.id}` : "",
-        overview: item.overview ?? "",
-        score: item.vote_average ?? 0,
-        release_date: item.release_date ?? "",
-        poster_url: item.poster_path
-          ? `https://image.tmdb.org/t/p/w300${item.poster_path}`
-          : "",
-        id: item.id ?? 0,
-        original_title: item.original_title,
-      }));
 
-    this.logger.log(`TMDB search response success: results=${results.length}`);
+    this.logger.log(`TMDB search response success: results=${JSON.stringify(results)}`);
     return {
       page,
       total_pages: json.total_pages ?? 1,

@@ -8,6 +8,7 @@ import {
   TmdbProvider,
   TmdbDiscoverMovieQueryParamsDto,
   type TMDBDiscoverMovieQueryParams,
+  type TMDBMovieResult,
 } from "../model/tmdb.provider";
 import { AuthGrpcClient } from "./auth.grpc";
 import { genreToTmdbGenreIdMap, languageToTmdbLanguageMap } from "./config";
@@ -53,18 +54,9 @@ interface TmdbSearchRequest {
   query?: string;
 }
 
-interface TmdbSearchItem {
-  title?: string;
-  url?: string;
-  overview?: string;
-  score?: number;
-  release_date?: string;
-  poster_url?: string;
-}
-
 interface TmdbSearchResponse {
   query?: string | Partial<TMDBDiscoverMovieQueryParams>;
-  results?: TmdbSearchItem[];
+  results?: TMDBMovieResult[];
   request_id?: string;
 }
 
@@ -163,7 +155,7 @@ export class MovieService {
     try {
       this.logger.log("Starting movie recommendation workflow");
       const result = await this.runLangGraphWorkflow(context);
-      this.logger.log(`Workflow finished: result${JSON.stringify(result)}`);
+      this.logger.log(`Workflow finished: result ->> ${JSON.stringify(result)}`);
 
       const langsmithEnabled = !!this.langsmithProvider.getClient();
       if (langsmithEnabled) {
@@ -193,7 +185,7 @@ export class MovieService {
         preferences,
       );
       this.logger.log(
-        `Recommendation result ready: parsedType=${typeof parsed}, langsmith=${langsmithEnabled}`,
+        `Recommendation result ready: preferences ->> ${JSON.stringify(parsed.preferences)} \n recommendations ->> ${JSON.stringify(parsed.recommendations)}`,
       );
       return {
         type: "success",
@@ -467,7 +459,7 @@ export class MovieService {
 
         const summary = this.buildStructuredSearchSummary(response);
         this.logger.log(
-          `runTmdbSearch success: requestId=${response.request_id ?? "unknown"} results=${response.results?.length ?? 0}`,
+          `runTmdbSearch success summary ->> ${JSON.stringify(summary)}`
         );
         return summary;
       },
@@ -476,16 +468,16 @@ export class MovieService {
   }
 
   private buildStructuredSearchSummary(response: TmdbSearchResponse) {
-    const results = (response.results ?? []).slice(0, 4).map((item) => {
+    const results = (response.results ?? []).map((item) => {
       const title = this.normalizeText(item.title);
       const overview = this.normalizeText(item.overview);
       const summary = this.summarizeText(overview, 140);
 
       return {
         title,
-        url: item.url ?? "",
+        url: item.id ? `https://www.themoviedb.org/movie/${item.id}` : "",
         release_date: item.release_date ?? "",
-        rating: item.score ?? undefined,
+        rating: item.vote_average ?? undefined,
         summary,
         truncated: overview.length > 220,
       };
@@ -497,7 +489,6 @@ export class MovieService {
           ? this.normalizeText(response.query)
           : this.normalizeText(JSON.stringify(response.query ?? {})),
       results,
-      missing_fields: this.findMissingFields(results),
       request_id: response.request_id ?? "",
     });
   }
@@ -1016,12 +1007,13 @@ export class MovieService {
   }
 
   private parseRecommendation(text: string, preferences: MoviePreference) {
+    this.logger.log(`parseRecommendation start: text ->> ${text } \n preferences=${JSON.stringify(preferences)}`);
     try {
       const parsed = this.tryParseJsonObject(text);
       if (!parsed) {
         throw new Error("No JSON found");
       }
-
+      this.logger.log(`parseRecommendation parsed JSON: ${JSON.stringify(parsed)}`);
       const parsedObject = parsed as Record<string, unknown>;
       return {
         preferences: this.normalizePreferences(

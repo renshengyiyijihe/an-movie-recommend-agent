@@ -534,12 +534,12 @@ export class TmdbProvider {
     }
 
     const language = options.language ?? "zh-CN";
-    const page = String(options.page ?? "1");
-    const include_adult = String(options.include_adult ?? false);
+    const page = options.page ??1;
+    const include_adult = options.include_adult ?? false;
     const params = new URLSearchParams({
       language,
-      page,
-      include_adult,
+      page: String(page),
+      include_adult: String(include_adult),
     });
 
     Object.entries(query).forEach(([key, value]) => {

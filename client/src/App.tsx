@@ -17,6 +17,8 @@ interface RecommendationItem {
   original_language?: string;
   original_title?: string;
   genre_ids?: number[];
+  genres?: string[];
+  genre_names?: string[];
   poster_path?: string | null;
   poster_url?: string;
   backdrop_path?: string | null;
@@ -74,6 +76,38 @@ function RecommendationPoster({ src, alt }: { src?: string; alt: string }) {
 
 const quickPrompts = ['想看一部科幻大片，时长2小时以内', '想要轻松爱情片，适合晚上放松', '推荐几部张力强、节奏快的动作片'];
 
+const TMDB_GENRE_MAP: Record<number, string> = {
+  28: '动作',
+  12: '冒险',
+  16: '动画',
+  35: '喜剧',
+  80: '犯罪',
+  99: '纪录片',
+  18: '剧情',
+  10751: '家庭',
+  14: '奇幻',
+  36: '历史',
+  27: '恐怖',
+  10402: '音乐',
+  9648: '悬疑',
+  10749: '爱情',
+  878: '科幻',
+  10770: '电视电影',
+  53: '惊悚',
+  10752: '战争',
+  37: '西部',
+};
+
+function getRecommendationGenres(item: RecommendationItem) {
+  const explicitGenres = Array.isArray(item.genres) ? item.genres.filter(Boolean) : [];
+  const explicitGenreNames = Array.isArray(item.genre_names) ? item.genre_names.filter(Boolean) : [];
+  const mappedGenres = (Array.isArray(item.genre_ids) ? item.genre_ids : [])
+    .map((genreId) => TMDB_GENRE_MAP[genreId])
+    .filter(Boolean) as string[];
+
+  return Array.from(new Set([...explicitGenres, ...explicitGenreNames, ...mappedGenres]));
+}
+
 function App() {
   const [message, setMessage] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -122,6 +156,7 @@ function App() {
     const voteCount = typeof item.vote_count === 'number' ? `${item.vote_count}` : '0';
     const popularity = typeof item.popularity === 'number' ? `${item.popularity.toFixed(1)}` : '暂无';
     const language = item.original_language || '未知';
+    const genres = getRecommendationGenres(item);
 
     return (
       <div className="recommendation-card" key={`${title}-${index}`}>
@@ -146,7 +181,9 @@ function App() {
               </a>
             ) : null}
           </div>
-          <p className="recommendation-card__reason">{reason}</p>
+          <p className="recommendation-card__reason" title={reason}>
+            {reason}
+          </p>
           <div className="recommendation-card__meta-row" aria-label="影片信息">
             <span>上映: {releaseDate}</span>
             <span>评分: {rating}</span>
@@ -156,11 +193,12 @@ function App() {
             {item.adult ? <span>成人内容</span> : null}
             {item.video ? <span>含视频</span> : null}
           </div>
-          {item.genre_ids && item.genre_ids.length > 0 ? (
-            <div className="recommendation-card__chip-row">
-              {item.genre_ids.map((genreId) => (
-                <span className="recommendation-card__chip" key={`${title}-${genreId}`}>
-                  类型 #{genreId}
+          {genres.length > 0 ? (
+            <div className="recommendation-card__chip-row" aria-label="影片类型">
+              <span className="recommendation-card__chip recommendation-card__chip--label">类型</span>
+              {genres.map((genre) => (
+                <span className="recommendation-card__chip" key={`${title}-${genre}`}>
+                  {genre}
                 </span>
               ))}
             </div>

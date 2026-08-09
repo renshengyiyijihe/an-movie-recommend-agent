@@ -305,8 +305,8 @@ textarea:focus {
 }
 
 .recommendation-card {
-  display: grid;
-  grid-template-columns: 110px minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   flex: 0 0 min(320px, 86vw);
   gap: 12px;
   padding: 12px;
@@ -389,13 +389,25 @@ textarea:focus {
   margin: 0;
   color: #334155;
   line-height: 1.55;
+  min-height: 4.65em;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: help;
+}
+
+.recommendation-card__reason:hover {
+  display: block;
+  overflow: visible;
+  min-height: auto;
 }
 
 .recommendation-card__meta-row {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 8px;
-  overflow-x: auto;
   padding-bottom: 2px;
 }
 
@@ -403,7 +415,7 @@ textarea:focus {
 .recommendation-card__chip {
   display: inline-flex;
   align-items: center;
-  white-space: nowrap;
+  white-space: normal;
   padding: 6px 10px;
   border-radius: 999px;
   background: #f1f5f9;
@@ -415,6 +427,13 @@ textarea:focus {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  align-items: center;
+}
+
+.recommendation-card__chip--label {
+  background: #ede9fe;
+  color: #5b21b6;
+  font-weight: 700;
 }
 
 .preview-image,
@@ -463,11 +482,12 @@ textarea:focus {
   }
 
   .recommendation-card {
-    grid-template-columns: 1fr;
+    flex: 0 0 min(100%, 86vw);
   }
 
   .recommendation-card__media {
     max-width: 140px;
+    margin: 0 auto;
   }
 }
 

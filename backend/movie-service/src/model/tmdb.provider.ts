@@ -553,10 +553,10 @@ export class TmdbProvider {
     this.logger.log(
       `TMDB search request: ${url}`,
     );
+
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        "Content-Type": "application/json",
         accept: 'application/json',
         Authorization: 'Bearer ' + this.apiKey,
       },

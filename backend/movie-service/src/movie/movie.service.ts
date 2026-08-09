@@ -67,6 +67,7 @@ const MAX_SEARCH_RESULT_LENGTH = 4000;
 const MAX_IMAGE_DATA_LENGTH = 1200;
 const MAX_RETRIES = 3;
 const RETRY_BACKOFF_MS = 500;
+const TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w500";
 
 const WorkflowStateAnnotation = Annotation.Root({
   message: Annotation<string>({
@@ -183,6 +184,7 @@ export class MovieService {
       const parsed = this.parseRecommendation(
         result.supervisorResult,
         preferences,
+        result.searchResult,
       );
       this.logger.log(
         `Recommendation result ready: preferences ->> ${JSON.stringify(parsed.preferences)} \n recommendations ->> ${JSON.stringify(parsed.recommendations)}`,
@@ -469,15 +471,29 @@ export class MovieService {
 
   private buildStructuredSearchSummary(response: TmdbSearchResponse) {
     const results = (response.results ?? []).map((item) => {
-      const title = this.normalizeText(item.title);
       const overview = this.normalizeText(item.overview);
-      const summary = this.summarizeText(overview, 140);
+      const summary = this.summarizeText(overview, 160);
+      const posterPath = item.poster_path ?? "";
+      const backdropPath = item.backdrop_path ?? "";
 
       return {
-        title,
-        url: item.id ? `https://www.themoviedb.org/movie/${item.id}` : "",
+        adult: item.adult ?? false,
+        poster_path: item.poster_path ?? null,
+        id: item.id ?? undefined,
+        backdrop_path: item.backdrop_path ?? null,
+        genre_ids: item.genre_ids ?? [],
+        original_language: item.original_language ?? "",
+        original_title: item.original_title ?? "",
+        overview,
+        popularity: item.popularity ?? 0,
         release_date: item.release_date ?? "",
-        rating: item.vote_average ?? undefined,
+        title: this.normalizeText(item.title),
+        video: item.video ?? false,
+        vote_average: item.vote_average ?? 0,
+        vote_count: item.vote_count ?? 0,
+        tmdb_url: item.id ? `https://www.themoviedb.org/movie/${item.id}` : "",
+        poster_url: posterPath ? `${TMDB_IMAGE_BASE_URL}${posterPath}` : "",
+        backdrop_url: backdropPath ? `${TMDB_IMAGE_BASE_URL}${backdropPath}` : "",
         summary,
         truncated: overview.length > 220,
       };
@@ -1175,7 +1191,125 @@ export class MovieService {
     return languageToTmdbLanguageMap[normalized];
   }
 
-  private parseRecommendation(text: string, preferences: MoviePreference) {
+  private parseSearchResultMetadata(searchResult: string): Array<Record<string, unknown>> {
+    if (!searchResult) {
+      return [];
+    }
+
+    const parsed = this.tryParseJsonObject<Record<string, unknown>>(
+      searchResult,
+      "parseSearchResultMetadata",
+    );
+    const results = parsed?.results;
+    if (!Array.isArray(results)) {
+      return [];
+    }
+
+    return results.filter(
+      (item): item is Record<string, unknown> =>
+        Boolean(item) && typeof item === "object" && !Array.isArray(item),
+    );
+  }
+
+  private getStringValue(value: unknown): string {
+    if (typeof value === "string") {
+      return value.trim();
+    }
+    if (value === null || value === undefined) {
+      return "";
+    }
+    return String(value).trim();
+  }
+
+  private matchTmdbMovie(
+    recommendation: Record<string, unknown>,
+    movie: Record<string, unknown>,
+  ): boolean {
+    const targetTitles = [
+      this.getStringValue(recommendation.name),
+      this.getStringValue(recommendation.title),
+      this.getStringValue(recommendation.original_title),
+    ];
+    const movieTitles = [
+      this.getStringValue(movie.title),
+      this.getStringValue(movie.original_title),
+    ];
+
+    return targetTitles.some((targetTitle) => {
+      if (!targetTitle) {
+        return false;
+      }
+      const normalizedTarget = this.normalizeText(targetTitle);
+      if (!normalizedTarget) {
+        return false;
+      }
+      return movieTitles.some((movieTitle) => {
+        const normalizedMovieTitle = this.normalizeText(movieTitle);
+        if (!normalizedMovieTitle) {
+          return false;
+        }
+        return (
+          normalizedTarget === normalizedMovieTitle ||
+          normalizedTarget.includes(normalizedMovieTitle) ||
+          normalizedMovieTitle.includes(normalizedTarget)
+        );
+      });
+    });
+  }
+
+  private enrichRecommendationWithTmdbMetadata(
+    recommendation: Record<string, unknown>,
+    movie: Record<string, unknown>,
+  ) {
+    return {
+      ...recommendation,
+      name: this.getStringValue(recommendation.name) || this.getStringValue(movie.title),
+      title: this.getStringValue(recommendation.title) || this.getStringValue(movie.title),
+      reason:
+        this.getStringValue(recommendation.reason) ||
+        this.getStringValue(movie.summary),
+      summary:
+        this.getStringValue(recommendation.summary) ||
+        this.getStringValue(movie.summary),
+      overview:
+        this.getStringValue(recommendation.overview) ||
+        this.getStringValue(movie.overview),
+      release_date:
+        this.getStringValue(recommendation.release_date) ||
+        this.getStringValue(movie.release_date),
+      vote_average:
+        recommendation.vote_average ?? movie.vote_average ?? undefined,
+      vote_count:
+        recommendation.vote_count ?? movie.vote_count ?? undefined,
+      popularity:
+        recommendation.popularity ?? movie.popularity ?? undefined,
+      original_language:
+        this.getStringValue(recommendation.original_language) ||
+        this.getStringValue(movie.original_language),
+      genre_ids: Array.isArray(recommendation.genre_ids)
+        ? recommendation.genre_ids
+        : Array.isArray(movie.genre_ids)
+          ? movie.genre_ids
+          : [],
+      poster_path: recommendation.poster_path ?? movie.poster_path ?? null,
+      poster_url: this.getStringValue(recommendation.poster_url) || this.getStringValue(movie.poster_url),
+      backdrop_path: recommendation.backdrop_path ?? movie.backdrop_path ?? null,
+      backdrop_url: this.getStringValue(recommendation.backdrop_url) || this.getStringValue(movie.backdrop_url),
+      tmdb_url: this.getStringValue(recommendation.tmdb_url) || this.getStringValue(movie.tmdb_url),
+      id: recommendation.id ?? movie.id ?? undefined,
+      adult: recommendation.adult ?? movie.adult ?? false,
+      video: recommendation.video ?? movie.video ?? false,
+      original_title:
+        this.getStringValue(recommendation.original_title) ||
+        this.getStringValue(movie.original_title),
+    };
+  }
+
+  private parseRecommendation(
+    text: string,
+    preferences: MoviePreference,
+    searchResult?: string,
+  ) {
     this.logger.log(
       `[parseRecommendation] start: textLength=${text.length} text=${text} preferences=${JSON.stringify(preferences)}`,
     );
@@ -1191,14 +1325,32 @@ export class MovieService {
         `[parseRecommendation] parsed JSON: ${JSON.stringify(parsed)}`,
       );
       const parsedObject = parsed as Record<string, unknown>;
+      const tmdbMovies = this.parseSearchResultMetadata(searchResult ?? "");
+      const recommendations = Array.isArray(parsedObject.recommendations)
+        ? parsedObject.recommendations
+        : [];
+
+      const enrichedRecommendations = recommendations.map((item) => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) {
+          return item;
+        }
+
+        const recommendation = item as Record<string, unknown>;
+        const matchedMovie = tmdbMovies.find((movie) =>
+          this.matchTmdbMovie(recommendation, movie),
+        );
+
+        return matchedMovie
+          ? this.enrichRecommendationWithTmdbMetadata(recommendation, matchedMovie)
+          : recommendation;
+      });
+
       return {
         preferences: this.normalizePreferences(
           (parsedObject.preferences as Partial<MoviePreference> | undefined) ??
             preferences,
         ),
-        recommendations: Array.isArray(parsedObject.recommendations)
-          ? parsedObject.recommendations
-          : [],
+        recommendations: enrichedRecommendations,
         explanation:
           typeof parsedObject.explanation === "string"
             ? parsedObject.explanation

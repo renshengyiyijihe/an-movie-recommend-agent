@@ -5,10 +5,28 @@ import AuthModal from './components/AuthModal';
 import AppLogo from './components/AppLogo';
 
 interface RecommendationItem {
-  name: string;
-  reason: string;
-  taobao: string;
-  jd: string;
+  name?: string;
+  title?: string;
+  reason?: string;
+  summary?: string;
+  overview?: string;
+  release_date?: string;
+  vote_average?: number;
+  vote_count?: number;
+  popularity?: number;
+  original_language?: string;
+  original_title?: string;
+  genre_ids?: number[];
+  poster_path?: string | null;
+  poster_url?: string;
+  backdrop_path?: string | null;
+  backdrop_url?: string;
+  tmdb_url?: string;
+  id?: number;
+  adult?: boolean;
+  video?: boolean;
+  taobao?: string;
+  jd?: string;
 }
 
 interface ChatMessage {
@@ -16,6 +34,42 @@ interface ChatMessage {
   text: string;
   type?: 'recommendation' | 'explanation' | 'fallback' | 'error';
   imagePreview?: string;
+}
+
+function RecommendationPoster({ src, alt }: { src?: string; alt: string }) {
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setLoaded(false);
+    setFailed(false);
+  }, [src]);
+
+  if (!src || failed) {
+    return (
+      <div className="recommendation-card__poster recommendation-card__poster--placeholder" aria-label="海报加载中">
+        <span className="recommendation-card__spinner" />
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {!loaded ? (
+        <div className="recommendation-card__poster recommendation-card__poster--placeholder" aria-label="海报加载中">
+          <span className="recommendation-card__spinner" />
+        </div>
+      ) : null}
+      <img
+        src={src}
+        alt={alt}
+        className={`recommendation-card__poster${loaded ? '' : ' recommendation-card__poster--hidden'}`}
+        loading="lazy"
+        onLoad={() => setLoaded(true)}
+        onError={() => setFailed(true)}
+      />
+    </>
+  );
 }
 
 const quickPrompts = ['想看一部科幻大片，时长2小时以内', '想要轻松爱情片，适合晚上放松', '推荐几部张力强、节奏快的动作片'];
@@ -57,6 +111,63 @@ function App() {
 
   function renderMessageText(text: string) {
     return text.split('\n').filter((line) => line.trim() !== '');
+  }
+
+  function renderRecommendationCard(item: RecommendationItem, index: number) {
+    const title = item.title || item.name || item.original_title || '未知电影';
+    const subtitle = item.original_title && item.original_title !== title ? item.original_title : '';
+    const reason = item.reason || item.summary || item.overview || '暂无说明';
+    const releaseDate = item.release_date ? item.release_date : '未知日期';
+    const rating = typeof item.vote_average === 'number' ? item.vote_average.toFixed(1) : '暂无';
+    const voteCount = typeof item.vote_count === 'number' ? `${item.vote_count}` : '0';
+    const popularity = typeof item.popularity === 'number' ? `${item.popularity.toFixed(1)}` : '暂无';
+    const language = item.original_language || '未知';
+
+    return (
+      <div className="recommendation-card" key={`${title}-${index}`}>
+        <div className="recommendation-card__media">
+          {item.poster_url ? (
+            <RecommendationPoster src={item.poster_url} alt={title} />
+          ) : (
+            <div className="recommendation-card__poster recommendation-card__poster--placeholder" aria-label="海报加载中">
+              <span className="recommendation-card__spinner" />
+            </div>
+          )}
+        </div>
+        <div className="recommendation-card__body">
+          <div className="recommendation-card__header">
+            <div>
+              <h4>{title}</h4>
+              {subtitle ? <p className="recommendation-card__subtitle">{subtitle}</p> : null}
+            </div>
+            {item.tmdb_url ? (
+              <a href={item.tmdb_url} target="_blank" rel="noreferrer" className="recommendation-card__link">
+                查看详情
+              </a>
+            ) : null}
+          </div>
+          <p className="recommendation-card__reason">{reason}</p>
+          <div className="recommendation-card__meta-row" aria-label="影片信息">
+            <span>上映: {releaseDate}</span>
+            <span>评分: {rating}</span>
+            <span>评分人数: {voteCount}</span>
+            <span>热度: {popularity}</span>
+            <span>语言: {language}</span>
+            {item.adult ? <span>成人内容</span> : null}
+            {item.video ? <span>含视频</span> : null}
+          </div>
+          {item.genre_ids && item.genre_ids.length > 0 ? (
+            <div className="recommendation-card__chip-row">
+              {item.genre_ids.map((genreId) => (
+                <span className="recommendation-card__chip" key={`${title}-${genreId}`}>
+                  类型 #{genreId}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
   }
 
   async function sendMessage() {
@@ -112,16 +223,9 @@ function App() {
     const sections: ChatMessage[] = [];
 
     if (data.recommendations && Array.isArray(data.recommendations) && data.recommendations.length > 0) {
-      const recommendationText = data.recommendations
-        .map(
-          (item: RecommendationItem, index: number) =>
-            `${index + 1}. ${item.name}\n理由: ${item.reason}`,
-        )
-        .join('\n\n');
-
       sections.push({
         role: 'assistant',
-        text: `推荐结果：\n${recommendationText}`,
+        text: JSON.stringify(data.recommendations),
         type: 'recommendation',
       });
     }
@@ -233,9 +337,24 @@ function App() {
                   {item.role === 'user' ? '你' : item.role === 'assistant-error' ? '智能体（异常）' : '智能体'}
                 </div>
                 <div className="message-text">
-                  {renderMessageText(item.text).map((line, lineIndex) => (
-                    <p key={`${item.role}-${index}-${lineIndex}`}>{line}</p>
-                  ))}
+                  {item.type === 'recommendation' ? (
+                    <div className="recommendation-list">
+                      {(() => {
+                        try {
+                          const parsed = JSON.parse(item.text) as RecommendationItem[];
+                          return Array.isArray(parsed)
+                            ? parsed.map((recommendation, recommendationIndex) => renderRecommendationCard(recommendation, recommendationIndex))
+                            : null;
+                        } catch {
+                          return <p>推荐内容暂时无法展示，请稍后再试。</p>;
+                        }
+                      })()}
+                    </div>
+                  ) : (
+                    renderMessageText(item.text).map((line, lineIndex) => (
+                      <p key={`${item.role}-${index}-${lineIndex}`}>{line}</p>
+                    ))
+                  )}
                 </div>
                 {item.imagePreview ? <img src={item.imagePreview} alt="uploaded preview" className="message-image" /> : null}
               </div>

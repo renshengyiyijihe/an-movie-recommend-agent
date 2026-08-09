@@ -3,6 +3,7 @@ import { request } from './api';
 import useAuth from './store/auth';
 import AuthModal from './components/AuthModal';
 import AppLogo from './components/AppLogo';
+import { getTmdbImage } from './utils/tmdb';
 
 interface RecommendationItem {
   name?: string;
@@ -19,7 +20,7 @@ interface RecommendationItem {
   genre_ids?: number[];
   genres?: string[];
   genre_names?: string[];
-  poster_path?: string | null;
+  poster_path?: string;
   poster_url?: string;
   backdrop_path?: string | null;
   backdrop_url?: string;
@@ -157,6 +158,7 @@ function App() {
     const popularity = typeof item.popularity === 'number' ? `${item.popularity.toFixed(1)}` : '暂无';
     const language = item.original_language || '未知';
     const genres = getRecommendationGenres(item);
+    const posterUrl = getTmdbImage(item.poster_url || item.poster_path);
 
     return (
       <div className="recommendation-card" key={`${title}-${index}`}>
@@ -181,7 +183,7 @@ function App() {
               </a>
             ) : null}
           </div>
-          <p className="recommendation-card__reason" title={reason}>
+          <p className="recommendation-card__reason" data-tooltip={reason} aria-label={reason}>
             {reason}
           </p>
           <div className="recommendation-card__meta-row" aria-label="影片信息">

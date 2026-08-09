@@ -518,7 +518,7 @@ export class TmdbProvider {
   private readonly logger = new Logger(TmdbProvider.name);
   private readonly apiKey = process.env.TMDB_API_KEY;
   private readonly apiUrl =
-    process.env.TMDB_API_URL || "https://api.themoviedb.org/3";
+    process.env.TMDB_API_URL || "https://tmdb.yangjinhu.asia";
 
   isEnabled(): boolean {
     return Boolean(this.apiKey);
@@ -548,7 +548,7 @@ export class TmdbProvider {
       }
     });
 
-    const url = `${this.apiUrl}/discover/movie?${params.toString()}`;
+    const url = `${this.apiUrl}/3/discover/movie?${params.toString()}`;
 
     this.logger.log(
       `TMDB search request: ${url}`,

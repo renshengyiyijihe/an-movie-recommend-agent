@@ -389,19 +389,40 @@ textarea:focus {
   margin: 0;
   color: #334155;
   line-height: 1.55;
-  min-height: 4.65em;
+  max-height: 300px;
   display: -webkit-box;
   -webkit-line-clamp: 3;
+  line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: help;
+  position: relative;
 }
 
-.recommendation-card__reason:hover {
-  display: block;
-  overflow: visible;
-  min-height: auto;
+.recommendation-card__reason::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  max-width: min(280px, 80vw);
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.95);
+  color: #ffffff;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.2);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
+  z-index: 20;
+}
+
+.recommendation-card__reason:hover::after {
+  opacity: 1;
 }
 
 .recommendation-card__meta-row {

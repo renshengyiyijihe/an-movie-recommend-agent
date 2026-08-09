@@ -89,16 +89,6 @@ function App() {
         url: '/api/movie/recommend',
         data: {
           message: userMessage.text,
-          preferences: {
-            genre: '',
-            mood: '',
-            actors: '',
-            length: '',
-            rating: '',
-            language: '',
-            scene: '',
-            theme: '',
-          },
           imageData,
         },
       });

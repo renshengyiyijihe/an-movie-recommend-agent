@@ -2,7 +2,7 @@ import axios, { AxiosRequestConfig } from 'axios';
 
 const api = axios.create({
   baseURL: '/',
-  timeout: 60000,
+  timeout: 1000 * 120, // 2 minutes
   headers: {
     'Content-Type': 'application/json',
   },

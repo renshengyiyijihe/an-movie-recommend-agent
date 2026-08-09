@@ -534,13 +534,12 @@ export class TmdbProvider {
     }
 
     const language = options.language ?? "zh-CN";
-    const page = options.page ?? 1;
-    const includeAdult = options.include_adult ?? false;
+    const page = String(options.page ?? "1");
+    const include_adult = String(options.include_adult ?? false);
     const params = new URLSearchParams({
-      api_key: this.apiKey,
       language,
-      page: String(page),
-      include_adult: String(includeAdult),
+      page,
+      include_adult,
     });
 
     Object.entries(query).forEach(([key, value]) => {
@@ -552,12 +551,14 @@ export class TmdbProvider {
     const url = `${this.apiUrl}/discover/movie?${params.toString()}`;
 
     this.logger.log(
-      `TMDB search request: queryKeys=${Object.keys(query).join(",")}, max_results=${options.max_results ?? 4}`,
+      `TMDB search request: ${url}`,
     );
     const response = await fetch(url, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
+        accept: 'application/json',
+        Authorization: 'Bearer ' + this.apiKey,
       },
     });
 

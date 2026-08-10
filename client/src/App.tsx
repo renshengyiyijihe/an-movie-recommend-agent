@@ -35,8 +35,28 @@ interface RecommendationItem {
 interface ChatMessage {
   role: 'user' | 'assistant' | 'assistant-error';
   text: string;
-  type?: 'recommendation' | 'explanation' | 'fallback' | 'error';
+  type?: 'recommendation' | 'explanation' | 'fallback' | 'error' | 'loading';
   imagePreview?: string;
+}
+
+interface ConversationSummary {
+  conversation_id: string;
+  title?: string | null;
+  created_at: string;
+}
+
+interface ConversationDetail {
+  conversation_id: string;
+  user_id?: string | null;
+  title?: string | null;
+  messages: Array<{
+    id: string;
+    role: string;
+    message_type: string;
+    stage: string;
+    content: string;
+    created_at: string;
+  }>;
 }
 
 function RecommendationPoster({ src, alt }: { src?: string; alt: string }) {
@@ -115,6 +135,12 @@ function App() {
   const [imagePreview, setImagePreview] = useState<string>('');
   const [imageData, setImageData] = useState<string>('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [conversationId, setConversationId] = useState<string | undefined>(undefined);
+  const [conversationList, setConversationList] = useState<ConversationSummary[]>([]);
+  const [selectedConversation, setSelectedConversation] = useState<ConversationDetail | null>(null);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [detailsLoading, setDetailsLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -123,6 +149,65 @@ function App() {
   const token = useAuth((s) => s.token);
   const user = useAuth((s) => s.user);
   const logout = useAuth((s) => s.logout);
+
+  async function fetchConversations() {
+    if (!token) {
+      return;
+    }
+    setHistoryLoading(true);
+    try {
+      const result = await request<{ conversations: ConversationSummary[] }>({
+        method: 'GET',
+        url: '/api/message/conversations',
+      });
+      setConversationList(result.conversations ?? []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  function convertConversationToMessages(messages: ConversationDetail['messages']): ChatMessage[] {
+    return messages.map((item) => ({
+      role: item.role === 'user' ? 'user' : 'assistant',
+      text: item.content,
+      type: item.message_type === 'final_response' ? 'recommendation' : item.role === 'user' ? undefined : 'explanation',
+    }));
+  }
+
+  async function fetchConversationDetail(conversationId: string) {
+    setDetailsLoading(true);
+    try {
+      const detail = await request<ConversationDetail>({
+        method: 'GET',
+        url: `/api/message/conversations/${conversationId}`,
+      });
+      setSelectedConversation(detail);
+      setConversationId(detail.conversation_id);
+      setMessages(convertConversationToMessages(detail.messages));
+      setShowHistoryModal(false);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setDetailsLoading(false);
+    }
+  }
+
+  function openHistoryModal() {
+    if (!token) {
+      setShowLoginModal(true);
+      return;
+    }
+    setShowHistoryModal(true);
+    void fetchConversations();
+  }
+
+  function startNewConversation() {
+    setConversationId(undefined);
+    setMessages([]);
+    setSelectedConversation(null);
+  }
 
   useEffect(() => {
     if (!file) {
@@ -249,10 +334,14 @@ function App() {
           message: userMessage.text,
           imageData,
           history,
+          conversationId,
         },
       });
       const assistantItems = convertResultToMessages(result);
       setMessages((prev) => [...prev, ...assistantItems]);
+      if (result?.conversationId) {
+        setConversationId(result.conversationId);
+      }
     } catch {
       setError('请求后端失败，请检查服务是否启动');
       setMessages((prev) => [...prev, { role: 'assistant-error', text: '请求失败，请稍后再试。', type: 'error' }]);
@@ -316,9 +405,15 @@ function App() {
           <AppLogo className="top-bar__icon" size={24} />
           <span>An-movie</span>
         </div>
-        <div className="auth-buttons" role="toolbar">
+        <div className="top-bar__actions" role="toolbar">
           {token ? (
             <>
+              <button className="btn-secondary" type="button" onClick={openHistoryModal} aria-label="打开历史会话">
+                历史会话
+              </button>
+              <button className="btn-secondary" type="button" onClick={startNewConversation} aria-label="开始新会话">
+                新会话
+              </button>
               <div className="user-pill" aria-label="当前登录用户">
                 <span className="user-pill__name">{user?.username ?? '用户'}</span>
               </div>
@@ -352,6 +447,69 @@ function App() {
             setShowLoginModal(true);
           }}
         />
+        {showHistoryModal ? (
+          <div className="modal-overlay" role="dialog" aria-modal="true">
+            <div className="modal history-modal">
+              <div className="modal-header">
+                <div>
+                  <h3>历史会话</h3>
+                  <p>只展示用户提问和最终回复。</p>
+                </div>
+                <button className="modal-close" onClick={() => setShowHistoryModal(false)} aria-label="关闭历史会话窗口">
+                  ×
+                </button>
+              </div>
+              <div className="history-grid">
+                <div className="history-list">
+                  {historyLoading ? (
+                    <p>加载会话列表中...</p>
+                  ) : conversationList.length === 0 ? (
+                    <p>暂无会话，发送消息后会自动生成。</p>
+                  ) : (
+                    conversationList.map((session) => (
+                      <button
+                        key={session.conversation_id}
+                        type="button"
+                        className="history-item"
+                        onClick={() => void fetchConversationDetail(session.conversation_id)}>
+                        <div>{session.title ?? `会话 ${session.conversation_id.slice(0, 8)}`}</div>
+                        <div className="history-item-meta">{new Date(session.created_at).toLocaleString()}</div>
+                      </button>
+                    ))
+                  )}
+                </div>
+                <div className="history-detail">
+                  {detailsLoading ? (
+                    <p>加载会话详情中...</p>
+                  ) : selectedConversation ? (
+                    <>
+                      <div className="history-detail-header">
+                        <h4>{selectedConversation.title ?? '无标题会话'}</h4>
+                        <p>会话 ID：{selectedConversation.conversation_id}</p>
+                      </div>
+                      <div className="history-messages">
+                        {selectedConversation.messages
+                          .filter((item) => item.role === 'user' || item.message_type === 'final_response')
+                          .map((item) => (
+                            <div key={item.id} className={`message ${item.role === 'user' ? 'user' : 'assistant'}`}>
+                              <div className="message-role">{item.role === 'user' ? '你' : '智能体'}</div>
+                              <div className="message-text">
+                                {renderMessageText(item.content).map((line, idx) => (
+                                  <p key={`${item.id}-${idx}`}>{line}</p>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    </>
+                  ) : (
+                    <p>选择一个会话以查看详情。</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         <header className="hero-header">
           <div className="title-row">
@@ -377,36 +535,46 @@ function App() {
               <p>比如“想看一部剧情片，时长2小时以内，最好有温情结局”。</p>
             </div>
           ) : (
-            messages.map((item, index) => (
-              <div
-                key={`${item.role}-${index}`}
-                className={`message ${item.role === 'user' ? 'user' : item.role === 'assistant-error' ? 'assistant-error' : 'assistant'}`}>
-                <div className="message-role">
-                  {item.role === 'user' ? '你' : item.role === 'assistant-error' ? '智能体（异常）' : '智能体'}
+            <>
+              {messages.map((item, index) => (
+                <div
+                  key={`${item.role}-${index}`}
+                  className={`message ${item.role === 'user' ? 'user' : item.role === 'assistant-error' ? 'assistant-error' : 'assistant'}`}>
+                  <div className="message-role">
+                    {item.role === 'user' ? '你' : item.role === 'assistant-error' ? '智能体（异常）' : '智能体'}
+                  </div>
+                  <div className="message-text">
+                    {item.type === 'recommendation' ? (
+                      <div className="recommendation-list">
+                        {(() => {
+                          try {
+                            const parsed = JSON.parse(item.text) as RecommendationItem[];
+                            return Array.isArray(parsed)
+                              ? parsed.map((recommendation, recommendationIndex) => renderRecommendationCard(recommendation, recommendationIndex))
+                              : null;
+                          } catch {
+                            return <p>推荐内容暂时无法展示，请稍后再试。</p>;
+                          }
+                        })()}
+                      </div>
+                    ) : (
+                      renderMessageText(item.text).map((line, lineIndex) => (
+                        <p key={`${item.role}-${index}-${lineIndex}`}>{line}</p>
+                      ))
+                    )}
+                  </div>
+                  {item.imagePreview ? <img src={item.imagePreview} alt="uploaded preview" className="message-image" /> : null}
                 </div>
-                <div className="message-text">
-                  {item.type === 'recommendation' ? (
-                    <div className="recommendation-list">
-                      {(() => {
-                        try {
-                          const parsed = JSON.parse(item.text) as RecommendationItem[];
-                          return Array.isArray(parsed)
-                            ? parsed.map((recommendation, recommendationIndex) => renderRecommendationCard(recommendation, recommendationIndex))
-                            : null;
-                        } catch {
-                          return <p>推荐内容暂时无法展示，请稍后再试。</p>;
-                        }
-                      })()}
-                    </div>
-                  ) : (
-                    renderMessageText(item.text).map((line, lineIndex) => (
-                      <p key={`${item.role}-${index}-${lineIndex}`}>{line}</p>
-                    ))
-                  )}
+              ))}
+              {loading ? (
+                <div className="message assistant loading">
+                  <div className="message-role">智能体</div>
+                  <div className="message-text">
+                    <div className="loading-dots" aria-label="智能体正在思考"></div>
+                  </div>
                 </div>
-                {item.imagePreview ? <img src={item.imagePreview} alt="uploaded preview" className="message-image" /> : null}
-              </div>
-            ))
+              ) : null}
+            </>
           )}
         </div>
 

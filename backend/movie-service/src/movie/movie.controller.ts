@@ -23,6 +23,7 @@ export class MovieController {
       };
       imageUrl?: string;
       imageData?: string;
+      conversationId?: string;
     },
     @Headers('authorization') authorization?: string,
   ) {

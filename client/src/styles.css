@@ -65,6 +65,8 @@ input {
 
 .chat-panel {
   width: 100%;
+  flex: 1;
+  min-height: 0;
   background: rgba(255, 255, 255, 0.9);
   border: 1px solid rgba(255, 255, 255, 0.75);
   border-radius: 0;
@@ -73,6 +75,122 @@ input {
   padding: 24px;
   box-shadow: none;
   backdrop-filter: blur(18px);
+}
+
+.top-bar__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn-secondary {
+  border: none;
+  border-radius: 999px;
+  padding: 10px 14px;
+  background: #eef2ff;
+  color: #4338ca;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.btn-secondary:hover {
+  transform: translateY(-1px);
+  background: #e0e7ff;
+}
+
+.history-modal {
+  width: min(960px, 96%);
+  max-height: min(92vh, 900px);
+  overflow: hidden;
+}
+
+.history-grid {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 16px;
+  min-height: 320px;
+}
+
+.history-list,
+.history-detail {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  padding: 16px;
+  overflow: auto;
+  min-height: 320px;
+}
+
+.history-item {
+  width: 100%;
+  display: block;
+  text-align: left;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: #fff;
+  color: #111827;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.history-item:hover,
+.history-item:focus-visible {
+  border-color: #c7d2fe;
+  background: #eef2ff;
+}
+
+.history-item-meta {
+  color: #64748b;
+  font-size: 0.85rem;
+  margin-top: 6px;
+}
+
+.history-detail-header {
+  margin-bottom: 14px;
+}
+
+.history-messages {
+  display: grid;
+  gap: 12px;
+}
+
+.loading-dots {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.loading-dots::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #8b5cf6;
+  animation: loadingDot 1s infinite ease-in-out;
+}
+
+.loading-dots::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #8b5cf6;
+  animation: loadingDot 1s infinite ease-in-out 0.2s;
+}
+
+.loading-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #8b5cf6;
+  animation: loadingDot 1s infinite ease-in-out 0.4s;
+}
+
+@keyframes loadingDot {
+  0%, 80%, 100% { opacity: 0.2; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-4px); }
 }
 
 .hero-header {
@@ -493,6 +611,11 @@ textarea:focus {
   .hero-header {
     padding: 14px;
   }
+
+  .history-grid {
+    grid-template-columns: 1fr;
+  }
+}
 
   .title-row h1 {
     font-size: 1.35rem;

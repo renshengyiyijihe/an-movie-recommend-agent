@@ -40,7 +40,28 @@ services:
     environment:
       PORT: 3001
       AUTH_GRPC_ADDRESS: auth-service:50051
+      MESSAGE_GRPC_ADDRESS: message-service:50052
     depends_on:
+      - auth-service
+      - message-service
+    restart: always
+
+  message-service:
+    build:
+      context: ./backend
+      dockerfile: message-service/Dockerfile
+    ports:
+      - "3003:3003"
+      - "50052:50052"
+    env_file:
+      - ./backend/message-service/.env
+    environment:
+      PORT: 3003
+      MESSAGE_GRPC_PORT: 50052
+      POSTGRES_URL: postgresql://postgres:password@postgres:5432/anmovie_db
+      AUTH_GRPC_ADDRESS: auth-service:50051
+    depends_on:
+      - postgres
       - auth-service
     restart: always
 
@@ -55,6 +76,7 @@ services:
     depends_on:
       - auth-service
       - movie-service
+      - message-service
     restart: always
 
   portainer:

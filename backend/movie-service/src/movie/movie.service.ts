@@ -10,6 +10,7 @@ import {
   type TMDBMovieResult,
 } from "../model/tmdb.provider";
 import { AuthGrpcClient } from "./auth.grpc";
+import { MessageGrpcClient } from "./message.grpc";
 import { genreToTmdbGenreIdMap, languageToTmdbLanguageMap } from "./config";
 import { WorkflowPlanner, type StageName } from "./workflow.planner";
 
@@ -35,6 +36,7 @@ interface RecommendPayload {
   imageUrl?: string;
   imageData?: string;
   history?: ConversationHistoryItem[];
+  conversationId?: string;
 }
 
 interface WorkflowContext {
@@ -85,6 +87,7 @@ export class MovieService {
     private readonly langsmithProvider: LangSmithProvider,
     private readonly tmdbProvider: TmdbProvider,
     private readonly authGrpcClient: AuthGrpcClient,
+    private readonly messageGrpcClient: MessageGrpcClient,
   ) {}
 
   async recommend(payload: RecommendPayload, authorization?: string) {
@@ -100,7 +103,24 @@ export class MovieService {
       `authorization check: ok=${authResult.ok}, error=${authResult.error ?? "none"}, user=${authResult.user?.email ?? "anonymous"}`,
     );
 
+    const conversationId = await this.ensureConversation(payload, authResult);
+
+    await this.appendConversationMessage(
+      conversationId,
+      'user',
+      'user_query',
+      'submit',
+      payload.message,
+    );
+
     const intent = await this.classifyIntent(payload.message);
+    await this.appendConversationMessage(
+      conversationId,
+      'assistant',
+      'agent_execution',
+      'intent_classification',
+      intent,
+    );
     if (intent !== "movie_recommendation") {
       this.logger.warn(
         `Non-movie request rejected: ${this.truncateText(payload.message, 200)}`,
@@ -142,6 +162,18 @@ export class MovieService {
         `Workflow finished: preferences=${this.truncateText(result.preferences, 400)} searchResult=${this.truncateText(result.searchResult, 400)} supervisorResult=${this.truncateText(result.supervisorResult, 400)}`,
       );
 
+      await this.appendConversationMessage(
+        conversationId,
+        'assistant',
+        'agent_execution',
+        'workflow_complete',
+        JSON.stringify({
+          preferences: result.preferences,
+          searchResult: result.searchResult,
+          supervisorResult: result.supervisorResult,
+        }),
+      );
+
       const langsmithEnabled = !!this.langsmithProvider.getClient();
       if (langsmithEnabled) {
         await this.langsmithProvider.createRun(
@@ -173,7 +205,23 @@ export class MovieService {
       this.logger.log(
         `Recommendation result ready: preferences ->> ${JSON.stringify(parsed.preferences)} \n recommendations ->> ${JSON.stringify(parsed.recommendations)}`,
       );
+
+      await this.appendConversationMessage(
+        conversationId,
+        'assistant',
+        'final_response',
+        'final',
+        JSON.stringify({
+          preferences: parsed.preferences,
+          recommendations: parsed.recommendations,
+          explanation: parsed.explanation,
+          message: parsed.message,
+          fallback_reason: parsed.fallback_reason,
+        }),
+      );
+
       return {
+        conversationId,
         type: "success",
         data: {
           preferences: parsed.preferences,
@@ -199,11 +247,62 @@ export class MovieService {
         `Workflow failed: stage=${workflowError.stage ?? "unknown"} message=${workflowError.message} details=${workflowError.details ?? "none"}`,
         workflowError,
       );
-      return this.buildErrorResponse(payload, preferences, {
+      const response = this.buildErrorResponse(payload, preferences, {
         stage: workflowError.stage ?? "workflow",
         message: workflowError.message ?? "推荐工作流执行失败",
         details: workflowError.details ?? "请查看服务日志获取完整上下文",
       });
+      if (conversationId) {
+        await this.appendConversationMessage(
+          conversationId,
+          'assistant',
+          'final_response',
+          'final',
+          JSON.stringify({ error: response }),
+        ).catch(() => undefined);
+      }
+      return response;
+    }
+  }
+
+  private async ensureConversation(payload: RecommendPayload, authResult: { ok: boolean; user?: { id: string; email: string } }) {
+    if (payload.conversationId) {
+      return payload.conversationId;
+    }
+
+    try {
+      const createResponse = await this.messageGrpcClient.createConversation({
+        user_id: authResult.ok ? authResult.user?.id : undefined,
+        title: payload.message?.slice(0, 120),
+      });
+      return createResponse.conversation_id;
+    } catch (error) {
+      this.logger.warn('Failed to create conversation via message service, continuing without conversation tracking');
+      return '';
+    }
+  }
+
+  private async appendConversationMessage(
+    conversationId: string,
+    role: string,
+    messageType: string,
+    stage: string,
+    content: string,
+  ) {
+    if (!conversationId) {
+      return;
+    }
+
+    try {
+      await this.messageGrpcClient.appendMessage({
+        conversation_id: conversationId,
+        role,
+        message_type: messageType,
+        stage,
+        content,
+      });
+    } catch (error) {
+      this.logger.warn('Failed to append conversation message', error as Error);
     }
   }
 

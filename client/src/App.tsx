@@ -222,6 +222,13 @@ function App() {
       return;
     }
 
+    const history = messages
+      .filter((item) => (item.role === 'user' || item.role === 'assistant') && item.text.trim())
+      .map((item) => ({
+        role: item.role === 'user' ? 'user' : 'assistant',
+        content: item.text.trim(),
+      }));
+
     const userMessage: ChatMessage = {
       role: 'user',
       text: trimmedMessage,
@@ -241,6 +248,7 @@ function App() {
         data: {
           message: userMessage.text,
           imageData,
+          history,
         },
       });
       const assistantItems = convertResultToMessages(result);

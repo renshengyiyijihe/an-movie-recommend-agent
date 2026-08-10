@@ -1,5 +1,4 @@
 ﻿import { Injectable, Logger } from "@nestjs/common";
-import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import { plainToInstance } from "class-transformer";
 import { validate } from "class-validator";
 import { ModelProvider } from "../model/model.provider";
@@ -12,8 +11,7 @@ import {
 } from "../model/tmdb.provider";
 import { AuthGrpcClient } from "./auth.grpc";
 import { genreToTmdbGenreIdMap, languageToTmdbLanguageMap } from "./config";
-
-type StageName = "parsePreferences" | "search" | "supervisor";
+import { WorkflowPlanner, type StageName } from "./workflow.planner";
 
 interface MoviePreference {
   genre?: string;
@@ -26,11 +24,17 @@ interface MoviePreference {
   theme?: string;
 }
 
+interface ConversationHistoryItem {
+  role: "user" | "assistant";
+  content: string;
+}
+
 interface RecommendPayload {
   message: string;
   preferences?: MoviePreference;
   imageUrl?: string;
   imageData?: string;
+  history?: ConversationHistoryItem[];
 }
 
 interface WorkflowContext {
@@ -38,6 +42,7 @@ interface WorkflowContext {
   preferences?: MoviePreference;
   imageUrl?: string;
   imageData?: string;
+  conversationHistory?: string;
 }
 
 interface WorkflowState {
@@ -47,6 +52,7 @@ interface WorkflowState {
   preferences: string;
   searchResult: string;
   supervisorResult: string;
+  conversationHistory: string;
 }
 
 interface TmdbSearchRequest {
@@ -69,38 +75,10 @@ const MAX_RETRIES = 3;
 const RETRY_BACKOFF_MS = 500;
 const TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w500";
 
-const WorkflowStateAnnotation = Annotation.Root({
-  message: Annotation<string>({
-    reducer: (left: string, right: string) => right || left,
-    default: () => "",
-  }),
-  imageUrl: Annotation<string | undefined>({
-    reducer: (left: string | undefined, right: string | undefined) =>
-      right ?? left,
-    default: () => undefined,
-  }),
-  imageData: Annotation<string | undefined>({
-    reducer: (left: string | undefined, right: string | undefined) =>
-      right ?? left,
-    default: () => undefined,
-  }),
-  preferences: Annotation<string>({
-    reducer: (left: string, right: string) => right || left,
-    default: () => "",
-  }),
-  searchResult: Annotation<string>({
-    reducer: (left: string, right: string) => right || left,
-    default: () => "",
-  }),
-  supervisorResult: Annotation<string>({
-    reducer: (left: string, right: string) => right || left,
-    default: () => "",
-  }),
-});
-
 @Injectable()
 export class MovieService {
   private readonly logger = new Logger(MovieService.name);
+  private readonly workflowPlanner = new WorkflowPlanner(this.logger);
 
   constructor(
     private readonly modelProvider: ModelProvider,
@@ -114,7 +92,6 @@ export class MovieService {
       `recommend request received: messageLength=${payload.message?.length ?? 0}, hasImage=${Boolean(payload.imageUrl || payload.imageData)}, authHeader=${authorization ? "present" : "absent"}`,
     );
     const preferences = this.normalizePreferences(payload.preferences);
-    const fallback = this.buildFallbackResponse(payload, preferences);
 
     const authResult = authorization
       ? await this.validateAuthorization(authorization)
@@ -140,10 +117,12 @@ export class MovieService {
 
     const model = this.modelProvider.getModel();
     if (!model) {
-      this.logger.warn(
-        "LLM model not configured; returning fallback recommendation",
-      );
-      return fallback;
+      this.logger.error("LLM model not configured; aborting recommendation workflow");
+      return this.buildErrorResponse(payload, preferences, {
+        stage: "model",
+        message: "模型未配置，无法执行推荐",
+        details: "ModelProvider 未返回可用模型",
+      });
     }
 
     const context: WorkflowContext = {
@@ -151,12 +130,17 @@ export class MovieService {
       preferences,
       imageUrl: payload.imageUrl,
       imageData: payload.imageData,
+      conversationHistory: this.buildConversationHistory(payload.history),
     };
 
     try {
-      this.logger.log("Starting movie recommendation workflow");
+      this.logger.log(
+        `Starting movie recommendation workflow message=${this.truncateText(payload.message, 200)} history=${this.truncateText(this.buildConversationHistory(payload.history), 200)}`,
+      );
       const result = await this.runLangGraphWorkflow(context);
-      this.logger.log(`Workflow finished: result ->> ${JSON.stringify(result)}`);
+      this.logger.log(
+        `Workflow finished: preferences=${this.truncateText(result.preferences, 400)} searchResult=${this.truncateText(result.searchResult, 400)} supervisorResult=${this.truncateText(result.supervisorResult, 400)}`,
+      );
 
       const langsmithEnabled = !!this.langsmithProvider.getClient();
       if (langsmithEnabled) {
@@ -207,8 +191,19 @@ export class MovieService {
         },
       };
     } catch (error) {
-      this.logger.warn("Workflow failed, using fallback", error as Error);
-      return fallback;
+      const workflowError = error as Error & {
+        stage?: string;
+        details?: string;
+      };
+      this.logger.error(
+        `Workflow failed: stage=${workflowError.stage ?? "unknown"} message=${workflowError.message} details=${workflowError.details ?? "none"}`,
+        workflowError,
+      );
+      return this.buildErrorResponse(payload, preferences, {
+        stage: workflowError.stage ?? "workflow",
+        message: workflowError.message ?? "推荐工作流执行失败",
+        details: workflowError.details ?? "请查看服务日志获取完整上下文",
+      });
     }
   }
 
@@ -227,26 +222,6 @@ export class MovieService {
     if (!normalized) {
       this.logger.warn("classifyIntent rejected empty message");
       return "out_of_scope";
-    }
-
-    const keywords = [
-      "电影",
-      "影片",
-      "推荐",
-      "演员",
-      "类型",
-      "时长",
-      "评分",
-      "剧情",
-      "风格",
-      "想看",
-      "爱好",
-    ];
-    const matched = keywords.some((keyword) => normalized.includes(keyword));
-
-    if (matched) {
-      this.logger.log("classifyIntent decided by keyword matching");
-      return "movie_recommendation";
     }
 
     try {
@@ -322,7 +297,6 @@ export class MovieService {
   }
 
   private async runLangGraphWorkflow(context: WorkflowContext) {
-    let graph: any = new StateGraph(WorkflowStateAnnotation);
     const initialState: WorkflowState = {
       message: this.truncateText(context.message, MAX_PROMPT_TEXT_LENGTH),
       imageUrl: context.imageUrl,
@@ -330,143 +304,131 @@ export class MovieService {
       preferences: this.stringifyPreferences(context.preferences),
       searchResult: "",
       supervisorResult: "",
+      conversationHistory: this.truncateText(
+        context.conversationHistory,
+        MAX_PROMPT_TEXT_LENGTH,
+      ),
     };
 
-    const stageOrder: StageName[] = [
-      "parsePreferences",
-      "search",
-      "supervisor",
-    ];
+    const plannerResult = await this.planWorkflowStages(context);
+    const state = { ...initialState };
 
-    graph = graph.addNode("parsePreferences", async (state: WorkflowState) => {
-      this.logger.log(
-        `开始阶段：偏好解析智能体，state: ${JSON.stringify(state)}`,
-      );
-      const content = await this.runPreferenceExtractionWithValidation(state);
-      this.logger.log(
-        `完成阶段：偏好解析智能体, resultLength=${(content || "").length} preview=${this.truncateText(content, 120)}`,
-      );
+    this.logger.log(
+      `workflow planner raw=${plannerResult.rawPlan} plan=${plannerResult.plan.join(" -> ")}`,
+    );
 
-      const parsedPreferences = this.parseStructuredPreferences(content, state);
-      return {
-        preferences: this.stringifyPreferences(parsedPreferences),
-      };
-    });
+    for (const stage of plannerResult.plan) {
+      this.logger.log(`workflow executing stage=${stage}`);
+      switch (stage) {
+        case "parsePreferences": {
+          const content = await this.runPreferenceExtractionWithValidation(state);
+          const parsedPreferences = this.parseStructuredPreferences(content, state);
+          state.preferences = this.stringifyPreferences(parsedPreferences);
+          this.logger.log(
+            `workflow stage completed stage=parsePreferences preferences=${state.preferences}`,
+          );
+          break;
+        }
+        case "search": {
+          const content = await this.runTmdbSearch(state);
+          state.searchResult = content;
+          this.logger.log(
+            `workflow stage completed stage=search searchResult=${this.truncateText(content, 400)}`,
+          );
+          break;
+        }
+        case "supervisor": {
+          const prompt = this.buildSupervisorPrompt(state);
+          this.logger.log(`supervisor prompt:\n${prompt}`);
+          const content = await this.runAgentNode("supervisor", prompt);
+          state.supervisorResult = content;
+          this.logger.log(
+            `workflow stage completed stage=supervisor supervisorResult=${this.truncateText(content, 400)}`,
+          );
+          break;
+        }
+        default:
+          throw new Error(`未知阶段: ${stage}`);
+      }
+    }
 
-    graph = graph.addNode("search", async (state: WorkflowState) => {
-      this.logger.log(`开始阶段：搜索智能体，state: ${JSON.stringify(state)}`);
-      const content = await this.runTmdbSearch(state);
-      this.logger.log(`完成阶段：搜索智能体，state: ${JSON.stringify(state)}`);
-
-      return {
-        searchResult: content,
-      };
-    });
-
-    graph = graph.addNode("supervisor", async (state: WorkflowState) => {
-      this.logger.log(`开始阶段：监督智能体，state: ${JSON.stringify(state)}`);
-      const prompt = this.buildSupervisorPrompt(state);
-      this.logger.log(
-        `supervisor prompt: length=${prompt.length} preview=${this.truncateText(prompt, 120)}`,
-      );
-      const content = await this.runAgentNode(
-        "supervisor",
-        prompt,
-        this.getFallbackForStage("supervisor"),
-      );
-      this.logger.log(
-        `完成阶段：监督智能体, resultLength=${(content || "").length} preview=${this.truncateText(content, 120)}`,
-      );
-
-      return {
-        supervisorResult: content,
-      };
-    });
-
-    graph = graph.addEdge(START, "parsePreferences");
-    graph = graph.addEdge("parsePreferences", "search");
-    graph = graph.addEdge("search", "supervisor");
-    graph = graph.addEdge("supervisor", END);
-
-    this.logger.log(`工作流执行顺序: ${stageOrder.join(" -> ")}`);
-
-    const compiledGraph = graph.compile();
-    const result = await compiledGraph.invoke(initialState);
     return {
-      preferences: result.preferences || "",
-      searchResult: result.searchResult || "",
-      supervisorResult: result.supervisorResult || "",
+      preferences: state.preferences || "",
+      searchResult: state.searchResult || "",
+      supervisorResult: state.supervisorResult || "",
     };
   }
 
-  private async runAgentNode(
-    stage: StageName,
-    prompt: string,
-    fallback: string,
+  private async planWorkflowStages(
+    context: WorkflowContext,
   ) {
     const model = this.modelProvider.getModel();
+    return this.workflowPlanner.plan(
+      {
+        message: context.message,
+        conversationHistory: context.conversationHistory,
+      },
+      model,
+    );
+  }
+
+  private async runAgentNode(stage: StageName, prompt: string) {
+    const model = this.modelProvider.getModel();
     if (!model) {
-      this.logger.warn(`模型未配置，阶段 ${stage} 使用兜底结果。`);
-      return fallback;
+      throw new Error(`阶段 ${stage} 失败：模型未配置`);
     }
 
-    this.logger.log(
-      `runAgentNode start: stage=${stage} promptLength=${prompt.length}`,
-    );
+    this.logger.log(`runAgentNode start stage=${stage} prompt=\n${prompt}`);
 
-    return this.runWithRetry(
-      stage,
-      async () => {
+    return this.runWithRetry(stage, async () => {
+      try {
         const response = await model.invoke([
           ["system", this.buildStageInstruction(stage)],
           ["user", this.truncateText(prompt, MAX_PROMPT_TEXT_LENGTH)],
         ]);
         const text = this.extractText(response.content);
         this.logger.log(
-          `runAgentNode response: stage=${stage} responseLength=${text.length} preview=${this.truncateText(text, 200)}`,
+          `runAgentNode response stage=${stage} content=${this.truncateText(text, 400)}`,
         );
         return text;
-      },
-      fallback,
-    );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`runAgentNode failed stage=${stage} error=${message}`, error);
+        throw error;
+      }
+    });
   }
 
   private async runTmdbSearch(state: WorkflowState) {
     if (!this.tmdbProvider.isEnabled()) {
-      this.logger.warn("TMDB 未配置，搜索阶段使用兜底结果。");
-      return this.getFallbackForStage("search");
+      throw new Error("TMDB 未配置，无法执行搜索阶段");
     }
 
     const request = this.buildTmdbQuery(state);
-    this.logger.log(
-      `runTmdbSearch start: queryLength=${request.query?.length ?? 0}`,
-    );
+    this.logger.log(`runTmdbSearch start query=${request.query ?? ""}`);
 
     const validationError = await this.validateTmdbQueryParams(
       request.params ?? {},
     );
     if (validationError) {
-      this.logger.warn(
-        `TMDB query params validation failed before search: ${validationError}`,
-      );
-      return this.getFallbackForStage("search");
+      throw new Error(`TMDB 查询参数校验失败: ${validationError}`);
     }
 
-    return this.runWithRetry(
-      "search",
-      async () => {
+    return this.runWithRetry("search", async () => {
+      try {
         const response = await this.tmdbProvider.search(request.params ?? {}, {
           max_results: 4,
         });
 
         const summary = this.buildStructuredSearchSummary(response);
-        this.logger.log(
-          `runTmdbSearch success summary ->> ${JSON.stringify(summary)}`
-        );
+        this.logger.log(`runTmdbSearch success summary=${summary}`);
         return summary;
-      },
-      this.getFallbackForStage("search"),
-    );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`runTmdbSearch failed error=${message}`, error);
+        throw error;
+      }
+    });
   }
 
   private buildStructuredSearchSummary(response: TmdbSearchResponse) {
@@ -530,38 +492,6 @@ export class MovieService {
     return `${normalized.slice(0, maxLength)}...`;
   }
 
-  private findMissingFields(
-    results: Array<{
-      title: string;
-      url: string;
-      release_date: string;
-      rating?: number;
-      summary: string;
-    }>,
-  ) {
-    const missing = new Set<string>();
-
-    if (results.length === 0) {
-      return ["results"];
-    }
-
-    results.forEach((item, index) => {
-      if (!item.title) {
-        missing.add(`results[${index}].title`);
-      }
-      if (!item.url) {
-        missing.add(`results[${index}].url`);
-      }
-      if (!item.release_date) {
-        missing.add(`results[${index}].release_date`);
-      }
-      if (!item.summary) {
-        missing.add(`results[${index}].summary`);
-      }
-    });
-
-    return Array.from(missing);
-  }
 
   private buildTmdbQuery(state: WorkflowState): TmdbSearchRequest {
     const preferences = this.normalizePreferences(state.preferences);
@@ -598,20 +528,15 @@ export class MovieService {
       `用户输入: ${promptState.message}`,
       promptState.imageUrl ? `图片链接: ${promptState.imageUrl}` : "",
       promptState.imageData ? "已上传图片，请分析其情绪和风格。" : "",
+      promptState.conversationHistory
+        ? `历史对话上下文:\n${promptState.conversationHistory}`
+        : "",
       `已知偏好: ${existingPreferences}`,
       '输出示例: {"genre":"科幻","mood":"紧张刺激","actors":"汤姆·克鲁斯","length":"2小时以内","rating":"8分以上","language":"英文","scene":"适合晚上看","theme":"成长"}',
     ];
     return lines.filter(Boolean).join("\n");
   }
 
-  private buildSearchPrompt(state: WorkflowState) {
-    const promptState = this.buildPromptState(state);
-    return [
-      "你是搜索智能体，根据提取的偏好推荐 3-4 部电影。",
-      `用户偏好: ${promptState.preferences}`,
-      "推荐结果应包含名称、类型、发行年份、评分、理由和为什么适合该偏好。输出 JSON。",
-    ].join("\n");
-  }
 
   private buildSupervisorPrompt(state: WorkflowState) {
     const promptState = this.buildPromptState(state);
@@ -620,6 +545,9 @@ export class MovieService {
       `用户输入: ${promptState.message}`,
       promptState.imageUrl ? `图片链接: ${promptState.imageUrl}` : "",
       promptState.imageData ? "附带已上传图片分析。" : "",
+      promptState.conversationHistory
+        ? `历史对话上下文:\n${promptState.conversationHistory}`
+        : "",
       `用户偏好: ${promptState.preferences}`,
       `搜索结果: ${promptState.searchResult}`,
       "输出 JSON，包含 recommendations、explanation、preferences。仅在无法生成推荐时，使用 fallback_reason 说明原因。",
@@ -638,7 +566,7 @@ export class MovieService {
       case "search":
         return [
           "你是搜索智能体。",
-          "基于用户偏好推荐 3-4 部电影。",
+          "基于用户偏好推荐电影。",
           "输出 JSON，不要包含多余文本。",
         ].join("\n");
       case "supervisor":
@@ -652,51 +580,9 @@ export class MovieService {
     }
   }
 
-  private getFallbackForStage(stage: StageName) {
-    switch (stage) {
-      case "parsePreferences":
-        return this.stringifyPreferences({
-          genre: "剧情",
-          mood: "温暖",
-          actors: "",
-          length: "2小时以内",
-          rating: "7分以上",
-        });
-      case "search":
-        return JSON.stringify({
-          query: "默认电影推荐",
-          results: [
-            {
-              title: "小欢喜",
-              url: "",
-              release_date: "2019",
-              rating: 8.2,
-              summary: "温暖治愈，适合想要轻松剧情的用户。",
-              truncated: false,
-            },
-            {
-              title: "哪吒之魔童降世",
-              url: "",
-              release_date: "2019",
-              rating: 7.8,
-              summary: "热血奇幻，适合喜欢动作和视觉效果的用户。",
-              truncated: false,
-            },
-          ],
-          missing_fields: [],
-          request_id: "fallback",
-        });
-      case "supervisor":
-        return JSON.stringify({});
-      default:
-        return "无法获取推荐。";
-    }
-  }
-
   private async runWithRetry<T>(
     stage: StageName,
     operation: () => Promise<T>,
-    fallback: T,
   ): Promise<T> {
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
@@ -705,20 +591,20 @@ export class MovieService {
         this.logger.log(`Stage ${stage} attempt ${attempt} succeeded`);
         return result;
       } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
         this.logger.error(
-          `Stage ${stage} attempt ${attempt}/${MAX_RETRIES} failed: ${JSON.stringify(error)}`,
+          `Stage ${stage} attempt ${attempt}/${MAX_RETRIES} failed: ${message}`,
+          error,
         );
-        this.logger.error((error as Error).stack);
         if (attempt === MAX_RETRIES) break;
         await new Promise((resolve) =>
           setTimeout(resolve, RETRY_BACKOFF_MS * attempt),
         );
       }
     }
-    this.logger.warn(
-      `Stage ${stage} failed after ${MAX_RETRIES} attempts, using fallback`,
-    );
-    return fallback;
+    const finalError = new Error(`Stage ${stage} failed after ${MAX_RETRIES} attempts`);
+    this.logger.error(`Stage ${stage} exhausted retries`, finalError);
+    throw finalError;
   }
 
   private truncateText(
@@ -746,9 +632,29 @@ export class MovieService {
         state.searchResult,
         MAX_SEARCH_RESULT_LENGTH,
       ),
+      conversationHistory: this.truncateText(
+        state.conversationHistory,
+        MAX_PROMPT_TEXT_LENGTH,
+      ),
       imageUrl: state.imageUrl,
       imageData: this.sanitizeImageData(state.imageData),
     };
+  }
+
+  private buildConversationHistory(
+    history?: ConversationHistoryItem[],
+  ): string {
+    if (!history || history.length === 0) {
+      return "";
+    }
+
+    return history
+      .filter((item) => !!item?.content)
+      .map((item) => {
+        const roleLabel = item.role === "user" ? "用户" : "助手";
+        return `${roleLabel}: ${this.normalizeText(item.content)}`;
+      })
+      .join("\n");
   }
 
   private extractText(content: unknown): string {
@@ -763,16 +669,23 @@ export class MovieService {
     return String(content ?? "");
   }
 
-  private buildFallbackResponse(
+  private buildErrorResponse(
     payload: RecommendPayload,
     preferences: MoviePreference,
+    error: { stage: string; message: string; details?: string },
   ) {
     return {
-      type: "fallback",
+      type: "error",
       data: {
         preferences,
-        message: "推荐失败，模型当前不可用，请稍后重试。",
-        fallback_reason: "模型不可用或请求失败。",
+        message: `推荐流程执行失败：${error.message}`,
+        fallback_reason: error.message,
+        error: {
+          stage: error.stage,
+          message: error.message,
+          details: error.details ?? "无额外详情",
+          requestMessage: payload.message,
+        },
       },
     };
   }
@@ -781,7 +694,6 @@ export class MovieService {
     state: WorkflowState,
   ): Promise<string> {
     const basePrompt = this.buildParsePrompt(state);
-    const fallback = this.getFallbackForStage("parsePreferences");
     let lastError = "";
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -790,11 +702,7 @@ export class MovieService {
           ? basePrompt
           : `${basePrompt}\n\n上一次生成的数据结构校验失败：${lastError}\n请严格按照要求重新生成一个只包含 genre, mood, actors, length, rating, language, scene, theme 的 JSON 对象，并确保字段值可被成功映射到 TMDB 查询参数。`;
 
-      const content = await this.runAgentNode(
-        "parsePreferences",
-        prompt,
-        fallback,
-      );
+      const content = await this.runAgentNode("parsePreferences", prompt);
       this.logger.log(
         `[parsePreferences] attempt ${attempt} rawContentLength=${content.length} content=${content}`,
       );
@@ -831,7 +739,7 @@ export class MovieService {
       );
     }
 
-    return fallback;
+    throw new Error(`偏好提取失败: ${lastError || "未能生成合法偏好"}`);
   }
 
   private parseStructuredPreferences(

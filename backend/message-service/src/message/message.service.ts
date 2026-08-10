@@ -104,7 +104,7 @@ export class MessageService implements OnModuleInit {
     }
 
     try {
-      const response = await this.authGrpcClient.validateToken(token);
+      const response = await this.authGrpcClient.validateToken(token) ;
       return response;
     } catch (error) {
       this.logger.error('validateAuthorization error', error as Error);

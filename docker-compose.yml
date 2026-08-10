@@ -54,7 +54,7 @@ services:
       - "3003:3003"
       - "50052:50052"
     env_file:
-      - ./backend/message-service/.env
+      - ./backend/.env
     environment:
       PORT: 3003
       MESSAGE_GRPC_PORT: 50052

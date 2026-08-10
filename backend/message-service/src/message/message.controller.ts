@@ -21,7 +21,7 @@ export class MessageController {
   @Get('conversations')
   async listConversations(@Headers('authorization') authorization?: string) {
     const authResult = await this.messageService.validateAuthorization(authorization);
-    if (!authResult.ok) {
+    if (!authResult.ok || !authResult.user) {
       throw new UnauthorizedException('未授权，请先登录');
     }
     return this.messageService.listConversations(authResult.user.id);
@@ -33,7 +33,7 @@ export class MessageController {
     @Headers('authorization') authorization?: string,
   ) {
     const authResult = await this.messageService.validateAuthorization(authorization);
-    if (!authResult.ok) {
+    if (!authResult.ok || !authResult.user) {
       throw new UnauthorizedException('未授权，请先登录');
     }
     return this.messageService.getConversation(id, authResult.user.id);

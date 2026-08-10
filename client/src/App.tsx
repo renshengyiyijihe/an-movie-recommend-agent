@@ -163,8 +163,8 @@ function App() {
     return (
       <div className="recommendation-card" key={`${title}-${index}`}>
         <div className="recommendation-card__media">
-          {item.poster_url ? (
-            <RecommendationPoster src={item.poster_url} alt={title} />
+          {posterUrl ? (
+            <RecommendationPoster src={posterUrl} alt={title} />
           ) : (
             <div className="recommendation-card__poster recommendation-card__poster--placeholder" aria-label="海报加载中">
               <span className="recommendation-card__spinner" />

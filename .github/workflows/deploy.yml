@@ -121,6 +121,7 @@ jobs:
             TMDB_API_URL=${{ secrets.TMDB_API_URL }}
             LANGSMITH_API_KEY=${{ secrets.LANGSMITH_API_KEY }}
             LANGSMITH_TRACING=true
+            LANGSMITH_PROJECT="an-movie"
             EOF
 
             export DOCKER_BUILDKIT=1

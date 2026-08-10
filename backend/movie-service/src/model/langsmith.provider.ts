@@ -47,12 +47,22 @@ export class LangSmithProvider {
     }
 
     try {
+      const normalizedOutput = {
+        ...(output ?? {}),
+        usage: this.normalizeUsage((output as Record<string, unknown> | undefined)?.usage),
+      };
+
+      const normalizedExtra = {
+        ...(extra ?? {}),
+        usage: this.normalizeUsage((extra as Record<string, unknown> | undefined)?.usage),
+      };
+
       await client.createRun({
         name,
         inputs: input,
-        outputs: output,
+        outputs: normalizedOutput,
         run_type: runType,
-        extra,
+        extra: normalizedExtra,
       });
 
       this.logger.log(`LangSmith run created: ${name} (type=${runType})`);
@@ -61,5 +71,19 @@ export class LangSmithProvider {
       this.logger.warn(`LangSmith run creation failed for ${name}: ${(error as Error).message}`);
       return false;
     }
+  }
+
+  private normalizeUsage(usage: unknown): Record<string, unknown> | undefined {
+    if (!usage || typeof usage !== 'object' || Array.isArray(usage)) {
+      return undefined;
+    }
+
+    const usageRecord = usage as Record<string, unknown>;
+    return {
+      prompt_tokens: Number(usageRecord.prompt_tokens ?? usageRecord.input_tokens ?? 0),
+      completion_tokens: Number(usageRecord.completion_tokens ?? usageRecord.output_tokens ?? 0),
+      total_tokens: Number(usageRecord.total_tokens ?? 0),
+      prompt_tokens_details: usageRecord.prompt_tokens_details ?? null,
+    };
   }
 }

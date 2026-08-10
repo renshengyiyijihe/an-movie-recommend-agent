@@ -66,7 +66,7 @@ function RecommendationPoster({ src, alt }: { src?: string; alt: string }) {
       <img
         src={src}
         alt={alt}
-        className={`recommendation-card__poster${loaded ? '' : ' recommendation-card__poster--hidden'}`}
+        className={`recommendation-card__poster ${loaded ? '' : ' recommendation-card__poster--hidden'}`}
         loading="lazy"
         onLoad={() => setLoaded(true)}
         onError={() => setFailed(true)}

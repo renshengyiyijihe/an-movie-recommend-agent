@@ -52,6 +52,15 @@ class OpenAIModelWrapper {
 
     Logger.log(`Model response text: ${JSON.stringify(text)}`);
 
+    const usage = anyResp?.usage;
+    const tokenUsage = usage
+      ? {
+          prompt_tokens: usage.prompt_tokens ?? 0,
+          completion_tokens: usage.completion_tokens ?? 0,
+          total_tokens: usage.total_tokens ?? 0,
+          prompt_tokens_details: usage.prompt_tokens_details ?? null,
+        }
+      : null;
 
     if (this.langsmithProvider?.isEnabled()) {
       await this.langsmithProvider.createRun(
@@ -63,11 +72,13 @@ class OpenAIModelWrapper {
         {
           response: String(text),
           raw_response: JSON.stringify(anyResp),
+          usage: tokenUsage,
         },
         {
           llm: true,
           model: this.modelName,
           run_stage: 'chat_completion',
+          usage: tokenUsage,
         },
         'llm',
       );

@@ -143,7 +143,7 @@ export default function HomePage() {
     const genres = getRecommendationGenres(item);
     const posterUrl = getTmdbImage(item.poster_url || item.poster_path);
 
-    return (
+    const cardInner = (
       <div className={styles.recommendationCard} key={`${title}-${index}`}>
         <div className={styles.recommendationCardMedia}>
           <RecommendationPoster src={posterUrl} alt={title} />
@@ -158,7 +158,7 @@ export default function HomePage() {
               <a href={item.tmdb_url} target="_blank" rel="noreferrer" className={styles.recommendationCardLink}>查看详情</a>
             ) : null}
           </div>
-          <p className={styles.recommendationCardReason} data-tooltip={reason} aria-label={reason}>{reason}</p>
+          <p title={reason} className={styles.recommendationCardReason} data-tooltip={reason} aria-label={reason}>{reason}</p>
           <div className={styles.recommendationCardMetaRow} aria-label="影片信息">
             <span>上映: {releaseDate}</span>
             <span>评分: {rating}</span>
@@ -179,6 +179,16 @@ export default function HomePage() {
         </div>
       </div>
     );
+
+    if (item.tmdb_url) {
+      return (
+        <a href={item.tmdb_url} target="_blank" rel="noreferrer" className={styles.recommendationCardLinkWrap} key={`${title}-${index}`}>
+          {cardInner}
+        </a>
+      );
+    }
+
+    return cardInner;
   }
 
   return (

@@ -190,38 +190,48 @@
 }
 
 .recommendationList {
-  display: grid;
+  display: flex;
   gap: 18px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
 }
 
 .recommendationCard {
-  border-radius: 24px;
+  border-radius: 16px;
   overflow: hidden;
   background: #ffffff;
   box-shadow: 0 14px 38px rgba(15, 23, 42, 0.08);
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  max-width: 320px;
+  width: 260px;
 }
 
-.recommendationCard__media {
+.recommendationCardMedia {
   overflow: hidden;
   border-bottom: 1px solid #e5e7eb;
+  height: 360px;
 }
 
-.recommendationCard__body {
-  padding: 18px;
+.recommendationCardBody {
+  padding: 14px 16px;
   display: grid;
-  gap: 14px;
+  gap: 12px;
+  flex: 1 1 auto;
 }
 
-.recommendationCard__header {
+.recommendationCardHeader {
   display: flex;
   justify-content: space-between;
   gap: 12px;
   align-items: flex-start;
 }
-
-.recommendationCard__subtitle,
-.recommendationCard__reason,
-.recommendationCard__metaRow {
+.recommendationCardSubtitle,
+.recommendationCardReason,
+.recommendationCardMetaRow {
   margin: 0;
 }
 
@@ -279,7 +289,6 @@
   gap: 8px;
   padding-bottom: 2px;
 }
-
 .recommendationCardChip,
 .recommendationCardMetaRow span {
   display: inline-flex;
@@ -291,14 +300,13 @@
   color: #334155;
   font-size: 0.78rem;
 }
-
-.recommendationCard__chipRow {
+.recommendationCardChipRow {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.recommendationCard__chip {
+.recommendationCardChip {
   display: inline-flex;
   align-items: center;
   padding: 6px 12px;
@@ -307,8 +315,23 @@
   color: #1f2937;
 }
 
-.recommendationCard__chip--label {
+.recommendationCardChipLabel {
   font-weight: 700;
+}
+
+.recommendationCardLinkWrap {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+}
+
+.recommendationList::-webkit-scrollbar {
+  height: 8px;
+}
+
+.recommendationList::-webkit-scrollbar-thumb {
+  background: rgba(107, 114, 128, 0.3);
+  border-radius: 4px;
 }
 
 .inputArea {
@@ -376,12 +399,13 @@
   background: #ede9fe;
   color: #1f1f23;
   align-self: flex-end;
-  max-width: 80%;
+  max-width: 60%;
 }
 
 .assistantMessage {
   background: #f0f4f8;
   color: #1f1f23;
+  max-width: 60%;
 }
 
 .assistantErrorMessage {
@@ -399,7 +423,7 @@
 .loadingDots::after,
 .loadingDots::before,
 .loadingDots span {
-  content: '';
+  content: "";
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -416,7 +440,9 @@
 }
 
 @keyframes loadingDot {
-  0%, 80%, 100% {
+  0%,
+  80%,
+  100% {
     opacity: 0.2;
     transform: translateY(0);
   }

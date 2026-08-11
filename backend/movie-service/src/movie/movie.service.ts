@@ -68,7 +68,7 @@ interface TmdbSearchResponse {
   request_id?: string;
 }
 
-type IntentType = "movie_recommendation" | "out_of_scope";
+type IntentType = "in_scope" | "out_of_scope";
 
 const MAX_PROMPT_TEXT_LENGTH = 2500;
 const MAX_SEARCH_RESULT_LENGTH = 4000;
@@ -121,7 +121,7 @@ export class MovieService {
       'intent_classification',
       intent,
     );
-    if (intent !== "movie_recommendation") {
+    if (intent !== "in_scope") {
       this.logger.warn(
         `Non-movie request rejected: ${this.truncateText(payload.message, 200)}`,
       );
@@ -192,7 +192,7 @@ export class MovieService {
           },
           {
             stage: "workflow",
-            langchain_workflow: "movie_recommendation",
+            langchain_workflow: "in_scope",
           },
         );
       }
@@ -335,14 +335,14 @@ export class MovieService {
       const response = await model.invoke([
         [
           "system",
-          "你是一个意图分类器。请判断用户问题是否与“电影推荐”相关。只输出一个词：movie_recommendation 或 out_of_scope。",
+          "你是一个意图分类器。请判断用户问题是否与“电影”或者“演员”相关。只输出一个词：in_scope 或 out_of_scope。",
         ],
         ["user", `用户输入: ${normalized}`],
       ]);
 
       const text = this.extractText(response.content).trim().toLowerCase();
-      const intent = text.includes("movie_recommendation")
-        ? "movie_recommendation"
+      const intent = text.includes("in_scope")
+        ? "in_scope"
         : "out_of_scope";
       this.logger.log(
         `classifyIntent finished: intent=${intent}, rawResponse=${this.truncateText(text, 200)}`,

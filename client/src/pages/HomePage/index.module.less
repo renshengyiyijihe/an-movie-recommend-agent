@@ -116,8 +116,9 @@
 }
 
 .messages {
-  display: grid;
-  gap: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -155,31 +156,37 @@
 }
 
 .message {
-  padding: 18px;
-  border-radius: 22px;
+  padding: 10px 14px;
+  border-radius: 14px;
   background: #f8fafc;
-  display: grid;
-  gap: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .message.user {
-  background: #eef2ff;
-  justify-self: end;
+  background: #ede9fe;
+  color: #1f1f23;
+  align-self: flex-end;
+  max-width: 80%;
 }
 
 .message.assistant,
 .message.assistant-error {
-  background: #ffffff;
+  background: #f0f4f8;
+  color: #1f1f23;
 }
 
 .messageRole {
-  font-size: 0.85rem;
+  font-size: 12px;
   color: #4b5563;
   font-weight: 700;
+  line-height: 1.2;
 }
 
 .messageText {
-  line-height: 1.8;
+  line-height: 1.4;
+  font-size: 14px;
 }
 
 .recommendationList {
@@ -368,7 +375,8 @@
 .userMessage {
   background: #ede9fe;
   color: #1f1f23;
-  justify-self: flex-end;
+  align-self: flex-end;
+  max-width: 80%;
 }
 
 .assistantMessage {

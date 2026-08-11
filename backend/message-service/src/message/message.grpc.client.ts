@@ -30,7 +30,7 @@ export class MessageGrpcClient implements OnModuleInit {
   private readonly logger = new Logger(MessageGrpcClient.name);
 
   onModuleInit() {
-    const protoPath = join(__dirname, '..', '..', '..', 'proto', 'message.proto');
+    const protoPath = join(__dirname, '..', '..', 'proto', 'message.proto');
     const packageDef = loadSync(protoPath, { keepCase: true, longs: String, enums: String, defaults: true, oneofs: true });
     const grpcObject = loadPackageDefinition(packageDef) as any;
     const MessageService = grpcObject.message.Message;

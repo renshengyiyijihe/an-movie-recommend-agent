@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
-import { request } from '../api';
-import useAuth from '../store/auth';
-import AuthModal from '../components/AuthModal';
-import AppLogo from '../components/AppLogo';
-import ConfigModal from '../components/ConfigModal';
-import RecommendationPoster from '../components/RecommendationPoster';
-import TopBar from '../components/TopBar';
-import { convertConversationToMessages, convertResultToMessages, getRecommendationGenres, renderMessageText } from '../utils/chatUtils';
-import { getTmdbImage } from '../utils/tmdb';
-import type { ChatMessage, ConversationDetail, ConversationSummary, RecommendationItem } from '../types';
+import { request } from '../../api';
+import useAuth from '../../store/auth';
+import AuthModal from '../../components/AuthModal';
+import AppLogo from '../../components/AppLogo';
+import ConfigModal from '../../components/ConfigModal';
+import RecommendationPoster from '../../components/RecommendationPoster';
+import TopBar from '../../components/TopBar';
+import styles from './index.module.less';
+import { convertConversationToMessages, convertResultToMessages, getRecommendationGenres, renderMessageText } from '../../utils/chatUtils';
+import { getTmdbImage } from '../../utils/tmdb';
+import type { ChatMessage, ConversationDetail, ConversationSummary, RecommendationItem } from '../../types';
 
 const quickPrompts = ['想看一部科幻大片，时长2小时以内', '想要轻松爱情片，适合晚上放松', '推荐几部张力强、节奏快的动作片'];
 
@@ -143,22 +144,22 @@ export default function HomePage() {
     const posterUrl = getTmdbImage(item.poster_url || item.poster_path);
 
     return (
-      <div className="recommendation-card" key={`${title}-${index}`}>
-        <div className="recommendation-card__media">
+      <div className={styles.recommendationCard} key={`${title}-${index}`}>
+        <div className={styles.recommendationCardMedia}>
           <RecommendationPoster src={posterUrl} alt={title} />
         </div>
-        <div className="recommendation-card__body">
-          <div className="recommendation-card__header">
+        <div className={styles.recommendationCardBody}>
+          <div className={styles.recommendationCardHeader}>
             <div>
               <h4>{title}</h4>
-              {subtitle ? <p className="recommendation-card__subtitle">{subtitle}</p> : null}
+              {subtitle ? <p className={styles.recommendationCardSubtitle}>{subtitle}</p> : null}
             </div>
             {item.tmdb_url ? (
-              <a href={item.tmdb_url} target="_blank" rel="noreferrer" className="recommendation-card__link">查看详情</a>
+              <a href={item.tmdb_url} target="_blank" rel="noreferrer" className={styles.recommendationCardLink}>查看详情</a>
             ) : null}
           </div>
-          <p className="recommendation-card__reason" data-tooltip={reason} aria-label={reason}>{reason}</p>
-          <div className="recommendation-card__meta-row" aria-label="影片信息">
+          <p className={styles.recommendationCardReason} data-tooltip={reason} aria-label={reason}>{reason}</p>
+          <div className={styles.recommendationCardMetaRow} aria-label="影片信息">
             <span>上映: {releaseDate}</span>
             <span>评分: {rating}</span>
             <span>评分人数: {voteCount}</span>
@@ -168,10 +169,10 @@ export default function HomePage() {
             {item.video ? <span>含视频</span> : null}
           </div>
           {genres.length > 0 ? (
-            <div className="recommendation-card__chip-row" aria-label="影片类型">
-              <span className="recommendation-card__chip recommendation-card__chip--label">类型</span>
+            <div className={styles.recommendationCardChipRow} aria-label="影片类型">
+              <span className={styles.recommendationCardChipLabel}>类型</span>
               {genres.map((genre) => (
-                <span className="recommendation-card__chip" key={`${title}-${genre}`}>{genre}</span>
+                <span className={styles.recommendationCardChip} key={`${title}-${genre}`}>{genre}</span>
               ))}
             </div>
           ) : null}
@@ -181,18 +182,14 @@ export default function HomePage() {
   }
 
   return (
-    <div className="app-shell">
-      <TopBar
-        onOpenConfig={openConfigModal}
-        onOpenLogin={() => setShowLoginModal(true)}
-        onOpenRegister={() => setShowRegisterModal(true)}
-      />
+    <div className={styles.appShell}>
+      <TopBar onOpenConfig={openConfigModal} onOpenLogin={() => setShowLoginModal(true)} onOpenRegister={() => setShowRegisterModal(true)} />
 
-      <section className="chat-panel">
+      <section className={styles.chatPanel}>
         <ConfigModal
           visible={showConfigModal}
           onClose={() => setShowConfigModal(false)}
-          onSelectConversation={(id) => void fetchConversationDetail(id)}
+          onSelectConversation={(id: string) => void fetchConversationDetail(id)}
           conversations={conversationList}
           selectedConversation={selectedConversation}
           loading={historyLoading}
@@ -201,35 +198,46 @@ export default function HomePage() {
         <AuthModal visible={showLoginModal} mode="login" onClose={() => setShowLoginModal(false)} onSwitchMode={() => { setShowLoginModal(false); setShowRegisterModal(true); }} />
         <AuthModal visible={showRegisterModal} mode="register" onClose={() => setShowRegisterModal(false)} onSwitchMode={() => { setShowRegisterModal(false); setShowLoginModal(true); }} />
 
-        <header className="hero-header">
-          <div className="title-row">
+        <header className={styles.heroHeader}>
+          <div className={styles.titleRow}>
             <div>
               <h1>为你挑选你喜欢的电影</h1>
               <p>说出你的口味、风格和观影需求，马上帮你推荐合适影片。</p>
             </div>
           </div>
-          <div className="quick-prompts">
+          <div className={styles.quickPrompts}>
             {quickPrompts.map((prompt) => (
-              <button key={prompt} type="button" className="chip-button" onClick={() => setMessage(prompt)}>{prompt}</button>
+              <button key={prompt} type="button" className={styles.chipButton} onClick={() => setMessage(prompt)}>
+                {prompt}
+              </button>
             ))}
           </div>
         </header>
 
-        <div className="messages">
+        <div className={styles.messages}>
           {messages.length === 0 ? (
-            <div className="empty-state">
-              <AppLogo className="empty-state-icon" size={44} />
+            <div className={styles.emptyState}>
+              <AppLogo className={styles.emptyStateIcon} size={44} />
               <h3>从一句简单的话开始</h3>
               <p>比如“想看一部剧情片，时长2小时以内，最好有温情结局”。</p>
             </div>
           ) : (
             <>
               {messages.map((item, index) => (
-                <div key={`${item.role}-${index}`} className={`message ${item.role === 'user' ? 'user' : item.role === 'assistant-error' ? 'assistant-error' : 'assistant'}`}>
-                  <div className="message-role">{item.role === 'user' ? '你' : item.role === 'assistant-error' ? '智能体（异常）' : '智能体'}</div>
-                  <div className="message-text">
+                <div
+                  key={`${item.role}-${index}`}
+                  className={`${styles.message} ${
+                    item.role === 'user'
+                      ? styles.userMessage
+                      : item.role === 'assistant-error'
+                      ? styles.assistantErrorMessage
+                      : styles.assistantMessage
+                  }`}
+                >
+                  <div className={styles.messageRole}>{item.role === 'user' ? '你' : item.role === 'assistant-error' ? '智能体（异常）' : '智能体'}</div>
+                  <div className={styles.messageText}>
                     {item.type === 'recommendation' ? (
-                      <div className="recommendation-list">
+                      <div className={styles.recommendationList}>
                         {(() => {
                           try {
                             const parsed = JSON.parse(item.text) as RecommendationItem[];
@@ -242,17 +250,19 @@ export default function HomePage() {
                         })()}
                       </div>
                     ) : (
-                      renderMessageText(item.text).map((line, lineIndex) => (<p key={`${item.role}-${index}-${lineIndex}`}>{line}</p>))
+                      renderMessageText(item.text).map((line, lineIndex) => (
+                        <p key={`${item.role}-${index}-${lineIndex}`}>{line}</p>
+                      ))
                     )}
                   </div>
-                  {item.imagePreview ? <img src={item.imagePreview} alt="uploaded preview" className="message-image" /> : null}
+                  {item.imagePreview ? <img src={item.imagePreview} alt="uploaded preview" className={styles.messageImage} /> : null}
                 </div>
               ))}
               {loading ? (
-                <div className="message assistant loading">
-                  <div className="message-role">智能体</div>
-                  <div className="message-text">
-                    <div className="loading-dots" aria-label="智能体正在思考"></div>
+                <div className={`${styles.message} ${styles.assistantMessage}`}>
+                  <div className={styles.messageRole}>智能体</div>
+                  <div className={styles.messageText}>
+                    <div className={styles.loadingDots} aria-label="智能体正在思考" />
                   </div>
                 </div>
               ) : null}
@@ -260,8 +270,8 @@ export default function HomePage() {
           )}
         </div>
 
-        <div className="input-area">
-          <div className="input-card">
+        <div className={styles.inputArea}>
+          <div className={styles.inputCard}>
             <textarea
               value={message}
               onChange={(event) => setMessage(event.target.value)}
@@ -273,19 +283,23 @@ export default function HomePage() {
               }}
               placeholder="输入你的观影偏好、类型或心情，比如：想看科幻片，2小时以内，有精彩视觉效果。"
             />
-            <div className="input-actions">
-              <label className="file-input">
+            <div className={styles.inputActions}>
+              <label className={styles.fileInput}>
                 <span>📷 上传图片（可选）</span>
                 <input type="file" accept="image/png,image/jpeg" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
               </label>
-              <div className="action-buttons">
-                <button type="button" className="btn-new-conversation" onClick={startNewConversation}>新会话</button>
-                <button type="button" className="send-button" onClick={() => void sendMessage()} disabled={loading}>{loading ? '发送中...' : '发送'}</button>
+              <div className={styles.actionButtons}>
+                <button type="button" className={styles.btnNewConversation} onClick={startNewConversation}>
+                  新会话
+                </button>
+                <button type="button" className={styles.sendButton} onClick={() => void sendMessage()} disabled={loading}>
+                  {loading ? '发送中...' : '发送'}
+                </button>
               </div>
             </div>
-            {imagePreview ? <img src={imagePreview} alt="图片预览" className="preview-image" /> : null}
+            {imagePreview ? <img src={imagePreview} alt="图片预览" className={styles.previewImage} /> : null}
           </div>
-          {error ? <p className="error">{error}</p> : null}
+          {error ? <p className={styles.error}>{error}</p> : null}
         </div>
       </section>
     </div>

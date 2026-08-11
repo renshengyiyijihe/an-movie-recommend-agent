@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import useAuth from '../store/auth';
+import { useState, type FormEvent } from 'react';
+import useAuth from '../../store/auth';
+import styles from './index.module.less';
 
 interface Props {
   visible: boolean;
@@ -38,7 +39,7 @@ export default function AuthModal({ visible, mode, onClose, onSwitchMode }: Prop
     return '';
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError('');
 
@@ -73,13 +74,13 @@ export default function AuthModal({ visible, mode, onClose, onSwitchMode }: Prop
   }
 
   return (
-    <div className="modal-overlay">
-      <div className="modal">
-        <button className="modal-close" onClick={onClose}>×</button>
+    <div className={styles.modalOverlay}>
+      <div className={styles.modal}>
+        <button className={styles.modalClose} onClick={onClose} type="button">×</button>
         <h3>{mode === 'login' ? '登录' : '注册'}</h3>
-        <form onSubmit={handleSubmit} className="auth-form">
+        <form onSubmit={handleSubmit} className={styles.authForm}>
           {mode === 'register' ? (
-            <label>
+            <label className={styles.fieldLabel}>
               用户名
               <input
                 value={username}
@@ -91,10 +92,11 @@ export default function AuthModal({ visible, mode, onClose, onSwitchMode }: Prop
                 }}
                 placeholder="取一个好记的用户名"
               />
-              {usernameError ? <div className="field-error">{usernameError}</div> : null}
+              {usernameError ? <div className={styles.fieldError}>{usernameError}</div> : null}
             </label>
           ) : null}
-          <label>
+
+          <label className={styles.fieldLabel}>
             邮箱
             <input
               type="email"
@@ -111,9 +113,10 @@ export default function AuthModal({ visible, mode, onClose, onSwitchMode }: Prop
               onBlur={() => setEmailError(validateEmail(email))}
               placeholder="name@example.com"
             />
-            {emailError ? <div className="field-error">{emailError}</div> : null}
+            {emailError ? <div className={styles.fieldError}>{emailError}</div> : null}
           </label>
-          <label>
+
+          <label className={styles.fieldLabel}>
             密码
             <input
               type="password"
@@ -128,12 +131,18 @@ export default function AuthModal({ visible, mode, onClose, onSwitchMode }: Prop
               onBlur={() => setPasswordError(validatePassword(password))}
               placeholder="至少 6 位"
             />
-            {passwordError ? <div className="field-error">{passwordError}</div> : null}
+            {passwordError ? <div className={styles.fieldError}>{passwordError}</div> : null}
           </label>
-          {error ? <div className="auth-error">{error}</div> : null}
-          <div className="auth-actions">
-            <button type="submit" className="btn-primary" disabled={loading}>{loading ? '处理中...' : mode === 'login' ? '登录' : '注册'}</button>
-            <button type="button" className="btn-outline" onClick={onSwitchMode}>{mode === 'login' ? '去注册' : '去登录'}</button>
+
+          {error ? <div className={styles.authError}>{error}</div> : null}
+
+          <div className={styles.authActions}>
+            <button type="submit" className={styles.btnPrimary} disabled={loading}>
+              {loading ? '处理中...' : mode === 'login' ? '登录' : '注册'}
+            </button>
+            <button type="button" className={styles.btnOutline} onClick={onSwitchMode}>
+              {mode === 'login' ? '去注册' : '去登录'}
+            </button>
           </div>
         </form>
       </div>

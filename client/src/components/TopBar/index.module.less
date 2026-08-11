@@ -1,0 +1,90 @@
+.topBar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 24px;
+  background: rgba(255, 255, 255, 0.97);
+  border-bottom: 1px solid #e5e7eb;
+  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.06);
+}
+
+.topBarTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  color: #111827;
+  font-size: 1.05rem;
+}
+
+.topBarIcon {
+  display: block;
+  flex-shrink: 0;
+}
+
+.topBarActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.userPill {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #1e293b;
+}
+
+.userPillName {
+  font-weight: 700;
+}
+
+.btnSecondary,
+.btnOutline,
+.btnPrimary,
+.btnLogout {
+  border: none;
+  border-radius: 999px;
+  padding: 10px 16px;
+  cursor: pointer;
+  font-weight: 700;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.btnSecondary {
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+.btnSecondary:hover {
+  transform: translateY(-1px);
+  background: #e0e7ff;
+}
+
+.btnOutline {
+  background: transparent;
+  color: #4338ca;
+  box-shadow: inset 0 0 0 1px rgba(67, 56, 202, 0.25);
+}
+
+.btnPrimary {
+  background: #4338ca;
+  color: #ffffff;
+}
+
+.btnPrimary:hover,
+.btnLogout:hover {
+  transform: translateY(-1px);
+}
+
+.btnLogout {
+  background: #f8fafc;
+  color: #111827;
+}

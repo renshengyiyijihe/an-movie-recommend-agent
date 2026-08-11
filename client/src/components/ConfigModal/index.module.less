@@ -1,0 +1,242 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(15, 23, 42, 0.34);
+  padding: 18px;
+  z-index: 1200;
+}
+
+.modal {
+  width: min(720px, 96%);
+  max-width: 720px;
+  max-height: min(90vh, 760px);
+  background: #ffffff;
+  border-radius: 24px;
+  padding: 24px;
+  box-shadow: 0 30px 80px rgba(15, 23, 42, 0.18);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.modalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.modalTitle {
+  margin: 0;
+  font-size: 1.25rem;
+  line-height: 1.2;
+}
+
+.modalDescription {
+  margin: 6px 0 0;
+  color: #4b5563;
+  font-size: 0.95rem;
+}
+
+.closeButton {
+  border: none;
+  background: transparent;
+  font-size: 1.6rem;
+  line-height: 1;
+  color: #111827;
+  cursor: pointer;
+}
+
+.configGrid {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 18px;
+  min-height: 420px;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sidebarItem {
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: #f8fafc;
+  color: #111827;
+  padding: 14px 16px;
+  border-radius: 16px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.sidebarItem:hover,
+.sidebarItemActive {
+  background: #eef2ff;
+  box-shadow: 0 10px 20px rgba(59, 130, 246, 0.08);
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.historyList {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+  padding: 16px;
+  overflow: auto;
+  min-height: 320px;
+}
+
+.historyInfo {
+  display: none;
+}
+
+.historyItem {
+  width: 100%;
+  display: block;
+  text-align: left;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: #fff;
+  color: #111827;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.historyItem:hover,
+.historyItem:focus-visible {
+  border-color: #c7d2fe;
+  background: #eef2ff;
+}
+
+.historyItemMeta {
+  color: #64748b;
+  font-size: 0.85rem;
+  margin-top: 6px;
+}
+
+.noHistory,
+.historyInstructions,
+.detailLoading,
+.detailEmpty {
+  color: #475569;
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+
+.detailOverlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(15, 23, 42, 0.42);
+  padding: 18px;
+  z-index: 1300;
+}
+
+.detailModal {
+  width: min(720px, 96%);
+  max-width: 720px;
+  max-height: min(90vh, 760px);
+  background: #ffffff;
+  border-radius: 24px;
+  padding: 24px;
+  box-shadow: 0 30px 80px rgba(15, 23, 42, 0.18);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.detailHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+
+.detailSubtitle {
+  margin: 6px 0 0;
+  color: #6b7280;
+  font-size: 0.95rem;
+}
+
+.detailCloseButton {
+  border: none;
+  background: transparent;
+  font-size: 1.6rem;
+  line-height: 1;
+  color: #111827;
+  cursor: pointer;
+}
+
+.detailBody {
+  overflow: auto;
+  min-height: 180px;
+}
+
+.detailMeta {
+  margin-bottom: 16px;
+}
+
+.historyMessages {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.message {
+  padding: 14px 16px;
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.userMessage {
+  background: #eef2ff;
+}
+
+.assistantMessage {
+  background: #f8fafc;
+}
+
+.messageRole {
+  font-size: 0.85rem;
+  color: #475569;
+  font-weight: 600;
+}
+
+.messageText {
+  font-size: 0.95rem;
+  color: #111827;
+  line-height: 1.6;
+}
+
+@media (max-width: 760px) {
+  .configGrid,
+  .historyGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .overlay {
+    padding: 12px;
+  }
+
+  .modal {
+    max-height: min(95vh, 90vh);
+    padding: 18px;
+    width: min(100%, 96vw);
+  }
+}

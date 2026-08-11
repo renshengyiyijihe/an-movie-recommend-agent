@@ -1,0 +1,358 @@
+.appShell {
+  min-height: 100vh;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.chatPanel {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  box-shadow: none;
+  backdrop-filter: blur(18px);
+}
+
+.heroHeader {
+  display: grid;
+  gap: 18px;
+  margin-bottom: 24px;
+}
+
+.titleRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.quickPrompts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.chipButton,
+.btnNewConversation,
+.sendButton,
+.btnSecondary,
+.btnOutline,
+.btnPrimary,
+.btnLogout {
+  border: none;
+  border-radius: 999px;
+  padding: 10px 16px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.chipButton {
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+.chipButton:hover,
+.btnSecondary:hover,
+.btnPrimary:hover,
+.btnOutline:hover,
+.btnLogout:hover {
+  transform: translateY(-1px);
+}
+
+.messages {
+  display: grid;
+  gap: 16px;
+}
+
+.emptyState {
+  display: grid;
+  place-items: center;
+  gap: 12px;
+  padding: 64px 0;
+  text-align: center;
+}
+
+.emptyStateIcon {
+  display: block;
+}
+
+.message {
+  padding: 18px;
+  border-radius: 22px;
+  background: #f8fafc;
+  display: grid;
+  gap: 12px;
+}
+
+.message.user {
+  background: #eef2ff;
+  justify-self: end;
+}
+
+.message.assistant,
+.message.assistant-error {
+  background: #ffffff;
+}
+
+.messageRole {
+  font-size: 0.85rem;
+  color: #4b5563;
+  font-weight: 700;
+}
+
+.messageText {
+  line-height: 1.8;
+}
+
+.recommendationList {
+  display: grid;
+  gap: 18px;
+}
+
+.recommendationCard {
+  border-radius: 24px;
+  overflow: hidden;
+  background: #ffffff;
+  box-shadow: 0 14px 38px rgba(15, 23, 42, 0.08);
+}
+
+.recommendationCard__media {
+  overflow: hidden;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.recommendationCard__body {
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+}
+
+.recommendationCard__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.recommendationCard__subtitle,
+.recommendationCard__reason,
+.recommendationCard__metaRow {
+  margin: 0;
+}
+
+.recommendationCardLink {
+  color: #4f46e5;
+  text-decoration: none;
+  font-size: 0.86rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.recommendationCardReason {
+  margin: 0;
+  color: #334155;
+  line-height: 1.55;
+  max-height: 300px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: help;
+  position: relative;
+}
+
+.recommendationCardReason::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  max-width: min(280px, 80vw);
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.95);
+  color: #ffffff;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.2);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
+  z-index: 20;
+}
+
+.recommendationCardReason:hover::after {
+  opacity: 1;
+}
+
+.recommendationCardMetaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 2px;
+}
+
+.recommendationCardChip,
+.recommendationCardMetaRow span {
+  display: inline-flex;
+  align-items: center;
+  white-space: normal;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 0.78rem;
+}
+
+.recommendationCard__chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.recommendationCard__chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #1f2937;
+}
+
+.recommendationCard__chip--label {
+  font-weight: 700;
+}
+
+.inputArea {
+  margin-top: 24px;
+}
+
+.inputCard {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 24px;
+  padding: 22px;
+  display: grid;
+  gap: 18px;
+}
+
+.inputCard textarea {
+  width: 100%;
+  min-height: 140px;
+  border: 1px solid #d1d5db;
+  border-radius: 18px;
+  padding: 16px;
+  resize: vertical;
+  outline: none;
+}
+
+.inputActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.fileInput {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 999px;
+  background: #eef2ff;
+  cursor: pointer;
+}
+
+.fileInput input {
+  display: none;
+}
+
+.previewImage {
+  width: 100%;
+  border-radius: 18px;
+}
+
+.error {
+  margin: 0;
+  color: #b91c1c;
+}
+
+.messageImage {
+  width: 100%;
+  border-radius: 18px;
+  margin-top: 12px;
+}
+
+.userMessage {
+  background: #eef2ff;
+  justify-self: flex-end;
+}
+
+.assistantMessage {
+  background: #ffffff;
+}
+
+.assistantErrorMessage {
+  background: #fff1f2;
+  color: #991b1b;
+  border-color: #f8c1c5;
+}
+
+.loadingDots {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.loadingDots::after,
+.loadingDots::before,
+.loadingDots span {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #8b5cf6;
+  animation: loadingDot 1s infinite ease-in-out;
+}
+
+.loadingDots::before {
+  animation-delay: 0.2s;
+}
+
+.loadingDots span {
+  animation-delay: 0.4s;
+}
+
+@keyframes loadingDot {
+  0%, 80%, 100% {
+    opacity: 0.2;
+    transform: translateY(0);
+  }
+
+  40% {
+    opacity: 1;
+    transform: translateY(-4px);
+  }
+}
+
+@media (max-width: 760px) {
+  .chatPanel {
+    padding: 18px;
+  }
+
+  .titleRow,
+  .inputActions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

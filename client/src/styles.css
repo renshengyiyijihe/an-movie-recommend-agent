@@ -21,8 +21,7 @@ body {
   height: 100%;
   width: 100%;
   background:
-    radial-gradient(circle at top left, rgba(244, 114, 182, 0.16), transparent 28%),
-    linear-gradient(135deg, #fff7ed 0%, #fef3c7 45%, #eff6ff 100%);
+    linear-gradient(135deg, #ffffff 0%, #f9f7ff 100%);
   background-attachment: fixed;
   color: #111827;
 }

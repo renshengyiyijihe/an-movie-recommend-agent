@@ -34,7 +34,6 @@ export default function RecommendationPoster({ src, alt }: Props) {
         src={src}
         alt={alt}
         className={`${styles.poster} ${loaded ? '' : styles.hidden}`}
-        loading="lazy"
         onLoad={() => setLoaded(true)}
         onError={() => setFailed(true)}
       />

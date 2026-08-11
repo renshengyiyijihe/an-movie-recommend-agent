@@ -105,6 +105,11 @@ export class MovieService {
 
     const conversationId = await this.ensureConversation(payload, authResult);
 
+    const conversationHistoryItems = await this.loadConversationHistory(
+      conversationId,
+      authResult,
+    );
+
     await this.appendConversationMessage(
       conversationId,
       'user',
@@ -113,7 +118,7 @@ export class MovieService {
       payload.message,
     );
 
-    const intent = await this.classifyIntent(payload.message);
+    const intent = await this.classifyIntent(payload.message, conversationHistoryItems);
     await this.appendConversationMessage(
       conversationId,
       'assistant',
@@ -130,7 +135,7 @@ export class MovieService {
         data: {
           preferences,
           message:
-            "我主要负责电影推荐。如果你想问电影类型、演员、风格、时长或推荐电影，我可以继续帮你。",
+            "我主要负责电影推荐或介绍。如果你想问电影类型、演员、风格、时长或推荐电影，我可以继续帮你。",
         },
       };
     }
@@ -150,12 +155,12 @@ export class MovieService {
       preferences,
       imageUrl: payload.imageUrl,
       imageData: payload.imageData,
-      conversationHistory: this.buildConversationHistory(payload.history),
+      conversationHistory: this.buildConversationHistory(conversationHistoryItems),
     };
 
     try {
       this.logger.log(
-        `Starting movie recommendation workflow message=${this.truncateText(payload.message, 200)} history=${this.truncateText(this.buildConversationHistory(payload.history), 200)}`,
+        `Starting movie recommendation workflow message=${this.truncateText(payload.message, 200)} history=${this.truncateText(this.buildConversationHistory(conversationHistoryItems), 200)}`,
       );
       const result = await this.runLangGraphWorkflow(context);
       this.logger.log(
@@ -282,6 +287,34 @@ export class MovieService {
     }
   }
 
+  private async loadConversationHistory(
+    conversationId: string,
+    authResult: { ok: boolean; user?: { id: string; email: string } },
+  ): Promise<ConversationHistoryItem[] | undefined> {
+    if (!conversationId) return undefined;
+
+    try {
+      const convo = await this.messageGrpcClient.getConversation({ conversation_id: conversationId });
+      const messages = convo?.messages ?? [];
+      const items: ConversationHistoryItem[] = (messages as any[])
+        .filter((m) => {
+          if (!m) return false;
+          if (m.role === 'user') return true;
+          // only include assistant final responses, exclude intermediate agent_execution stages
+          if (m.role === 'assistant' && (m.message_type === 'final_response' || m.stage === 'final')) return true;
+          return false;
+        })
+        .map((m) => ({
+          role: m.role === 'user' ? 'user' : 'assistant',
+          content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+        }));
+      return items;
+    } catch (error) {
+      this.logger.warn('Failed to load conversation history', error as Error);
+      return undefined;
+    }
+  }
+
   private async appendConversationMessage(
     conversationId: string,
     role: string,
@@ -315,9 +348,12 @@ export class MovieService {
     ].join("\n");
   }
 
-  private async classifyIntent(message: string): Promise<IntentType> {
+  private async classifyIntent(
+    message: string,
+    history?: ConversationHistoryItem[],
+  ): Promise<IntentType> {
     const normalized = message.trim();
-    this.logger.log(`classifyIntent start: messageLength=${normalized.length}`);
+    this.logger.log(`classifyIntent start: messageLength=${normalized.length}, historyLength=${history?.length ?? 0}`);
     if (!normalized) {
       this.logger.warn("classifyIntent rejected empty message");
       return "out_of_scope";
@@ -332,12 +368,16 @@ export class MovieService {
         return "out_of_scope";
       }
 
+      const historyText = this.buildConversationHistory(history);
+      const promptLines = [
+        "你是一个意图分类器。请判断当前用户问题是否与“电影”或者“演员”相关。",
+        "请参考历史对话中的之前用户提问和 AI 最终回答。",
+        historyText ? `历史对话:\n${historyText}` : "",
+        `当前用户输入: ${normalized}`,
+      ].filter(Boolean);
+
       const response = await model.invoke([
-        [
-          "system",
-          "你是一个意图分类器。请判断用户问题是否与“电影”或者“演员”相关。只输出一个词：in_scope 或 out_of_scope。",
-        ],
-        ["user", `用户输入: ${normalized}`],
+        ["system", promptLines.join("\n")],
       ]);
 
       const text = this.extractText(response.content).trim().toLowerCase();

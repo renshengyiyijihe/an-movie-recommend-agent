@@ -56,4 +56,13 @@ export class MessageGrpcClient implements OnModuleInit {
       });
     });
   }
+
+  getConversation(request: { conversation_id: string }): Promise<any> {
+    return new Promise((resolve, reject) => {
+      this.client.GetConversation(request, (err: any, response: any) => {
+        if (err) return reject(err);
+        resolve(response);
+      });
+    });
+  }
 }

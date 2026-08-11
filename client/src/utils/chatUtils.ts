@@ -1,4 +1,4 @@
-import { RecommendationItem, ChatMessage } from '../types';
+import { RecommendationItem, ChatMessage } from '@/types';
 
 const TMDB_GENRE_MAP: Record<number, string> = {
   28: '动作',

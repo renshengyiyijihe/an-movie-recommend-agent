@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import useAuth from '../../store/auth';
+import useAuth from '@/store/auth';
 import styles from './index.module.less';
 
 interface Props {

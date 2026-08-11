@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react';
-import { request } from '../../api';
-import useAuth from '../../store/auth';
-import AuthModal from '../../components/AuthModal';
-import AppLogo from '../../components/AppLogo';
-import ConfigModal from '../../components/ConfigModal';
-import RecommendationPoster from '../../components/RecommendationPoster';
-import TopBar from '../../components/TopBar';
+import { request } from '@/api';
+import useAuth from '@/store/auth';
+import AuthModal from '@/components/AuthModal';
+import AppLogo from '@/components/AppLogo';
+import ConfigModal from '@/components/ConfigModal';
+import RecommendationPoster from '@/components/RecommendationPoster';
+import TopBar from '@/components/TopBar';
 import styles from './index.module.less';
-import { convertConversationToMessages, convertResultToMessages, getRecommendationGenres, renderMessageText } from '../../utils/chatUtils';
-import { getTmdbImage } from '../../utils/tmdb';
-import type { ChatMessage, ConversationDetail, ConversationSummary, RecommendationItem } from '../../types';
+import { convertConversationToMessages, convertResultToMessages, getRecommendationGenres, renderMessageText } from '@/utils/chatUtils';
+import { getTmdbImage } from '@/utils/tmdb';
+import type { ChatMessage, ConversationDetail, ConversationSummary, RecommendationItem } from '@/types';
 
 const quickPrompts = ['想看一部科幻大片，时长2小时以内', '想要轻松爱情片，适合晚上放松', '推荐几部张力强、节奏快的动作片'];
 

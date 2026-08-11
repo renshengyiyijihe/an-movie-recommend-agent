@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Modal } from '@mui/material';
-import type { ConversationDetail } from '../../types';
+import type { ConversationDetail } from '@/types';
 import styles from './index.module.less';
 
 interface Props {

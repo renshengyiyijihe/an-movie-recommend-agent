@@ -1,5 +1,5 @@
-import useAuth from '../../store/auth';
-import AppLogo from '../AppLogo';
+import useAuth from '@/store/auth';
+import AppLogo from '@/components/AppLogo';
 import styles from './index.module.less';
 
 interface Props {

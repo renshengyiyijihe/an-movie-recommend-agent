@@ -1,5 +1,5 @@
 import create from 'zustand';
-import { request } from '../api';
+import { request } from '@/api';
 
 type User = { id: string; email: string; username: string } | null;
 

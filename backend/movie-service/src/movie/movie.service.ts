@@ -284,6 +284,7 @@ export class MovieService {
     authResult: { ok: boolean; user?: { id: string; email: string } },
   ) {
     if (payload.conversationId) {
+      this.logger.log(`ensureConversation: payload already has conversationId=${payload.conversationId}`);
       return payload.conversationId;
     }
 
@@ -292,10 +293,14 @@ export class MovieService {
         user_id: authResult.ok ? authResult.user?.id : undefined,
         title: payload.message?.slice(0, 120),
       });
+      this.logger.log(`ensureConversation: created conversation_id=${createResponse.conversation_id}`);
       return createResponse.conversation_id;
     } catch (error) {
       this.logger.warn(
-        "Failed to create conversation via message service, continuing without conversation tracking",
+        `Failed to create conversation via message service, continuing without conversation tracking: ${
+          (error as Error)?.message ?? String(error)
+        }`,
+        error as Error,
       );
       return "";
     }

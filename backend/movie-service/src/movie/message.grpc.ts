@@ -58,10 +58,15 @@ export class MessageGrpcClient implements OnModuleInit {
   }
 
   createConversation(request: CreateConversationRequest): Promise<CreateConversationResponse> {
+    this.logger.log(`gRPC CreateConversation request ->> ${JSON.stringify(request)}`);
     return new Promise((resolve, reject) => {
       this.client.CreateConversation(request, (err: any, response: CreateConversationResponse) => {
-        if (err) return reject(err);
-        const conversationId = response?.conversation_id?.trim();
+        if (err) {
+          this.logger.error('gRPC CreateConversation call failed', err as Error);
+          return reject(err);
+        }
+        const conversationId = response?.conversation_id;
+        this.logger.log(`gRPC CreateConversation response conversation_id ->> ${conversationId}`);
         if (!conversationId) {
           return reject(new Error('Message service returned empty conversation_id'));
         }

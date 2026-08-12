@@ -116,7 +116,7 @@ export class ModelProvider {
     const baseURL = "https://integrate.api.nvidia.com/v1";
     // const modelName = "minimaxai/minimax-m3";
     // const modelName = "z-ai/glm-5.2"
-    const modelName = "meta/llama-guard-4-12b";
+    const modelName = "mistralai/mistral-nemotron";
     const temperature = process.env.NVIDIA_TEMPERATURE
       ? Number(process.env.NVIDIA_TEMPERATURE)
       : 0.3;

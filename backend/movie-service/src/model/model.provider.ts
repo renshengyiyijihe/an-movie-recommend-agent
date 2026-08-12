@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import OpenAI from "openai";
 import { LangSmithProvider } from "./langsmith.provider";
+import { sleep } from "../utils/tool";
 
 type ChatRole = "system" | "user" | "assistant";
 
@@ -20,6 +21,9 @@ class OpenAIModelWrapper {
   ) {}
 
   async invoke(messages: ChatMessage[]) {
+    await sleep(1000);
+
+
     const formatted: OpenAIChatMessage[] = messages.map(([role, content]) => ({
       role,
       content,
@@ -110,7 +114,6 @@ export class ModelProvider {
     }
 
     const baseURL = "https://integrate.api.nvidia.com/v1";
-    // const modelName = "z-ai/glm-5.2";
     const modelName = "minimaxai/minimax-m3";
     const temperature = process.env.NVIDIA_TEMPERATURE
       ? Number(process.env.NVIDIA_TEMPERATURE)

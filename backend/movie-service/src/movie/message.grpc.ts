@@ -61,7 +61,11 @@ export class MessageGrpcClient implements OnModuleInit {
     return new Promise((resolve, reject) => {
       this.client.CreateConversation(request, (err: any, response: CreateConversationResponse) => {
         if (err) return reject(err);
-        resolve(response);
+        const conversationId = response?.conversation_id?.trim();
+        if (!conversationId) {
+          return reject(new Error('Message service returned empty conversation_id'));
+        }
+        resolve({ conversation_id: conversationId });
       });
     });
   }

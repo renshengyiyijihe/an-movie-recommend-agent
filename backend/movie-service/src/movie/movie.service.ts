@@ -10,7 +10,12 @@ import {
   type TMDBMovieResult,
 } from "../model/tmdb.provider";
 import { AuthGrpcClient } from "./auth.grpc";
-import { MessageGrpcClient } from "./message.grpc";
+import {
+  MessageGrpcClient,
+  type MessageRole,
+  type MessageStage,
+  type MessageType,
+} from "./message.grpc";
 import { genreToTmdbGenreIdMap, languageToTmdbLanguageMap } from "./config";
 import { WorkflowPlanner, type StageName } from "./workflow.planner";
 
@@ -28,6 +33,8 @@ interface MoviePreference {
 interface ConversationHistoryItem {
   role: "user" | "assistant";
   content: string;
+  message_type: MessageType;
+  stage: MessageStage;
 }
 
 interface RecommendPayload {
@@ -110,11 +117,16 @@ export class MovieService {
       authResult,
     );
 
+    this.logger.log(
+      `conversationId ->> ${conversationId},\n
+       Loaded history ->>  ${conversationHistoryItems}`
+    );
+
     await this.appendConversationMessage(
       conversationId,
       'user',
       'user_query',
-      'submit',
+      'start',
       payload.message,
     );
 
@@ -296,7 +308,7 @@ export class MovieService {
     try {
       const convo = await this.messageGrpcClient.getConversation({ conversation_id: conversationId });
       const messages = convo?.messages ?? [];
-      const items: ConversationHistoryItem[] = (messages as any[])
+      const items: ConversationHistoryItem[] = (messages as Array<ConversationHistoryItem>)
         .filter((m) => {
           if (!m) return false;
           if (m.role === 'user') return true;
@@ -307,6 +319,8 @@ export class MovieService {
         .map((m) => ({
           role: m.role === 'user' ? 'user' : 'assistant',
           content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+          message_type: m.message_type,
+          stage: m.stage,
         }));
       return items;
     } catch (error) {
@@ -317,9 +331,9 @@ export class MovieService {
 
   private async appendConversationMessage(
     conversationId: string,
-    role: string,
-    messageType: string,
-    stage: string,
+    role: MessageRole,
+    messageType: MessageType,
+    stage: MessageStage,
     content: string,
   ) {
     if (!conversationId) {
@@ -794,19 +808,19 @@ export class MovieService {
       return "";
     }
 
-    const latestUser = [...validItems]
-      .find((item) => item.role === "user");
-    const latestAssistant = [...validItems]
-      .reverse()
-      .find((item) => item.role === "assistant");
+    const pastUser = [...validItems]
+      .filter((item) => item.role === "user").slice(0, -1);
+    const pastAssistant = [...validItems]
+      .find((item) => item.role === "assistant" && item.stage === 'final');
 
     const lines: string[] = [];
-    if (latestUser) {
-      lines.push(`用户: ${this.normalizeText(latestUser.content)}`);
+
+    [...pastUser, pastAssistant].forEach((item) => {
+      if (!item) return;
+      const roleLabel = item.role === "user" ? "用户" : "AI";
+      lines.push(`${roleLabel}: ${this.normalizeText(item.content)}`);
     }
-    if (latestAssistant) {
-      lines.push(`AI: ${this.normalizeText(latestAssistant.content)}`);
-    }
+    );
 
     return lines.join("\n");
   }

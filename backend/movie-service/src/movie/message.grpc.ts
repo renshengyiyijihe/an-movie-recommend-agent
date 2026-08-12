@@ -12,11 +12,18 @@ interface CreateConversationResponse {
   conversation_id: string;
 }
 
+// 发送到 message-service 的消息角色，必须与 message.proto 定义保持一致。
+export type MessageRole = 'user' | 'assistant';
+// 事件类型：用户提交、阶段执行记录、最终回复。
+export type MessageType = 'user_query' | 'agent_execution' | 'final_response';
+// 事件所处阶段：起始提交、意图识别、工作流完成、最终输出。
+export type MessageStage = 'start' | 'intent_classification' | 'workflow_complete' | 'final';
+
 interface AppendMessageRequest {
   conversation_id: string;
-  role: string;
-  message_type: string;
-  stage: string;
+  role: MessageRole;
+  message_type: MessageType;
+  stage: MessageStage;
   content: string;
 }
 

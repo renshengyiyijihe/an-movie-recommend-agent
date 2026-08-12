@@ -120,23 +120,26 @@ export class MovieService {
 
     this.logger.log(
       `conversationId ->> ${conversationId},\n
-       Loaded history ->>  ${conversationHistoryItems}`
+       Loaded history ->>  ${conversationHistoryItems}`,
     );
 
     await this.appendConversationMessage(
       conversationId,
-      'user',
-      'user_query',
-      'start',
+      "user",
+      "user_query",
+      "start",
       payload.message,
     );
 
-    const intent = await this.classifyIntent(payload.message, conversationHistoryItems);
+    const intent = await this.classifyIntent(
+      payload.message,
+      conversationHistoryItems,
+    );
     await this.appendConversationMessage(
       conversationId,
-      'assistant',
-      'agent_execution',
-      'intent_classification',
+      "assistant",
+      "agent_execution",
+      "intent_classification",
       intent,
     );
     if (intent !== "in_scope") {
@@ -155,7 +158,9 @@ export class MovieService {
 
     const model = this.modelProvider.getModel();
     if (!model) {
-      this.logger.error("LLM model not configured; aborting recommendation workflow");
+      this.logger.error(
+        "LLM model not configured; aborting recommendation workflow",
+      );
       return this.buildErrorResponse(payload, preferences, {
         stage: "model",
         message: "模型未配置，无法执行推荐",
@@ -168,7 +173,9 @@ export class MovieService {
       preferences,
       imageUrl: payload.imageUrl,
       imageData: payload.imageData,
-      conversationHistory: this.buildConversationHistory(conversationHistoryItems),
+      conversationHistory: this.buildConversationHistory(
+        conversationHistoryItems,
+      ),
       conversationId,
     };
 
@@ -215,9 +222,9 @@ export class MovieService {
 
       await this.appendConversationMessage(
         conversationId,
-        'assistant',
-        'final_response',
-        'final',
+        "assistant",
+        "final_response",
+        "final",
         JSON.stringify({
           preferences: parsed.preferences,
           recommendations: parsed.recommendations,
@@ -262,9 +269,9 @@ export class MovieService {
       if (conversationId) {
         await this.appendConversationMessage(
           conversationId,
-          'assistant',
-          'final_response',
-          'final',
+          "assistant",
+          "final_response",
+          "final",
           JSON.stringify({ error: response }),
         ).catch(() => undefined);
       }
@@ -272,7 +279,10 @@ export class MovieService {
     }
   }
 
-  private async ensureConversation(payload: RecommendPayload, authResult: { ok: boolean; user?: { id: string; email: string } }) {
+  private async ensureConversation(
+    payload: RecommendPayload,
+    authResult: { ok: boolean; user?: { id: string; email: string } },
+  ) {
     if (payload.conversationId) {
       return payload.conversationId;
     }
@@ -284,8 +294,10 @@ export class MovieService {
       });
       return createResponse.conversation_id;
     } catch (error) {
-      this.logger.warn('Failed to create conversation via message service, continuing without conversation tracking');
-      return '';
+      this.logger.warn(
+        "Failed to create conversation via message service, continuing without conversation tracking",
+      );
+      return "";
     }
   }
 
@@ -296,25 +308,36 @@ export class MovieService {
     if (!conversationId) return undefined;
 
     try {
-      const convo = await this.messageGrpcClient.getConversation({ conversation_id: conversationId });
+      const convo = await this.messageGrpcClient.getConversation({
+        conversation_id: conversationId,
+      });
       const messages = convo?.messages ?? [];
-      const items: ConversationHistoryItem[] = (messages as Array<ConversationHistoryItem>)
+      const items: ConversationHistoryItem[] = (
+        messages as Array<ConversationHistoryItem>
+      )
         .filter((m) => {
           if (!m) return false;
-          if (m.role === 'user') return true;
+          if (m.role === "user") return true;
           // only include assistant final responses, exclude intermediate agent_execution stages
-          if (m.role === 'assistant' && (m.message_type === 'final_response' || m.stage === 'final')) return true;
+          if (
+            m.role === "assistant" &&
+            (m.message_type === "final_response" || m.stage === "final")
+          )
+            return true;
           return false;
         })
         .map((m) => ({
-          role: m.role === 'user' ? 'user' : 'assistant',
-          content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+          role: m.role === "user" ? "user" : "assistant",
+          content:
+            typeof m.content === "string"
+              ? m.content
+              : JSON.stringify(m.content),
           message_type: m.message_type,
           stage: m.stage,
         }));
       return items;
     } catch (error) {
-      this.logger.warn('Failed to load conversation history', error as Error);
+      this.logger.warn("Failed to load conversation history", error as Error);
       return undefined;
     }
   }
@@ -324,7 +347,7 @@ export class MovieService {
     role: MessageRole,
     messageType: MessageType,
     stage: MessageStage,
-    content: string,
+    content?: string,
   ) {
     if (!conversationId) {
       return;
@@ -339,7 +362,7 @@ export class MovieService {
         content,
       });
     } catch (error) {
-      this.logger.warn('Failed to append conversation message', error as Error);
+      this.logger.warn("Failed to append conversation message", error as Error);
     }
   }
 
@@ -357,7 +380,9 @@ export class MovieService {
     history?: ConversationHistoryItem[],
   ): Promise<IntentType> {
     const normalized = message.trim();
-    this.logger.log(`classifyIntent start: messageLength=${normalized.length}, historyLength=${history?.length ?? 0}`);
+    this.logger.log(
+      `classifyIntent start: messageLength=${normalized.length}, historyLength=${history?.length ?? 0}`,
+    );
     if (!normalized) {
       this.logger.warn("classifyIntent rejected empty message");
       return "out_of_scope";
@@ -378,17 +403,17 @@ export class MovieService {
         "请根据当前用户输入判断是否与电影/演员/电影推荐相关。",
         "你的输出必须且只能是以下两个值中的一个：in_scope 或 out_of_scope，in_scope 表示用户请求与电影/演员/电影推荐相关，out_of_scope 表示用户请求不相关。",
         historyText ? `上一轮任务历史:\n${historyText}` : "",
-      ].filter(Boolean).join("\n");
+      ]
+        .filter(Boolean)
+        .join("\n");
 
-      const response = await model.invoke([    
-        ["system", systemPrompt],   
+      const response = await model.invoke([
+        ["system", systemPrompt],
         ["user", normalized],
       ]);
 
       const text = this.extractText(response.content).trim().toLowerCase();
-      const intent = text.includes("in_scope")
-        ? "in_scope"
-        : "out_of_scope";
+      const intent = text.includes("in_scope") ? "in_scope" : "out_of_scope";
       this.logger.log(
         `classifyIntent finished: intent=${intent}, rawResponse=${this.truncateText(text, 200)}`,
       );
@@ -399,9 +424,7 @@ export class MovieService {
     }
   }
 
-  private async validateAuthorization(
-    authorization: string,
-  ): Promise<{
+  private async validateAuthorization(authorization: string): Promise<{
     ok: boolean;
     user?: { id: string; email: string };
     error?: string;
@@ -463,23 +486,29 @@ export class MovieService {
 
     for (const [index, stage] of plannerResult.plan.entries()) {
       this.logger.log(`workflow executing stage=${stage} stageIndex=${index}`);
+      await this.appendConversationMessage(
+        context.conversationId ?? "",
+        "assistant",
+        "agent_execution",
+         `${stage}_start` as MessageStage,
+      );
 
       switch (stage) {
         case "parsePreferences": {
-          const content = await this.runPreferenceExtractionWithValidation(state);
-          const parsedPreferences = this.parseStructuredPreferences(content, state);
+          const content =
+            await this.runPreferenceExtractionWithValidation(state);
+          const parsedPreferences = this.parseStructuredPreferences(
+            content,
+            state,
+          );
           state.preferences = this.stringifyPreferences(parsedPreferences);
           await this.appendConversationMessage(
             context.conversationId ?? "",
             "assistant",
             "agent_execution",
-            stage as MessageStage,
-            JSON.stringify({
-              stage,
-              status: "completed",
-              preferences: state.preferences,
-            }),
-          );
+            `${stage}_completed` as MessageStage,
+            state.preferences
+            ),
           this.logger.log(
             `workflow stage completed stage=parsePreferences preferences=${state.preferences}`,
           );
@@ -492,12 +521,8 @@ export class MovieService {
             context.conversationId ?? "",
             "assistant",
             "agent_execution",
-            stage as MessageStage,
-            JSON.stringify({
-              stage,
-              status: "completed",
-              searchResult: content,
-            }),
+            `${stage}_completed` as MessageStage,
+            content
           );
           this.logger.log(
             `workflow stage completed stage=search searchResult=${this.truncateText(content, 400)}`,
@@ -513,12 +538,8 @@ export class MovieService {
             context.conversationId ?? "",
             "assistant",
             "agent_execution",
-            stage as MessageStage,
-            JSON.stringify({
-              stage,
-              status: "completed",
-              supervisorResult: content,
-            }),
+            `${stage}_completed` as MessageStage,
+            content
           );
           this.logger.log(
             `workflow stage completed stage=supervisor supervisorResult=${this.truncateText(content, 400)}`,
@@ -537,9 +558,7 @@ export class MovieService {
     };
   }
 
-  private async planWorkflowStages(
-    context: WorkflowContext,
-  ) {
+  private async planWorkflowStages(context: WorkflowContext) {
     const model = this.modelProvider.getModel();
     return this.workflowPlanner.plan(
       {
@@ -571,7 +590,10 @@ export class MovieService {
         return text;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        this.logger.error(`runAgentNode failed stage=${stage} error=${message}`, error);
+        this.logger.error(
+          `runAgentNode failed stage=${stage} error=${message}`,
+          error,
+        );
         throw error;
       }
     });
@@ -633,7 +655,9 @@ export class MovieService {
         vote_count: item.vote_count ?? 0,
         tmdb_url: item.id ? `https://www.themoviedb.org/movie/${item.id}` : "",
         poster_url: posterPath ? `${TMDB_IMAGE_BASE_URL}${posterPath}` : "",
-        backdrop_url: backdropPath ? `${TMDB_IMAGE_BASE_URL}${backdropPath}` : "",
+        backdrop_url: backdropPath
+          ? `${TMDB_IMAGE_BASE_URL}${backdropPath}`
+          : "",
         summary,
         truncated: overview.length > 220,
       };
@@ -669,7 +693,6 @@ export class MovieService {
 
     return `${normalized.slice(0, maxLength)}...`;
   }
-
 
   private buildTmdbQuery(state: WorkflowState): TmdbSearchRequest {
     const preferences = this.normalizePreferences(state.preferences);
@@ -714,7 +737,6 @@ export class MovieService {
     ];
     return lines.filter(Boolean).join("\n");
   }
-
 
   private buildSupervisorPrompt(state: WorkflowState) {
     const promptState = this.buildPromptState(state);
@@ -780,7 +802,9 @@ export class MovieService {
         );
       }
     }
-    const finalError = new Error(`Stage ${stage} failed after ${MAX_RETRIES} attempts`);
+    const finalError = new Error(
+      `Stage ${stage} failed after ${MAX_RETRIES} attempts`,
+    );
     this.logger.error(`Stage ${stage} exhausted retries`, finalError);
     throw finalError;
   }
@@ -825,7 +849,6 @@ export class MovieService {
     if (!history || history.length === 0) {
       return "";
     }
-    
 
     const validItems = history.filter((item) => !!item?.content);
     if (validItems.length === 0) {
@@ -833,9 +856,11 @@ export class MovieService {
     }
 
     const pastUser = [...validItems]
-      .filter((item) => item.role === "user").slice(0, -1);
-    const pastAssistant = [...validItems]
-      .find((item) => item.role === "assistant" && item.stage === 'final');
+      .filter((item) => item.role === "user")
+      .slice(0, -1);
+    const pastAssistant = [...validItems].find(
+      (item) => item.role === "assistant" && item.stage === "final",
+    );
 
     const lines: string[] = [];
 
@@ -843,8 +868,7 @@ export class MovieService {
       if (!item) return;
       const roleLabel = item.role === "user" ? "用户" : "AI";
       lines.push(`${roleLabel}: ${this.normalizeText(item.content)}`);
-    }
-    );
+    });
 
     return lines.join("\n");
   }
@@ -1091,9 +1115,7 @@ export class MovieService {
     const start = trimmed.indexOf("{");
     const end = trimmed.lastIndexOf("}");
     if (start >= 0 && end > start) {
-      this.logger.log(
-        `[extractJsonCandidate] sliced from ${start} to ${end}`,
-      );
+      this.logger.log(`[extractJsonCandidate] sliced from ${start} to ${end}`);
       return trimmed.slice(start, end + 1);
     }
 
@@ -1148,7 +1170,11 @@ export class MovieService {
 
         const next = this.peekNonWhitespaceChar(text, index + 1);
         const shouldCloseString =
-          next === ":" || next === "," || next === "}" || next === "]" || next === undefined;
+          next === ":" ||
+          next === "," ||
+          next === "}" ||
+          next === "]" ||
+          next === undefined;
 
         if (shouldCloseString) {
           inString = false;
@@ -1174,7 +1200,10 @@ export class MovieService {
     return result;
   }
 
-  private peekNonWhitespaceChar(text: string, startIndex: number): string | undefined {
+  private peekNonWhitespaceChar(
+    text: string,
+    startIndex: number,
+  ): string | undefined {
     for (let index = startIndex; index < text.length; index += 1) {
       const char = text[index];
       if (/\s/.test(char)) {
@@ -1291,7 +1320,9 @@ export class MovieService {
     return languageToTmdbLanguageMap[normalized];
   }
 
-  private parseSearchResultMetadata(searchResult: string): Array<Record<string, unknown>> {
+  private parseSearchResultMetadata(
+    searchResult: string,
+  ): Array<Record<string, unknown>> {
     if (!searchResult) {
       return [];
     }
@@ -1363,8 +1394,12 @@ export class MovieService {
   ) {
     return {
       ...recommendation,
-      name: this.getStringValue(recommendation.name) || this.getStringValue(movie.title),
-      title: this.getStringValue(recommendation.title) || this.getStringValue(movie.title),
+      name:
+        this.getStringValue(recommendation.name) ||
+        this.getStringValue(movie.title),
+      title:
+        this.getStringValue(recommendation.title) ||
+        this.getStringValue(movie.title),
       reason:
         this.getStringValue(recommendation.reason) ||
         this.getStringValue(movie.summary),
@@ -1379,10 +1414,8 @@ export class MovieService {
         this.getStringValue(movie.release_date),
       vote_average:
         recommendation.vote_average ?? movie.vote_average ?? undefined,
-      vote_count:
-        recommendation.vote_count ?? movie.vote_count ?? undefined,
-      popularity:
-        recommendation.popularity ?? movie.popularity ?? undefined,
+      vote_count: recommendation.vote_count ?? movie.vote_count ?? undefined,
+      popularity: recommendation.popularity ?? movie.popularity ?? undefined,
       original_language:
         this.getStringValue(recommendation.original_language) ||
         this.getStringValue(movie.original_language),
@@ -1392,10 +1425,17 @@ export class MovieService {
           ? movie.genre_ids
           : [],
       poster_path: recommendation.poster_path ?? movie.poster_path ?? null,
-      poster_url: this.getStringValue(recommendation.poster_url) || this.getStringValue(movie.poster_url),
-      backdrop_path: recommendation.backdrop_path ?? movie.backdrop_path ?? null,
-      backdrop_url: this.getStringValue(recommendation.backdrop_url) || this.getStringValue(movie.backdrop_url),
-      tmdb_url: this.getStringValue(recommendation.tmdb_url) || this.getStringValue(movie.tmdb_url),
+      poster_url:
+        this.getStringValue(recommendation.poster_url) ||
+        this.getStringValue(movie.poster_url),
+      backdrop_path:
+        recommendation.backdrop_path ?? movie.backdrop_path ?? null,
+      backdrop_url:
+        this.getStringValue(recommendation.backdrop_url) ||
+        this.getStringValue(movie.backdrop_url),
+      tmdb_url:
+        this.getStringValue(recommendation.tmdb_url) ||
+        this.getStringValue(movie.tmdb_url),
       id: recommendation.id ?? movie.id ?? undefined,
       adult: recommendation.adult ?? movie.adult ?? false,
       video: recommendation.video ?? movie.video ?? false,
@@ -1441,7 +1481,10 @@ export class MovieService {
         );
 
         return matchedMovie
-          ? this.enrichRecommendationWithTmdbMetadata(recommendation, matchedMovie)
+          ? this.enrichRecommendationWithTmdbMetadata(
+              recommendation,
+              matchedMovie,
+            )
           : recommendation;
       });
 

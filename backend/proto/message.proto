@@ -22,7 +22,7 @@ message AppendMessageRequest {
   string role = 2;
   string message_type = 3;
   string stage = 4;
-  string content = 5;
+  optional string content = 5;
 }
 
 message AppendMessageResponse {

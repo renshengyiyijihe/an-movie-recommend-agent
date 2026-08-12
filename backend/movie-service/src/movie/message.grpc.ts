@@ -19,20 +19,23 @@ export type MessageType = 'user_query' | 'agent_execution' | 'final_response';
 // 事件所处阶段：任务提交、意图识别、工作流执行阶段、最终输出。
 // 其中 parsePreferences / search / supervisor 是动态规划阶段，不是固定阶段。
 export type MessageStage =
-  | 'submit'
+  | 'start'
   | 'intent_classification'
   | 'workflow_complete'
   | 'final'
-  | 'parsePreferences'
-  | 'search'
-  | 'supervisor';
+  | 'parsePreferences_start'
+  | 'parsePreferences_completed'
+  | 'search_start'
+  | 'search_completed'
+  | 'supervisor_start'
+  | 'supervisor_completed';
 
 interface AppendMessageRequest {
   conversation_id: string;
   role: MessageRole;
   message_type: MessageType;
   stage: MessageStage;
-  content: string;
+  content?: string;
 }
 
 interface AppendMessageResponse {

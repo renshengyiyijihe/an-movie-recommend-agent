@@ -104,7 +104,8 @@ export class ModelProvider {
       return this.model;
     }
 
-    const apiKey = process.env.NVIDIA_API_KEY;
+    // const apiKey = process.env.NVIDIA_API_KEY;
+    const apiKey = "sk-cdpyzrsychrkdllimsziqpzvqjtfgxkiqiwjzjsrjnuukvqy"
     Logger.log( `apiKey: ${apiKey}; process.env: ${JSON.stringify(process.env)}`);
     if (!apiKey) {
       this.logger.error(
@@ -113,10 +114,12 @@ export class ModelProvider {
       return null;
     }
 
-    const baseURL = "https://integrate.api.nvidia.com/v1";
+    // const baseURL = "https://integrate.api.nvidia.com/v1";
+    const baseURL = "https://api.siliconflow.cn/v1";
     // const modelName = "minimaxai/minimax-m3";
     // const modelName = "z-ai/glm-5.2"
-    const modelName = "mistralai/mistral-nemotron";
+    // const modelName = "mistralai/mistral-nemotron";
+    const modelName = 'deepseek-ai/DeepSeek-V4-Flash'
     const temperature = process.env.NVIDIA_TEMPERATURE
       ? Number(process.env.NVIDIA_TEMPERATURE)
       : 0.3;

@@ -371,12 +371,13 @@ export class MovieService {
       const historyText = this.buildConversationHistory(history);
       const systemPrompt = [
         "你是一个意图分类器。",
-        "请判断当前用户问题是否与“电影”或者“演员”相关。",
-        historyText ? `历史内容:\n${historyText}` : "",
+        "请根据当前用户输入判断是否与电影/演员/电影推荐相关。",
+        "你的输出必须且只能是以下两个值中的一个：in_scope 或 out_of_scope，in_scope 表示用户请求与电影/演员/电影推荐相关，out_of_scope 表示用户请求不相关。",
+        historyText ? `上一轮任务历史:\n${historyText}` : "",
       ].filter(Boolean).join("\n");
 
-      const response = await model.invoke([
-        ["system", systemPrompt],
+      const response = await model.invoke([    
+        ["system", systemPrompt],   
         ["user", normalized],
       ]);
 

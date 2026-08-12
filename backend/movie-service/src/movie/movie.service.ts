@@ -456,8 +456,8 @@ export class MovieService {
       `workflow planner raw=${plannerResult.rawPlan} plan=${plannerResult.plan.join(" -> ")}`,
     );
 
-    for (const stage of plannerResult.plan) {
-      this.logger.log(`workflow executing stage=${stage}`);
+    for (const [index, stage] of plannerResult.plan.entries()) {
+      this.logger.log(`workflow executing stage=${stage} stageIndex=${index}`);
       switch (stage) {
         case "parsePreferences": {
           const content = await this.runPreferenceExtractionWithValidation(state);
@@ -786,14 +786,29 @@ export class MovieService {
     if (!history || history.length === 0) {
       return "";
     }
+    
 
-    return history
-      .filter((item) => !!item?.content)
-      .map((item) => {
-        const roleLabel = item.role === "user" ? "用户" : "助手";
-        return `${roleLabel}: ${this.normalizeText(item.content)}`;
-      })
-      .join("\n");
+    const validItems = history.filter((item) => !!item?.content);
+    if (validItems.length === 0) {
+      return "";
+    }
+
+    const latestUser = [...validItems]
+      .reverse()
+      .find((item) => item.role === "user");
+    const latestAssistant = [...validItems]
+      .reverse()
+      .find((item) => item.role === "assistant");
+
+    const lines: string[] = [];
+    if (latestUser) {
+      lines.push(`用户: ${this.normalizeText(latestUser.content)}`);
+    }
+    if (latestAssistant) {
+      lines.push(`AI: ${this.normalizeText(latestAssistant.content)}`);
+    }
+
+    return lines.join("\n");
   }
 
   private extractText(content: unknown): string {

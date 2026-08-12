@@ -191,6 +191,17 @@ export default function HomePage() {
     return cardInner;
   }
 
+  function renderRecommendationContent(item: ChatMessage) {
+    try {
+      const parsed = JSON.parse(item.text) as RecommendationItem[];
+      return Array.isArray(parsed)
+        ? parsed.map((recommendation, index) => renderRecommendationCard(recommendation, index))
+        : null;
+    } catch {
+      return <p>推荐内容暂时无法展示，请稍后再试。</p>;
+    }
+  }
+
   return (
     <div className={styles.appShell}>
       <TopBar onOpenConfig={openConfigModal} onOpenLogin={() => setShowLoginModal(true)} onOpenRegister={() => setShowRegisterModal(true)} />
@@ -248,16 +259,7 @@ export default function HomePage() {
                   <div className={styles.messageText}>
                     {item.type === 'recommendation' ? (
                       <div className={styles.recommendationList}>
-                        {(() => {
-                          try {
-                            const parsed = JSON.parse(item.text) as RecommendationItem[];
-                            return Array.isArray(parsed)
-                              ? parsed.map((recommendation, recommendationIndex) => renderRecommendationCard(recommendation, recommendationIndex))
-                              : null;
-                          } catch {
-                            return <p>推荐内容暂时无法展示，请稍后再试。</p>;
-                          }
-                        })()}
+                        {renderRecommendationContent(item)}
                       </div>
                     ) : (
                       renderMessageText(item.text).map((line, lineIndex) => (

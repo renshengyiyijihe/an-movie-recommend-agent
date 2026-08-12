@@ -369,15 +369,15 @@ export class MovieService {
       }
 
       const historyText = this.buildConversationHistory(history);
-      const promptLines = [
-        "你是一个意图分类器。请判断当前用户问题是否与“电影”或者“演员”相关。",
-        "请参考历史对话中的之前用户提问和 AI 最终回答。",
-        historyText ? `历史对话:\n${historyText}` : "",
-        `当前用户输入: ${normalized}`,
-      ].filter(Boolean);
+      const systemPrompt = [
+        "你是一个意图分类器。",
+        "请判断当前用户问题是否与“电影”或者“演员”相关。",
+        historyText ? `历史内容:\n${historyText}` : "",
+      ].filter(Boolean).join("\n");
 
       const response = await model.invoke([
-        ["system", promptLines.join("\n")],
+        ["system", systemPrompt],
+        ["user", normalized],
       ]);
 
       const text = this.extractText(response.content).trim().toLowerCase();
@@ -794,7 +794,6 @@ export class MovieService {
     }
 
     const latestUser = [...validItems]
-      .reverse()
       .find((item) => item.role === "user");
     const latestAssistant = [...validItems]
       .reverse()

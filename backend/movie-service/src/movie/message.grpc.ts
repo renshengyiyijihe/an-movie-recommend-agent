@@ -16,8 +16,16 @@ interface CreateConversationResponse {
 export type MessageRole = 'user' | 'assistant';
 // 事件类型：用户提交、阶段执行记录、最终回复。
 export type MessageType = 'user_query' | 'agent_execution' | 'final_response';
-// 事件所处阶段：起始提交、意图识别、工作流完成、最终输出。
-export type MessageStage = 'start' | 'intent_classification' | 'workflow_complete' | 'final';
+// 事件所处阶段：任务提交、意图识别、工作流执行阶段、最终输出。
+// 其中 parsePreferences / search / supervisor 是动态规划阶段，不是固定阶段。
+export type MessageStage =
+  | 'submit'
+  | 'intent_classification'
+  | 'workflow_complete'
+  | 'final'
+  | 'parsePreferences'
+  | 'search'
+  | 'supervisor';
 
 interface AppendMessageRequest {
   conversation_id: string;

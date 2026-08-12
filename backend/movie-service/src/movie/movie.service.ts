@@ -52,6 +52,7 @@ interface WorkflowContext {
   imageUrl?: string;
   imageData?: string;
   conversationHistory?: string;
+  conversationId?: string;
 }
 
 interface WorkflowState {
@@ -168,6 +169,7 @@ export class MovieService {
       imageUrl: payload.imageUrl,
       imageData: payload.imageData,
       conversationHistory: this.buildConversationHistory(conversationHistoryItems),
+      conversationId,
     };
 
     try {
@@ -177,18 +179,6 @@ export class MovieService {
       const result = await this.runLangGraphWorkflow(context);
       this.logger.log(
         `Workflow finished: preferences=${this.truncateText(result.preferences, 400)} searchResult=${this.truncateText(result.searchResult, 400)} supervisorResult=${this.truncateText(result.supervisorResult, 400)}`,
-      );
-
-      await this.appendConversationMessage(
-        conversationId,
-        'assistant',
-        'agent_execution',
-        'workflow_complete',
-        JSON.stringify({
-          preferences: result.preferences,
-          searchResult: result.searchResult,
-          supervisorResult: result.supervisorResult,
-        }),
       );
 
       const langsmithEnabled = !!this.langsmithProvider.getClient();
@@ -473,11 +463,23 @@ export class MovieService {
 
     for (const [index, stage] of plannerResult.plan.entries()) {
       this.logger.log(`workflow executing stage=${stage} stageIndex=${index}`);
+
       switch (stage) {
         case "parsePreferences": {
           const content = await this.runPreferenceExtractionWithValidation(state);
           const parsedPreferences = this.parseStructuredPreferences(content, state);
           state.preferences = this.stringifyPreferences(parsedPreferences);
+          await this.appendConversationMessage(
+            context.conversationId ?? "",
+            "assistant",
+            "agent_execution",
+            stage as MessageStage,
+            JSON.stringify({
+              stage,
+              status: "completed",
+              preferences: state.preferences,
+            }),
+          );
           this.logger.log(
             `workflow stage completed stage=parsePreferences preferences=${state.preferences}`,
           );
@@ -486,6 +488,17 @@ export class MovieService {
         case "search": {
           const content = await this.runTmdbSearch(state);
           state.searchResult = content;
+          await this.appendConversationMessage(
+            context.conversationId ?? "",
+            "assistant",
+            "agent_execution",
+            stage as MessageStage,
+            JSON.stringify({
+              stage,
+              status: "completed",
+              searchResult: content,
+            }),
+          );
           this.logger.log(
             `workflow stage completed stage=search searchResult=${this.truncateText(content, 400)}`,
           );
@@ -496,6 +509,17 @@ export class MovieService {
           this.logger.log(`supervisor prompt:\n${prompt}`);
           const content = await this.runAgentNode("supervisor", prompt);
           state.supervisorResult = content;
+          await this.appendConversationMessage(
+            context.conversationId ?? "",
+            "assistant",
+            "agent_execution",
+            stage as MessageStage,
+            JSON.stringify({
+              stage,
+              status: "completed",
+              supervisorResult: content,
+            }),
+          );
           this.logger.log(
             `workflow stage completed stage=supervisor supervisorResult=${this.truncateText(content, 400)}`,
           );

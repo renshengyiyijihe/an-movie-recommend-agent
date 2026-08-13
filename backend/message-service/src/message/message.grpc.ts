@@ -1,6 +1,6 @@
-import { Controller, Logger } from '@nestjs/common';
-import { GrpcMethod } from '@nestjs/microservices';
-import { MessageService } from './message.service';
+import { Controller, Logger } from "@nestjs/common";
+import { GrpcMethod } from "@nestjs/microservices";
+import { MessageService } from "./message.service";
 
 interface CreateConversationRequest {
   user_id?: string;
@@ -33,19 +33,40 @@ export class MessageGrpcService {
 
   constructor(private readonly messageService: MessageService) {}
 
-  @GrpcMethod('Message', 'CreateConversation')
-  async createConversation(request: CreateConversationRequest): Promise<CreateConversationResponse> {
-    this.logger.log(`gRPC CreateConversation request ->> ${JSON.stringify(request)}`);
-    const conversation = await this.messageService.createConversation(
-      request.user_id,
-      request.title,
+  @GrpcMethod("Message", "CreateConversation")
+  async createConversation(
+    request: CreateConversationRequest,
+  ): Promise<CreateConversationResponse> {
+    this.logger.log(
+      `gRPC CreateConversation request ->> ${JSON.stringify(request)}`,
     );
+
+    let conversation;
+
+    try {
+      conversation = await this.messageService.createConversation(
+        request.user_id,
+        request.title,
+      );
+    } catch (error) {
+      this.logger.error(
+        `gRPC CreateConversation failed: ${JSON.stringify(error)}`,
+      );
+      throw error;
+    }
+
+    this.logger.log(`gRPC CreateConversation response conversation ->> ${JSON.stringify(conversation)}`);
+
     return { conversation_id: conversation.conversation_id };
   }
 
-  @GrpcMethod('Message', 'AppendMessage')
-  async appendMessage(request: AppendMessageRequest): Promise<AppendMessageResponse> {
-    this.logger.log(`gRPC AppendMessage conversation_id=${request.conversation_id} role=${request.role} type=${request.message_type}`);
+  @GrpcMethod("Message", "AppendMessage")
+  async appendMessage(
+    request: AppendMessageRequest,
+  ): Promise<AppendMessageResponse> {
+    this.logger.log(
+      `gRPC AppendMessage conversation_id=${request.conversation_id} role=${request.role} type=${request.message_type}`,
+    );
     await this.messageService.appendMessage(
       request.conversation_id,
       request.role,
@@ -56,9 +77,11 @@ export class MessageGrpcService {
     return { ok: true };
   }
 
-  @GrpcMethod('Message', 'GetConversation')
+  @GrpcMethod("Message", "GetConversation")
   async getConversation(request: GetConversationRequest) {
-    this.logger.log(`gRPC GetConversation conversation_id=${request.conversation_id}`);
+    this.logger.log(
+      `gRPC GetConversation conversation_id=${request.conversation_id}`,
+    );
     return this.messageService.getConversation(request.conversation_id);
   }
 }

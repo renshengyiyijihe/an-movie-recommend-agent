@@ -291,7 +291,7 @@ export class MovieService {
     try {
       const createResponse = await this.messageGrpcClient.createConversation({
         user_id: authResult.ok ? authResult.user?.id : undefined,
-        title: payload.message?.slice(0, 120),
+        title: payload.message,
       });
       this.logger.log(`ensureConversation: created conversation_id=${createResponse.conversation_id}`);
       return createResponse.conversation_id;

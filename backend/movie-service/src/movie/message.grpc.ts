@@ -66,7 +66,7 @@ export class MessageGrpcClient implements OnModuleInit {
           return reject(err);
         }
         const conversationId = response?.conversation_id;
-        this.logger.log(`gRPC CreateConversation response response ->> ${JSON.stringify(response)}`);
+        this.logger.log(`gRPC CreateConversation response ->> ${JSON.stringify(response)}`);
         if (!conversationId) {
           return reject(new Error('Message service returned empty conversation_id'));
         }

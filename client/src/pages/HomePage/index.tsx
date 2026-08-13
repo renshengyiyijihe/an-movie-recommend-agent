@@ -1,34 +1,53 @@
-import { useEffect, useState } from 'react';
-import { request } from '@/api';
-import useAuth from '@/store/auth';
-import AuthModal from '@/components/AuthModal';
-import AppLogo from '@/components/AppLogo';
-import ConfigModal from '@/components/ConfigModal';
-import RecommendationPoster from '@/components/RecommendationPoster';
-import TopBar from '@/components/TopBar';
-import styles from './index.module.less';
-import { convertConversationToMessages, convertResultToMessages, getRecommendationGenres, renderMessageText } from '@/utils/chatUtils';
-import { getTmdbImage } from '@/utils/tmdb';
-import type { ChatMessage, ConversationDetail, ConversationSummary, RecommendationItem } from '@/types';
+import { useEffect, useState } from "react";
+import { request } from "@/api";
+import useAuth from "@/store/auth";
+import AuthModal from "@/components/AuthModal";
+import AppLogo from "@/components/AppLogo";
+import ConfigModal from "@/components/ConfigModal";
+import RecommendationPoster from "@/components/RecommendationPoster";
+import TopBar from "@/components/TopBar";
+import styles from "./index.module.less";
+import {
+  convertConversationToMessages,
+  convertResultToMessages,
+  getRecommendationGenres,
+  renderMessageText,
+} from "@/utils/chatUtils";
+import { getTmdbImage } from "@/utils/tmdb";
+import type {
+  ChatMessage,
+  ConversationDetail,
+  ConversationSummary,
+  RecommendationItem,
+} from "@/types";
 
-const quickPrompts = ['想看一部科幻大片，时长2小时以内', '想要轻松爱情片，适合晚上放松', '推荐几部张力强、节奏快的动作片'];
+const quickPrompts = [
+  "想看一部科幻大片，时长2小时以内",
+  "想要轻松爱情片，适合晚上放松",
+  "推荐几部张力强、节奏快的动作片",
+];
 
 export default function HomePage() {
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState("");
   const [file, setFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState('');
-  const [imageData, setImageData] = useState('');
+  const [imagePreview, setImagePreview] = useState("");
+  const [imageData, setImageData] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [conversationId, setConversationId] = useState<string | undefined>(undefined);
-  const [conversationList, setConversationList] = useState<ConversationSummary[]>([]);
-  const [selectedConversation, setSelectedConversation] = useState<ConversationDetail | null>(null);
+  const [conversationId, setConversationId] = useState<string | undefined>(
+    undefined,
+  );
+  const [conversationList, setConversationList] = useState<
+    ConversationSummary[]
+  >([]);
+  const [selectedConversation, setSelectedConversation] =
+    useState<ConversationDetail | null>(null);
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   const token = useAuth((s) => s.token);
 
@@ -37,7 +56,10 @@ export default function HomePage() {
 
     setHistoryLoading(true);
     try {
-      const result = await request<{ conversations: ConversationSummary[] }>({ method: 'GET', url: '/api/message/conversations' });
+      const result = await request<{ conversations: ConversationSummary[] }>({
+        method: "GET",
+        url: "/api/message/conversations",
+      });
       setConversationList(result.conversations ?? []);
     } catch (err) {
       console.error(err);
@@ -49,7 +71,10 @@ export default function HomePage() {
   async function fetchConversationDetail(conversationId: string) {
     setDetailsLoading(true);
     try {
-      const detail = await request<ConversationDetail>({ method: 'GET', url: `/api/message/conversations/${conversationId}` });
+      const detail = await request<ConversationDetail>({
+        method: "GET",
+        url: `/api/message/conversations/${conversationId}`,
+      });
       setSelectedConversation(detail);
       setConversationId(detail.conversation_id);
       setMessages(convertConversationToMessages(detail.messages));
@@ -78,7 +103,7 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!file) {
-      setImagePreview('');
+      setImagePreview("");
       return;
     }
 
@@ -102,44 +127,68 @@ export default function HomePage() {
       return;
     }
 
-    setError('');
+    setError("");
 
-    const userMessage: ChatMessage = { role: 'user', text: trimmedMessage, imagePreview: imagePreview || undefined };
+    const userMessage: ChatMessage = {
+      role: "user",
+      text: trimmedMessage,
+      imagePreview: imagePreview || undefined,
+    };
     const history = messages
-      .filter((item) => item.role === 'user' || item.role === 'assistant')
-      .map((item) => ({ role: item.role === 'user' ? 'user' : 'assistant', content: item.text.trim() }));
+      .filter((item) => item.role === "user" || item.role === "assistant")
+      .map((item) => ({
+        role: item.role === "user" ? "user" : "assistant",
+        content: item.text.trim(),
+      }));
 
     setMessages((prev) => [...prev, userMessage]);
-    setMessage('');
+    setMessage("");
     setFile(null);
     setLoading(true);
 
     try {
       const result = await request<any>({
-        method: 'POST',
-        url: '/api/movie/recommend',
+        method: "POST",
+        url: "/api/movie/recommend",
         data: { message: userMessage.text, imageData, history, conversationId },
       });
       setMessages((prev) => [...prev, ...convertResultToMessages(result)]);
       if (result?.conversationId) setConversationId(result.conversationId);
     } catch {
-      setError('请求后端失败，请检查服务是否启动');
-      setMessages((prev) => [...prev, { role: 'assistant-error', text: '请求失败，请稍后再试。', type: 'error' }]);
+      setError("请求后端失败，请检查服务是否启动");
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant-error",
+          text: "请求失败，请稍后再试。",
+          type: "error",
+        },
+      ]);
     } finally {
       setLoading(false);
-      setImageData('');
+      setImageData("");
     }
   }
 
   function renderRecommendationCard(item: RecommendationItem, index: number) {
-    const title = item.title || item.name || item.original_title || '未知电影';
-    const subtitle = item.original_title && item.original_title !== title ? item.original_title : '';
-    const reason = item.reason || item.summary || item.overview || '暂无说明';
-    const releaseDate = item.release_date ? item.release_date : '未知日期';
-    const rating = typeof item.vote_average === 'number' ? item.vote_average.toFixed(1) : '暂无';
-    const voteCount = typeof item.vote_count === 'number' ? `${item.vote_count}` : '0';
-    const popularity = typeof item.popularity === 'number' ? `${item.popularity.toFixed(1)}` : '暂无';
-    const language = item.original_language || '未知';
+    const title = item.title || item.name || item.original_title || "未知电影";
+    const subtitle =
+      item.original_title && item.original_title !== title
+        ? item.original_title
+        : "";
+    const reason = item.reason || item.summary || item.overview || "暂无说明";
+    const releaseDate = item.release_date ? item.release_date : "未知日期";
+    const rating =
+      typeof item.vote_average === "number"
+        ? item.vote_average.toFixed(1)
+        : "暂无";
+    const voteCount =
+      typeof item.vote_count === "number" ? `${item.vote_count}` : "0";
+    const popularity =
+      typeof item.popularity === "number"
+        ? `${item.popularity.toFixed(1)}`
+        : "暂无";
+    const language = item.original_language || "未知";
     const genres = getRecommendationGenres(item);
     const posterUrl = getTmdbImage(item.poster_url || item.poster_path);
 
@@ -152,14 +201,33 @@ export default function HomePage() {
           <div className={styles.recommendationCardHeader}>
             <div>
               <h4>{title}</h4>
-              {subtitle ? <p className={styles.recommendationCardSubtitle}>{subtitle}</p> : null}
+              {subtitle ? (
+                <p className={styles.recommendationCardSubtitle}>{subtitle}</p>
+              ) : null}
             </div>
             {item.tmdb_url ? (
-              <a href={item.tmdb_url} target="_blank" rel="noreferrer" className={styles.recommendationCardLink}>查看详情</a>
+              <a
+                href={item.tmdb_url}
+                target="_blank"
+                rel="noreferrer"
+                className={styles.recommendationCardLink}
+              >
+                查看详情
+              </a>
             ) : null}
           </div>
-          <p title={reason} className={styles.recommendationCardReason} data-tooltip={reason} aria-label={reason}>{reason}</p>
-          <div className={styles.recommendationCardMetaRow} aria-label="影片信息">
+          <p
+            title={reason}
+            className={styles.recommendationCardReason}
+            data-tooltip={reason}
+            aria-label={reason}
+          >
+            {reason}
+          </p>
+          <div
+            className={styles.recommendationCardMetaRow}
+            aria-label="影片信息"
+          >
             <span>上映: {releaseDate}</span>
             <span>评分: {rating}</span>
             <span>评分人数: {voteCount}</span>
@@ -169,11 +237,16 @@ export default function HomePage() {
             {item.video ? <span>含视频</span> : null}
           </div>
           {genres.length > 0 ? (
-            <div className={styles.recommendationCardChipRow} aria-label="影片类型">
-              <span className={styles.recommendationCardChipLabel}>类型</span>
-              {genres.map((genre) => (
-                <span className={styles.recommendationCardChip} key={`${title}-${genre}`}>{genre}</span>
-              ))}
+            <div
+              className={styles.recommendationCardChipRow}
+              aria-label="影片类型"
+            >
+              <span className={styles.recommendationCardChipLabel}>
+                类型：
+                {genres.map((genre) => (
+                  <span key={`${title}-${genre}`}>{genre}</span>
+                ))}
+              </span>
             </div>
           ) : null}
         </div>
@@ -182,7 +255,13 @@ export default function HomePage() {
 
     if (item.tmdb_url) {
       return (
-        <a href={item.tmdb_url} target="_blank" rel="noreferrer" className={styles.recommendationCardLinkWrap} key={`${title}-${index}`}>
+        <a
+          href={item.tmdb_url}
+          target="_blank"
+          rel="noreferrer"
+          className={styles.recommendationCardLinkWrap}
+          key={`${title}-${index}`}
+        >
           {cardInner}
         </a>
       );
@@ -195,7 +274,9 @@ export default function HomePage() {
     try {
       const parsed = JSON.parse(item.text) as RecommendationItem[];
       return Array.isArray(parsed)
-        ? parsed.map((recommendation, index) => renderRecommendationCard(recommendation, index))
+        ? parsed.map((recommendation, index) =>
+            renderRecommendationCard(recommendation, index),
+          )
         : null;
     } catch {
       return <p>推荐内容暂时无法展示，请稍后再试。</p>;
@@ -204,20 +285,42 @@ export default function HomePage() {
 
   return (
     <div className={styles.appShell}>
-      <TopBar onOpenConfig={openConfigModal} onOpenLogin={() => setShowLoginModal(true)} onOpenRegister={() => setShowRegisterModal(true)} />
+      <TopBar
+        onOpenConfig={openConfigModal}
+        onOpenLogin={() => setShowLoginModal(true)}
+        onOpenRegister={() => setShowRegisterModal(true)}
+      />
 
       <section className={styles.chatPanel}>
         <ConfigModal
           visible={showConfigModal}
           onClose={() => setShowConfigModal(false)}
-          onSelectConversation={(id: string) => void fetchConversationDetail(id)}
+          onSelectConversation={(id: string) =>
+            void fetchConversationDetail(id)
+          }
           conversations={conversationList}
           selectedConversation={selectedConversation}
           loading={historyLoading}
           detailLoading={detailsLoading}
         />
-        <AuthModal visible={showLoginModal} mode="login" onClose={() => setShowLoginModal(false)} onSwitchMode={() => { setShowLoginModal(false); setShowRegisterModal(true); }} />
-        <AuthModal visible={showRegisterModal} mode="register" onClose={() => setShowRegisterModal(false)} onSwitchMode={() => { setShowRegisterModal(false); setShowLoginModal(true); }} />
+        <AuthModal
+          visible={showLoginModal}
+          mode="login"
+          onClose={() => setShowLoginModal(false)}
+          onSwitchMode={() => {
+            setShowLoginModal(false);
+            setShowRegisterModal(true);
+          }}
+        />
+        <AuthModal
+          visible={showRegisterModal}
+          mode="register"
+          onClose={() => setShowRegisterModal(false)}
+          onSwitchMode={() => {
+            setShowRegisterModal(false);
+            setShowLoginModal(true);
+          }}
+        />
 
         <header className={styles.heroHeader}>
           <div className={styles.titleRow}>
@@ -228,7 +331,12 @@ export default function HomePage() {
           </div>
           <div className={styles.quickPrompts}>
             {quickPrompts.map((prompt) => (
-              <button key={prompt} type="button" className={styles.chipButton} onClick={() => setMessage(prompt)}>
+              <button
+                key={prompt}
+                type="button"
+                className={styles.chipButton}
+                onClick={() => setMessage(prompt)}
+              >
                 {prompt}
               </button>
             ))}
@@ -248,16 +356,22 @@ export default function HomePage() {
                 <div
                   key={`${item.role}-${index}`}
                   className={`${styles.message} ${
-                    item.role === 'user'
+                    item.role === "user"
                       ? styles.userMessage
-                      : item.role === 'assistant-error'
-                      ? styles.assistantErrorMessage
-                      : styles.assistantMessage
+                      : item.role === "assistant-error"
+                        ? styles.assistantErrorMessage
+                        : styles.assistantMessage
                   }`}
                 >
-                  <div className={styles.messageRole}>{item.role === 'user' ? '你' : item.role === 'assistant-error' ? '智能体（异常）' : '智能体'}</div>
+                  <div className={styles.messageRole}>
+                    {item.role === "user"
+                      ? "你"
+                      : item.role === "assistant-error"
+                        ? "智能体（异常）"
+                        : "智能体"}
+                  </div>
                   <div className={styles.messageText}>
-                    {item.type === 'recommendation' ? (
+                    {item.type === "recommendation" ? (
                       <div className={styles.recommendationList}>
                         {renderRecommendationContent(item)}
                       </div>
@@ -267,14 +381,23 @@ export default function HomePage() {
                       ))
                     )}
                   </div>
-                  {item.imagePreview ? <img src={item.imagePreview} alt="uploaded preview" className={styles.messageImage} /> : null}
+                  {item.imagePreview ? (
+                    <img
+                      src={item.imagePreview}
+                      alt="uploaded preview"
+                      className={styles.messageImage}
+                    />
+                  ) : null}
                 </div>
               ))}
               {loading ? (
                 <div className={`${styles.message} ${styles.assistantMessage}`}>
                   <div className={styles.messageRole}>智能体</div>
                   <div className={styles.messageText}>
-                    <div className={styles.loadingDots} aria-label="智能体正在思考" />
+                    <div
+                      className={styles.loadingDots}
+                      aria-label="智能体正在思考"
+                    />
                   </div>
                 </div>
               ) : null}
@@ -288,7 +411,7 @@ export default function HomePage() {
               value={message}
               onChange={(event) => setMessage(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.shiftKey) {
+                if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
                   void sendMessage();
                 }
@@ -298,18 +421,37 @@ export default function HomePage() {
             <div className={styles.inputActions}>
               <label className={styles.fileInput}>
                 <span>📷 上传图片（可选）</span>
-                <input type="file" accept="image/png,image/jpeg" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                />
               </label>
               <div className={styles.actionButtons}>
-                <button type="button" className={styles.btnNewConversation} onClick={startNewConversation}>
+                <button
+                  type="button"
+                  className={styles.btnNewConversation}
+                  onClick={startNewConversation}
+                >
                   新会话
                 </button>
-                <button type="button" className={styles.sendButton} onClick={() => void sendMessage()} disabled={loading}>
-                  {loading ? '发送中...' : '发送'}
+                <button
+                  type="button"
+                  className={styles.sendButton}
+                  onClick={() => void sendMessage()}
+                  disabled={loading}
+                >
+                  {loading ? "发送中..." : "发送"}
                 </button>
               </div>
             </div>
-            {imagePreview ? <img src={imagePreview} alt="图片预览" className={styles.previewImage} /> : null}
+            {imagePreview ? (
+              <img
+                src={imagePreview}
+                alt="图片预览"
+                className={styles.previewImage}
+              />
+            ) : null}
           </div>
           {error ? <p className={styles.error}>{error}</p> : null}
         </div>

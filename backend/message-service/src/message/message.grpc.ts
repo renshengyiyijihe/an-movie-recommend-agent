@@ -35,7 +35,7 @@ export class MessageGrpcService {
 
   @GrpcMethod('Message', 'CreateConversation')
   async createConversation(request: CreateConversationRequest): Promise<CreateConversationResponse> {
-    this.logger.log(`gRPC CreateConversation user_id=${request.user_id ?? 'anonymous'}`);
+    this.logger.log(`gRPC CreateConversation request ->> ${JSON.stringify(request)}`);
     const conversation = await this.messageService.createConversation(
       request.user_id,
       request.title,

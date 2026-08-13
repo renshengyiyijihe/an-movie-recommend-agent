@@ -1,5 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { join } from 'path';
+import { Controller, Logger } from '@nestjs/common';
 import { GrpcMethod } from '@nestjs/microservices';
 import { MessageService } from './message.service';
 
@@ -28,7 +27,7 @@ interface GetConversationRequest {
   conversation_id: string;
 }
 
-@Injectable()
+@Controller()
 export class MessageGrpcService {
   private readonly logger = new Logger(MessageGrpcService.name);
 

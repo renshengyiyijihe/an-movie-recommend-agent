@@ -18,7 +18,7 @@ import { ConversationEntity, MessageEntity } from './message/message.entity';
     }),
     TypeOrmModule.forFeature([ConversationEntity, MessageEntity]),
   ],
-  controllers: [MessageController],
-  providers: [MessageService, MessageGrpcService, AuthGrpcClient, MessageGrpcClient],
+  controllers: [MessageController, MessageGrpcService],
+  providers: [MessageService, AuthGrpcClient, MessageGrpcClient],
 })
 export class AppModule {}

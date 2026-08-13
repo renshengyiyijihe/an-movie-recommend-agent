@@ -4,9 +4,9 @@ WORKDIR /app
 
 RUN corepack enable && corepack prepare pnpm@10.15.0 --activate
 
-COPY message-service/package.json message-service/tsconfig.json ./
+COPY message-service/package.json message-service/pnpm-lock.yaml message-service/tsconfig.json ./
 RUN --mount=type=cache,target=/root/.cache/pnpm-store \
-    pnpm install --store-dir /root/.cache/pnpm-store
+    pnpm install --frozen-lockfile --store-dir /root/.cache/pnpm-store
 
 COPY message-service/src ./src
 COPY proto ./proto

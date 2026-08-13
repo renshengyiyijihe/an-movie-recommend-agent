@@ -22,7 +22,8 @@
     "pg": "^8.11.1",
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.1",
-    "typeorm": "^0.3.19"
+    "typeorm": "^0.3.19",
+    "grpc-reflection-js": "*"
   },
   "devDependencies": {
     "@types/node": "^20.19.43",

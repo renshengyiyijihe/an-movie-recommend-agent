@@ -92,6 +92,13 @@ export class AuthService implements OnModuleInit {
     this.logger.log(`ValidateToken request received, tokenPresent=${Boolean(token)}`);
     try {
       const payload = jwt.verify(token, JWT_SECRET) as any;
+      const allowedEmail = '1191681452@qq.com';
+      
+      if (payload.email !== allowedEmail) {
+        this.logger.warn(`ValidateToken failed: email ${payload.email} is not authorized`);
+        return { ok: false, error: 'email_not_authorized' };
+      }
+      
       this.logger.log(`ValidateToken success for user=${payload.email ?? payload.sub}`);
       return { ok: true, user: { id: payload.sub, username: payload.username ?? payload.name, email: payload.email } };
     } catch (error) {

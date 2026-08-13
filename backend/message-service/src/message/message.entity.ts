@@ -36,8 +36,8 @@ export class MessageEntity {
   @Column({ name: 'stage', type: 'text' })
   stage!: string;
 
-  @Column({ name: 'content', type: 'text' })
-  content!: string;
+  @Column({ name: 'content', type: 'text', nullable: true })
+  content!: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   created_at!: Date;

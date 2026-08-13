@@ -171,7 +171,7 @@ export default function HomePage() {
   }
 
   function renderRecommendationCard(item: RecommendationItem, index: number) {
-    const title = item.title || item.name || item.original_title || "未知电影";
+    const title = item.name|| item.title  || item.original_title || "未知电影";
     const subtitle =
       item.original_title && item.original_title !== title
         ? item.original_title

@@ -376,7 +376,9 @@ export class MovieService {
       "你是一个电影推荐专家智能体。",
       "根据用户描述的影片类型、心情、演员、时长、评分偏好，给出 3-4 个推荐。",
       "如果用户提供了图片，请简要分析图片里的风格、场景或情绪。",
-      "输出格式必须为 JSON，包含 fields: recommendations, explanation。如无法生成推荐，可使用 fallback_reason 说明失败原因。",
+      "输出格式必须为纯 JSON，顶层字段必须包含：recommendations（数组）、explanation（字符串）、preferences（对象）。",
+      "如果无法生成推荐，可使用 fallback_reason 字段说明失败原因。",
+      "示例输出结构：{\"recommendations\":[{\"name\":\"电影名\",\"reason\":\"推荐理由\",\"summary\":\"简短介绍\",\"poster_url\":\"https://...\",\"tmdb_url\":\"https://...\",\"id\":12345}],\"explanation\":\"总结性说明\",\"preferences\":{\"genre\":\"科幻\"}}",
     ].join("\n");
   }
 
@@ -755,7 +757,13 @@ export class MovieService {
         : "",
       `用户偏好: ${promptState.preferences}`,
       `搜索结果: ${promptState.searchResult}`,
-      "输出 JSON，包含 recommendations、explanation、preferences。仅在无法生成推荐时，使用 fallback_reason 说明原因。",
+      "输出必须是纯 JSON（不要包含多余注释或说明），顶层字段必须包含：",
+      "- recommendations: 数组，每项代表一条推荐，用于直接展示（推荐对象示例见下）。",
+      "- explanation: 字符串，对整组推荐的总结性说明（为何匹配用户偏好）。",
+      "- preferences: 对象，规范化后的用户偏好（用于记录/回显/后续搜索）。",
+      "仅在无法生成推荐时，使用 fallback_reason 字段说明原因。",
+      "recommendations 数组中每项建议包含（示例字段）：name, title, reason, summary, overview, poster_url, tmdb_url, id, release_date, vote_average, vote_count, genre_ids, original_language, original_title, additional。",
+      "示例输出：{\n  \"recommendations\": [\n    {\"name\": \"盗梦空间\", \"reason\": \"紧张且富有想象力\", \"summary\": \"一支入侵梦境的团队执行高风险任务...\", \"poster_url\": \"https://image.tmdb.org/t/p/w500/xxx.jpg\", \"tmdb_url\": \"https://www.themoviedb.org/movie/27205\", \"id\":27205}\n  ],\n  \"explanation\": \"基于你偏好科幻与心理悬疑，推荐以下影片...\",\n  \"preferences\": {\"genre\":\"科幻\",\"mood\":\"紧张刺激\"}\n}",
     ].join("\n");
   }
 
@@ -778,7 +786,9 @@ export class MovieService {
         return [
           "你是监督智能体。",
           "整合搜索和链接结果，给出最终可直接展示给用户的回答。",
-          "输出 JSON。",
+          "输出必须是纯 JSON 对象，顶层字段必须包含：recommendations（数组）、explanation（字符串）、preferences（对象）。",
+          "recommendations 中每项示例字段：name, title, reason, summary, poster_url, tmdb_url, id, release_date, vote_average, genre_ids, original_language, original_title, additional。",
+          "不要输出多余文字或注释，严格返回可解析的 JSON。",
         ].join("\n");
       default:
         return this.buildSystemPrompt();

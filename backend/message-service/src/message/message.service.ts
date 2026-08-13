@@ -78,7 +78,7 @@ export class MessageService implements OnModuleInit {
   async getConversation(conversationId: string, userId?: string) {
     const qb = this.conversationRepository
       .createQueryBuilder('conversation')
-      .leftJoinAndSelect('conversation.messages', 'message')
+      .leftJoinAndSelect('conversation.messages', 'message', "message.message_type IN ('user_query', 'final_response')")
       .where('conversation.conversation_id = :conversationId', { conversationId });
 
     if (userId) {
@@ -87,7 +87,7 @@ export class MessageService implements OnModuleInit {
 
     const conversation = await qb.orderBy('message.created_at', 'ASC').getOne();
     if (!conversation) {
-      return { conversation_id: conversationId, user_id: null, title: null, messages: [] };
+      return { conversation_id: conversationId,  messages: []};
     }
 
     return conversation;

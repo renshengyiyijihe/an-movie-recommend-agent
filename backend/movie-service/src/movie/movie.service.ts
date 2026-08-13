@@ -284,7 +284,9 @@ export class MovieService {
     authResult: { ok: boolean; user?: { id: string; email: string } },
   ) {
     if (payload.conversationId) {
-      this.logger.log(`ensureConversation: payload already has conversationId=${payload.conversationId}`);
+      this.logger.log(
+        `ensureConversation: payload already has conversationId=${payload.conversationId}`,
+      );
       return payload.conversationId;
     }
 
@@ -293,7 +295,9 @@ export class MovieService {
         user_id: authResult.ok ? authResult.user?.id : undefined,
         title: payload.message,
       });
-      this.logger.log(`ensureConversation: created conversation_id=${createResponse.conversation_id}`);
+      this.logger.log(
+        `ensureConversation: created conversation_id=${createResponse.conversation_id}`,
+      );
       return createResponse.conversation_id;
     } catch (error) {
       this.logger.warn(
@@ -378,7 +382,7 @@ export class MovieService {
       "如果用户提供了图片，请简要分析图片里的风格、场景或情绪。",
       "输出格式必须为纯 JSON，顶层字段必须包含：recommendations（数组）、explanation（字符串）、preferences（对象）。",
       "如果无法生成推荐，可使用 fallback_reason 字段说明失败原因。",
-      "示例输出结构：{\"recommendations\":[{\"name\":\"电影名\",\"reason\":\"推荐理由\",\"summary\":\"简短介绍\",\"poster_url\":\"https://...\",\"tmdb_url\":\"https://...\",\"id\":12345}],\"explanation\":\"总结性说明\",\"preferences\":{\"genre\":\"科幻\"}}",
+      '示例输出结构：{"recommendations":[{"name":"电影名","reason":"推荐理由","summary":"简短介绍","poster_url":"https://...","tmdb_url":"https://...","id":12345}],"explanation":"总结性说明","preferences":{"genre":"科幻"}}',
     ].join("\n");
   }
 
@@ -497,7 +501,7 @@ export class MovieService {
         context.conversationId ?? "",
         "assistant",
         "agent_execution",
-         `${stage}_start` as MessageStage,
+        `${stage}_start` as MessageStage,
       );
 
       switch (stage) {
@@ -509,16 +513,16 @@ export class MovieService {
             state,
           );
           state.preferences = this.stringifyPreferences(parsedPreferences);
-          await this.appendConversationMessage(
+          (await this.appendConversationMessage(
             context.conversationId ?? "",
             "assistant",
             "agent_execution",
             `${stage}_completed` as MessageStage,
-            state.preferences
-            ),
-          this.logger.log(
-            `workflow stage completed stage=parsePreferences preferences=${state.preferences}`,
-          );
+            state.preferences,
+          ),
+            this.logger.log(
+              `workflow stage completed stage=parsePreferences preferences=${state.preferences}`,
+            ));
           break;
         }
         case "search": {
@@ -529,7 +533,7 @@ export class MovieService {
             "assistant",
             "agent_execution",
             `${stage}_completed` as MessageStage,
-            content
+            content,
           );
           this.logger.log(
             `workflow stage completed stage=search searchResult=${this.truncateText(content, 400)}`,
@@ -546,7 +550,7 @@ export class MovieService {
             "assistant",
             "agent_execution",
             `${stage}_completed` as MessageStage,
-            content
+            content,
           );
           this.logger.log(
             `workflow stage completed stage=supervisor supervisorResult=${this.truncateText(content, 400)}`,
@@ -729,10 +733,110 @@ export class MovieService {
     );
     const lines = [
       "请从用户输入中提取结构化偏好。",
-      "必须输出一个纯 JSON 对象，字段仅限：genre, mood, actors, length, rating, language, scene, theme。",
-      "如果某项无法确定，请使用空字符串。",
-      "生成后必须能被转换为 TMDBDiscoverMovieQueryParams 兼容的查询结构。",
-      "例如：genre 需要是类型字符串，rating 需要是可提取评分值的字符串，length 需要是时长字符串。",
+      "必须输出一个纯 JSON 对象，如果某项无法确定，请使用空字符串，字段如下",
+
+      `
+      【基础与分页】
+      - language (string): 接口返回内容的语言，默认 "zh-CN"，可选 "en-US" 等。
+      - region (string): 所在国家/地区代码（ISO 3166-1，如 "US", "CN"），用于辅助分级和上映时间计算。
+      - sort_by (string): 排序规则。可选值：["popularity.desc", "popularity.asc", "vote_average.desc", "vote_average.asc", "primary_release_date.desc", "primary_release_date.asc", "revenue.desc", "revenue.asc", "vote_count.desc", "vote_count.asc"]
+      - page (integer): 返回的页码，默认 1。
+      - include_adult (boolean): 是否包含成人/限制级内容，默认 false。
+      - include_video (boolean): 是否包含视频记录，默认 false。
+      `,
+
+      `
+      【时间与日期】
+      - primary_release_year (integer): 首发国家上映年份，如 2023。
+      - primary_release_date.gte (string): 首发上映日期下限，格式 "YYYY-MM-DD"。
+      - primary_release_date.lte (string): 首发上映日期上限，格式 "YYYY-MM-DD"。
+      - release_date.gte (string): 任意地区上映日期下限，格式 "YYYY-MM-DD"。
+      - release_date.lte (string): 任意地区上映日期上限，格式 "YYYY-MM-DD"。
+      - year (integer): 任意地区上映年份。
+      - with_release_type (string/integer): 发行类型，可多选（','代表且，'|'代表或）。可选值：1(首映), 2(点映), 3(影院), 4(数字/流媒体), 5(实体), 6(电视)。
+      `,
+
+      `
+      【评分与评价人数】
+      - vote_average.gte (number): 最低评分下限（0.0 至 10.0），如 8.0 表示8分以上。
+      - vote_average.lte (number): 最高评分上限（0.0 至 10.0）。
+      - vote_count.gte (number): 最少打分人数下限，用于过滤冷门影片，如 100。
+      - vote_count.lte (number): 最多打分人数上限。
+      `,
+      `
+      【片长范围】
+      - with_runtime.gte (integer): 片长最小值（单位：分钟）。
+      - with_runtime.lte (integer): 片长最大值（单位：分钟）
+      `,
+
+      `
+      【语言与国家】
+      - with_original_language (string): 电影原声语言代码，如 "ja"(日语), "en"(英语), "zh"(中文), "ko"(韩语)。
+      - with_origin_country (string): 出品国家/地区代码，如 "US"(美国), "JP"(日本), "CN"(中国大陆)。
+      `,
+
+      `
+      【阵容、流派与主题】
+      - with_genres (string): 包含的流派 ID（多选时: ',' 代表同时满足，'|' 代表满足其一）。
+      - without_genres (string): 排除的流派 ID。
+      - with_cast (string): 包含的演员 ID（多选可用 ',' 或 '|'）。
+      - with_crew (string): 包含的幕后人员/导演 ID。
+      - with_people (string): 包含的演职人员 ID。
+      - with_companies (string): 包含的制作公司 ID。
+      - without_companies (string): 排除的制作公司 ID。
+      - with_keywords (string): 包含的主题/关键词 ID。
+      - without_keywords (string): 排除的主题/关键词 ID。
+      `,
+
+      `
+      【分级与家长控制】
+      - certification (string): 电影分级（如 "PG-13", "R"），需配合 certification_country。
+      - certification.gte (string): 分级下限。
+      - certification.lte (string): 分级上限。
+      - certification_country (string): 分级对应的国家代码，如 "US"。   
+      `,
+
+      `
+      【流媒体与播放平台】
+      - watch_region (string): 播放服务所在的地区代码，如 "US"。
+      - with_watch_providers (string): 包含的播放平台 ID（如 Netflix）。
+      - without_watch_providers (string): 排除的播放平台 ID。
+      - with_watch_monetization_types (string): 观看变现模式，可选 ["flatrate"(订阅), "free"(免费), "ads"(含广告), "rent"(租借), "buy"(购买)]，需配合 watch_region。
+      `,
+
+      `
+      ### 逻辑解析与处理规则：
+      1. 多选项组合逻辑：
+        - 当用户要求“既要A又要B”时，参数值内部用逗号 ',' 连接。
+        - 当用户要求“要么A要么B”时，参数值内部用管道符 '|' 连接。
+      2. 语义映射示例：
+        - “高分/好片” -> "vote_average.gte": 7.5, "vote_count.gte": 100, "sort_by": "vote_average.desc"
+        - “热门/最火” -> "sort_by": "popularity.desc"
+        - “最新” -> "sort_by": "primary_release_date.desc"
+        - “短片/1小时以内” -> "with_runtime.lte": 60
+      3. 如果用户提及了具体的演员名、导演名或电影类型名称，但你无法确定其在 TMDB 中的数字 ID，请将识别到的名称提取放在 "unresolved_entities" 字段中。
+    `,
+
+      "【转换示例】",
+      "用户输入：'我想看一部评分在8分以上的科幻电影，英文原声，时长在2小时以内'",
+      "提取偏好：{",
+      "  'genre': '科幻',",
+      "  'rating': '8分以上',",
+      "  'length': '2小时以内',",
+      "  'language': '英文',",
+      "  'mood': '',",
+      "  'actors': '',",
+      "  'scene': '',",
+      "  'theme': ''",
+      "}",
+      "",
+      "【重要规则】",
+      "1. 数值必须能直接提取（如 '8分以上' → 8，'2小时' → 120分钟）",
+      "2. 无法识别的值返回空字符串",
+      "3. 所有数值参数必须是数字类型，不能包含文字",
+      "4. 日期格式必须是 YYYY-MM-DD",
+      "5. 语言代码必须是 ISO 639-1 标准代码",
+      "",
       `用户输入: ${promptState.message}`,
       promptState.imageUrl ? `图片链接: ${promptState.imageUrl}` : "",
       promptState.imageData ? "已上传图片，请分析其情绪和风格。" : "",
@@ -763,7 +867,7 @@ export class MovieService {
       "- preferences: 对象，规范化后的用户偏好（用于记录/回显/后续搜索）。",
       "仅在无法生成推荐时，使用 fallback_reason 字段说明原因。",
       "recommendations 数组中每项建议包含（示例字段）：name, title, reason, summary, overview, poster_url, tmdb_url, id, release_date, vote_average, vote_count, genre_ids, original_language, original_title, additional。",
-      "示例输出：{\n  \"recommendations\": [\n    {\"name\": \"盗梦空间\", \"reason\": \"紧张且富有想象力\", \"summary\": \"一支入侵梦境的团队执行高风险任务...\", \"poster_url\": \"https://image.tmdb.org/t/p/w500/xxx.jpg\", \"tmdb_url\": \"https://www.themoviedb.org/movie/27205\", \"id\":27205}\n  ],\n  \"explanation\": \"基于你偏好科幻与心理悬疑，推荐以下影片...\",\n  \"preferences\": {\"genre\":\"科幻\",\"mood\":\"紧张刺激\"}\n}",
+      '示例输出：{\n  "recommendations": [\n    {"name": "盗梦空间", "reason": "紧张且富有想象力", "summary": "一支入侵梦境的团队执行高风险任务...", "poster_url": "https://image.tmdb.org/t/p/w500/xxx.jpg", "tmdb_url": "https://www.themoviedb.org/movie/27205", "id":27205}\n  ],\n  "explanation": "基于你偏好科幻与心理悬疑，推荐以下影片...",\n  "preferences": {"genre":"科幻","mood":"紧张刺激"}\n}',
     ].join("\n");
   }
 

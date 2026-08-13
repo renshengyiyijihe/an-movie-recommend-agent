@@ -8,7 +8,7 @@ import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, Min, valid
  */
 export interface TMDBDiscoverMovieQueryParams {
   /**
-   * 额外的搜索关键词，用于组合筛选条件
+   * 结果的最大数量，默认4
    */
   max_results?: number;
 

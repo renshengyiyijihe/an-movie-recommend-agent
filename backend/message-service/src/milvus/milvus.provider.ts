@@ -59,12 +59,38 @@ export class MilvusProvider implements OnModuleInit {
       },
     } as any);
 
-    // 验证连接
-    const healthCheck = await this.client.checkHealth();
-    if (!healthCheck.isHealthy) {
-      throw new Error(
-        `Milvus health check failed ->> ${JSON.stringify(healthCheck)}`,
+    // // 验证连接
+    // const healthCheck = await this.client.checkHealth();
+    // if (!healthCheck.isHealthy) {
+    //   throw new Error(
+    //     `Milvus health check failed ->> ${JSON.stringify(healthCheck)}`,
+    //   );
+    // }
+
+    // 加上重试轮询，等 Milvus 容器完全启动初始化完成
+    const maxRetries = 10;
+    let isHealthy = false;
+
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        const healthCheck = await this.client.checkHealth();
+        if (healthCheck.isHealthy) {
+          isHealthy = true;
+          this.logger.log("Milvus health check passed");
+          break;
+        }
+      } catch (error) {
+        // 启动初期失败是正常的，捕获后继续重试
+      }
+
+      this.logger.warn(
+        `Milvus is not ready yet, retrying in 3s... (${i + 1}/${maxRetries})`,
       );
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
+
+    if (!isHealthy) {
+      throw new Error("Milvus health check failed after retries");
     }
   }
 

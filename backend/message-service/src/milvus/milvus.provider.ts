@@ -56,7 +56,7 @@ export class MilvusProvider implements OnModuleInit {
     // 验证连接
     const healthCheck = await this.client.checkHealth();
     if (!healthCheck.isHealthy) {
-      throw new Error('Milvus health check failed');
+      throw new Error(`Milvus health check failed ->> ${JSON.stringify(healthCheck)}`);
     }
   }
 

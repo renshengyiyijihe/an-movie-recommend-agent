@@ -33,7 +33,6 @@ export class MessageGrpcClient implements OnModuleInit {
     const protoPath = join(__dirname, '..', '..', 'proto', 'message.proto');
     const packageDef = loadSync(protoPath, { keepCase: true, longs: String, enums: String, defaults: true, oneofs: true });
     const grpcObject = loadPackageDefinition(packageDef) as any;
-    this.logger.log(`client gRPC Object: ${JSON.stringify(grpcObject)}`);
     const MessageService = grpcObject.message.Message;
     const target = process.env.MESSAGE_GRPC_ADDRESS ?? 'message-service:50052';
     this.client = new MessageService(target, credentials.createInsecure());

@@ -7,6 +7,7 @@ import { AuthGrpcClient } from './auth/auth.grpc';
 import { MessageGrpcClient } from './message/message.grpc.client';
 import { MilvusProvider } from './milvus/milvus.provider';
 import { ConversationEntity, MessageEntity } from './message/message.entity';
+import { SiliconFlowEmbeddingProvider } from './embedding/siliconflow-embedding.provider';
 
 @Module({
   imports: [
@@ -20,6 +21,12 @@ import { ConversationEntity, MessageEntity } from './message/message.entity';
     TypeOrmModule.forFeature([ConversationEntity, MessageEntity]),
   ],
   controllers: [MessageController, MessageGrpcService],
-  providers: [MessageService, AuthGrpcClient, MessageGrpcClient, MilvusProvider],
+  providers: [
+    MessageService,
+    AuthGrpcClient,
+    MessageGrpcClient,
+    MilvusProvider,
+    SiliconFlowEmbeddingProvider,
+  ],
 })
 export class AppModule {}

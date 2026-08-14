@@ -73,7 +73,7 @@ export class MessageService implements OnModuleInit {
     // 异步添加到 Milvus，失败时不影响返回结果
     if (summary) {
       try {
-        const embedding = this.milvusProvider.generateEmbedding(summary);
+        const embedding = await this.milvusProvider.generateEmbedding(summary);
         await this.milvusProvider.addMessageRecord({
           message_id: messageId,
           conversation_id: conversationId,

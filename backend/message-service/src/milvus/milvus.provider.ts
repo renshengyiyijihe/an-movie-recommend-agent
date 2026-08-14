@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { MilvusClient } from '@zilliz/milvus2-sdk-node';
+import { SiliconFlowEmbeddingProvider } from '../embedding/siliconflow-embedding.provider';
 
 interface MessageEmbeddingRecord {
   message_id: string;
@@ -10,11 +11,24 @@ interface MessageEmbeddingRecord {
   summary_embedding: number[];
 }
 
+interface MilvusSearchEmbeddingRecord {
+  message_id: string;
+  conversation_id: string;
+  summary: string;
+  topics: string[];
+  entities: string[];
+}
+
 @Injectable()
 export class MilvusProvider implements OnModuleInit {
   private readonly logger = new Logger(MilvusProvider.name);
   private client: MilvusClient | null = null;
   private readonly collectionName = 'message_summary_embeddings';
+  private readonly embeddingDimension = 1024;
+
+  constructor(
+    private readonly siliconFlowEmbeddingProvider: SiliconFlowEmbeddingProvider,
+  ) {}
 
   async onModuleInit() {
     try {
@@ -67,7 +81,7 @@ export class MilvusProvider implements OnModuleInit {
 
     await this.client.createCollection({
       collection_name: this.collectionName,
-      dimension: 384, // 通常的 embedding 维度，可根据实际调整
+      dimension: this.embeddingDimension,
       primary_field_name: 'message_id',
       fields: [
         {
@@ -105,7 +119,7 @@ export class MilvusProvider implements OnModuleInit {
           name: 'summary_embedding',
           description: 'Vector embedding of summary',
           data_type: 'FloatVector',
-          dim: 384,
+          dim: this.embeddingDimension,
         },
       ],
       index_params: [
@@ -162,7 +176,7 @@ export class MilvusProvider implements OnModuleInit {
    * 按 conversation_id 查询所有消息记录
    */
   async getMessagesByConversation(conversationId: string): Promise<
-    MessageEmbeddingRecord[]
+    MilvusSearchEmbeddingRecord[]
   > {
     if (!this.client) {
       this.logger.warn('Milvus client not initialized');
@@ -191,9 +205,8 @@ export class MilvusProvider implements OnModuleInit {
         message_id: item.message_id as string,
         conversation_id: item.conversation_id as string,
         summary: item.summary as string,
-        topics: JSON.parse((item.topics as string) || '[]'),
-        entities: JSON.parse((item.entities as string) || '[]'),
-        summary_embedding: [], // 搜索结果通常不返回向量
+        topics: JSON.parse((item.topics as string)) || [],
+        entities: JSON.parse((item.entities as string)) || [],
       }));
     } catch (error) {
       this.logger.error(
@@ -211,7 +224,7 @@ export class MilvusProvider implements OnModuleInit {
     embedding: number[],
     conversationId?: string,
     limit = 5,
-  ): Promise<MessageEmbeddingRecord[]> {
+  ): Promise<MilvusSearchEmbeddingRecord[]> {
     if (!this.client) {
       this.logger.warn('Milvus client not initialized');
       return [];
@@ -226,7 +239,7 @@ export class MilvusProvider implements OnModuleInit {
       const results = await this.client.search({
         collection_name: this.collectionName,
         data: [embedding],
-        annnField: 'summary_embedding',
+        annsField: 'summary_embedding',
         filter: filter || undefined,
         limit,
         output_fields: [
@@ -248,7 +261,6 @@ export class MilvusProvider implements OnModuleInit {
         summary: item.summary as string,
         topics: JSON.parse((item.topics as string) || '[]'),
         entities: JSON.parse((item.entities as string) || '[]'),
-        summary_embedding: [],
       }));
     } catch (error) {
       this.logger.error(
@@ -260,26 +272,9 @@ export class MilvusProvider implements OnModuleInit {
   }
 
   /**
-   * 生成简单的文本向量表示（基于字符哈希）
-   * 实际项目应使用真实的 embedding 模型（如 OpenAI、本地模型等）
+   * 生成文本 embedding，优先走硅基流动 BGE-M3 API
    */
-  generateEmbedding(text: string): number[] {
-    // 简单的 hash 到向量的转换，仅用于演示
-    // 实际项目应该调用专门的 embedding 服务
-    const embedding: number[] = new Array(384).fill(0);
-    let hash = 0;
-
-    for (let i = 0; i < text.length; i++) {
-      const char = text.charCodeAt(i);
-      hash = (hash << 5) - hash + char;
-      hash = hash & hash; // Convert to 32bit integer
-    }
-
-    for (let i = 0; i < 384; i++) {
-      embedding[i] = ((hash * (i + 1)) % 100) / 100.0;
-      hash = (hash * 33) ^ hash;
-    }
-
-    return embedding;
+  async generateEmbedding(text: string): Promise<number[]> {
+    return this.siliconFlowEmbeddingProvider.generateEmbedding(text);
   }
 }

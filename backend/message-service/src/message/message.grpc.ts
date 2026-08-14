@@ -16,7 +16,10 @@ interface AppendMessageRequest {
   role: string;
   message_type: string;
   stage: string;
-  content: string;
+  content?: string;
+  summary?: string;
+  topics?: string[];
+  entities?: string[];
 }
 
 interface AppendMessageResponse {
@@ -73,6 +76,9 @@ export class MessageGrpcService {
       request.message_type,
       request.stage,
       request.content,
+      request.summary,
+      request.topics,
+      request.entities,
     );
     return { ok: true };
   }

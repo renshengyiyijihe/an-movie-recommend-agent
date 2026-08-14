@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { AuthGrpcClient } from '../auth/auth.grpc';
+import { MilvusProvider } from '../milvus/milvus.provider';
 import { ConversationEntity, MessageEntity } from './message.entity';
 
 interface ConversationRecord {
@@ -32,6 +33,7 @@ export class MessageService implements OnModuleInit {
     @InjectRepository(MessageEntity)
     private readonly messageRepository: Repository<MessageEntity>,
     private readonly authGrpcClient: AuthGrpcClient,
+    private readonly milvusProvider: MilvusProvider,
   ) {}
 
   async onModuleInit() {
@@ -52,10 +54,14 @@ export class MessageService implements OnModuleInit {
     role: string,
     messageType: string,
     stage: string,
-    content: string,
+    content?: string,
+    summary?: string,
+    topics?: string[],
+    entities?: string[],
   ) {
+    const messageId = randomUUID();
     const message = this.messageRepository.create({
-      id: randomUUID(),
+      id: messageId,
       conversation: { conversation_id: conversationId } as ConversationEntity,
       role,
       message_type: messageType,
@@ -63,6 +69,28 @@ export class MessageService implements OnModuleInit {
       content,
     });
     await this.messageRepository.save(message);
+
+    // 异步添加到 Milvus，失败时不影响返回结果
+    if (summary) {
+      try {
+        const embedding = this.milvusProvider.generateEmbedding(summary);
+        await this.milvusProvider.addMessageRecord({
+          message_id: messageId,
+          conversation_id: conversationId,
+          summary,
+          topics: topics || [],
+          entities: entities || [],
+          summary_embedding: embedding,
+        });
+      } catch (error) {
+        this.logger.error(
+          `Failed to add message record to Milvus: ${(error as Error).message}`,
+          error as Error,
+        );
+        // 不抛异常，已在 MilvusProvider 中记录日志
+      }
+    }
+
     return { ok: true };
   }
 

@@ -152,6 +152,9 @@ export class MovieService {
           preferences,
           message:
             "我主要负责电影推荐或介绍。如果你想问电影类型、演员、风格、时长或推荐电影，我可以继续帮你。",
+          summary: "",
+          topics: [],
+          entities: [],
         },
       };
     }
@@ -232,6 +235,9 @@ export class MovieService {
           message: parsed.message,
           fallback_reason: parsed.fallback_reason,
         }),
+        parsed.summary,
+        parsed.topics,
+        parsed.entities,
       );
 
       return {
@@ -243,6 +249,9 @@ export class MovieService {
           explanation: parsed.explanation,
           message: parsed.message,
           fallback_reason: parsed.fallback_reason,
+          summary: parsed.summary,
+          topics: parsed.topics,
+          entities: parsed.entities,
         },
         stageOutputs: {
           preferences: result.preferences,
@@ -357,6 +366,9 @@ export class MovieService {
     messageType: MessageType,
     stage: MessageStage,
     content?: string,
+    summary?: string,
+    topics?: string[],
+    entities?: string[],
   ) {
     if (!conversationId) {
       return;
@@ -369,6 +381,9 @@ export class MovieService {
         message_type: messageType,
         stage,
         content,
+        summary,
+        topics,
+        entities,
       });
     } catch (error) {
       this.logger.warn("Failed to append conversation message", error as Error);
@@ -865,9 +880,12 @@ export class MovieService {
       "- recommendations: 数组，每项代表一条推荐，用于直接展示（推荐对象示例见下）。",
       "- explanation: 字符串，对整组推荐的总结性说明（为何匹配用户偏好）。",
       "- preferences: 对象，规范化后的用户偏好（用于记录/回显/后续搜索）。",
+      "- summary: 字符串，缩略版本的总结，只保留未来对话可能有用的信息。不要复述完整答案，不要保留解释过程，不要保留客套话。最多50字。",
+      "- topics: 数组，讨论的主题列表，如 [\"科幻\", \"推荐系统\"]。",
+      "- entities: 数组，具体的人/项目/技术/产品等实体名称，如 [\"NestJS\", \"LangChain\", \"Ragas\"]。",
       "仅在无法生成推荐时，使用 fallback_reason 字段说明原因。",
       "recommendations 数组中每项建议包含（示例字段）：name, title, reason, summary, overview, poster_url, tmdb_url, id, release_date, vote_average, vote_count, genre_ids, original_language, original_title, additional。",
-      '示例输出：{\n  "recommendations": [\n    {"name": "盗梦空间", "reason": "紧张且富有想象力", "summary": "一支入侵梦境的团队执行高风险任务...", "poster_url": "https://image.tmdb.org/t/p/w500/xxx.jpg", "tmdb_url": "https://www.themoviedb.org/movie/27205", "id":27205}\n  ],\n  "explanation": "基于你偏好科幻与心理悬疑，推荐以下影片...",\n  "preferences": {"genre":"科幻","mood":"紧张刺激"}\n}',
+      '示例输出：{\n  "recommendations": [\n    {"name": "盗梦空间", "reason": "紧张且富有想象力", "summary": "一支入侵梦境的团队执行高风险任务...", "poster_url": "https://image.tmdb.org/t/p/w500/xxx.jpg", "tmdb_url": "https://www.themoviedb.org/movie/27205", "id":27205}\n  ],\n  "explanation": "基于你偏好科幻与心理悬疑，推荐以下影片...",\n  "preferences": {"genre":"科幻","mood":"紧张刺激"},\n  "summary": "用户想看科幻电影，推荐了2部高评分作品(超级少女、蜘蛛侠)",\n  "topics": ["科幻", "推荐系统"],\n  "entities": ["电影", "科幻"]\n}',
     ].join("\n");
   }
 
@@ -1015,6 +1033,9 @@ export class MovieService {
         preferences,
         message: `推荐流程执行失败：${error.message}`,
         fallback_reason: error.message,
+        summary: "",
+        topics: [],
+        entities: [],
         error: {
           stage: error.stage,
           message: error.message,
@@ -1623,6 +1644,16 @@ export class MovieService {
           typeof parsedObject.fallback_reason === "string"
             ? parsedObject.fallback_reason
             : "",
+        summary:
+          typeof parsedObject.summary === "string"
+            ? parsedObject.summary
+            : "",
+        topics: Array.isArray(parsedObject.topics)
+          ? parsedObject.topics.map((t) => this.normalizePreferenceValue(t)).filter(Boolean)
+          : [],
+        entities: Array.isArray(parsedObject.entities)
+          ? parsedObject.entities.map((e) => this.normalizePreferenceValue(e)).filter(Boolean)
+          : [],
       };
     } catch (err) {
       this.logger.error(
@@ -1634,6 +1665,9 @@ export class MovieService {
         message: "解析失败，无法生成推荐。",
         fallback_reason: "无法解析模型输出。",
         explanation: "",
+        summary: "",
+        topics: [],
+        entities: [],
       };
     }
   }

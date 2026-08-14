@@ -36,6 +36,9 @@ interface AppendMessageRequest {
   message_type: MessageType;
   stage: MessageStage;
   content?: string;
+  summary?: string;
+  topics?: string[];
+  entities?: string[];
 }
 
 interface AppendMessageResponse {

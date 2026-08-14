@@ -46,6 +46,18 @@ services:
       - message-service
     restart: always
 
+  milvus:
+    image: milvusdb/milvus:latest
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    environment:
+      COMMON_STORAGETYPE: local
+      COMMON_MEMORYTYPEREADABLETYPE: immutable
+    volumes:
+      - milvus_data:/var/lib/milvus
+    restart: always
+
   message-service:
     build:
       context: ./backend
@@ -60,9 +72,11 @@ services:
       MESSAGE_GRPC_PORT: 50052
       POSTGRES_URL: postgresql://postgres:password@postgres:5432/anmovie_db
       AUTH_GRPC_ADDRESS: auth-service:50051
+      MILVUS_URL: milvus:19530
     depends_on:
       - postgres
       - auth-service
+      - milvus
     restart: always
 
   frontend:
@@ -91,4 +105,5 @@ services:
 
 volumes:
   postgres_data:
+  milvus_data:
   portainer_data:

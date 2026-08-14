@@ -5,6 +5,7 @@ import { MessageService } from './message/message.service';
 import { MessageGrpcService } from './message/message.grpc';
 import { AuthGrpcClient } from './auth/auth.grpc';
 import { MessageGrpcClient } from './message/message.grpc.client';
+import { MilvusProvider } from './milvus/milvus.provider';
 import { ConversationEntity, MessageEntity } from './message/message.entity';
 
 @Module({
@@ -19,6 +20,6 @@ import { ConversationEntity, MessageEntity } from './message/message.entity';
     TypeOrmModule.forFeature([ConversationEntity, MessageEntity]),
   ],
   controllers: [MessageController, MessageGrpcService],
-  providers: [MessageService, AuthGrpcClient, MessageGrpcClient],
+  providers: [MessageService, AuthGrpcClient, MessageGrpcClient, MilvusProvider],
 })
 export class AppModule {}

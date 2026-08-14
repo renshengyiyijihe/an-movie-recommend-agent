@@ -23,6 +23,9 @@ message AppendMessageRequest {
   string message_type = 3;
   string stage = 4;
   optional string content = 5;
+  optional string summary = 6;
+  repeated string topics = 7;
+  repeated string entities = 8;
 }
 
 message AppendMessageResponse {

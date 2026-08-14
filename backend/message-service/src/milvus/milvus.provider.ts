@@ -1,6 +1,6 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { MilvusClient } from '@zilliz/milvus2-sdk-node';
-import { SiliconFlowEmbeddingProvider } from '../embedding/siliconflow-embedding.provider';
+import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
+import { MilvusClient } from "@zilliz/milvus2-sdk-node";
+import { SiliconFlowEmbeddingProvider } from "../embedding/siliconflow-embedding.provider";
 
 interface MessageEmbeddingRecord {
   message_id: string;
@@ -23,7 +23,7 @@ interface MilvusSearchEmbeddingRecord {
 export class MilvusProvider implements OnModuleInit {
   private readonly logger = new Logger(MilvusProvider.name);
   private client: MilvusClient | null = null;
-  private readonly collectionName = 'message_summary_embeddings';
+  private readonly collectionName = "message_summary_embeddings";
   private readonly embeddingDimension = 1024;
 
   constructor(
@@ -34,9 +34,9 @@ export class MilvusProvider implements OnModuleInit {
     try {
       await this.connect();
       await this.ensureCollectionExists();
-      this.logger.log('Milvus provider initialized successfully');
+      this.logger.log("Milvus provider initialized successfully");
     } catch (error) {
-      this.logger.error('Failed to initialize Milvus provider', error as Error);
+      this.logger.error("Failed to initialize Milvus provider", error as Error);
       // 不抛异常，允许服务继续启动
     }
   }
@@ -44,25 +44,33 @@ export class MilvusProvider implements OnModuleInit {
   private async connect() {
     const milvusUrl = process.env.MILVUS_URL;
     if (!milvusUrl) {
-      throw new Error('MILVUS_URL environment variable is required');
+      throw new Error("MILVUS_URL environment variable is required");
     }
 
     this.logger.log(`Connecting to Milvus at ${milvusUrl}`);
     this.client = new MilvusClient({
       address: milvusUrl,
       timeout: 30000,
+      // 降低 gRPC keepalive 频率，避免被 Milvus 拒绝
+      grpcOptions: {
+        "grpc.keepalive_time_ms": 30000, // 30s 发一次 keepalive（默认可能太短）
+        "grpc.keepalive_timeout_ms": 10000,
+        "grpc.keepalive_permit_without_calls": 0,
+      },
     } as any);
 
     // 验证连接
     const healthCheck = await this.client.checkHealth();
     if (!healthCheck.isHealthy) {
-      throw new Error(`Milvus health check failed ->> ${JSON.stringify(healthCheck)}`);
+      throw new Error(
+        `Milvus health check failed ->> ${JSON.stringify(healthCheck)}`,
+      );
     }
   }
 
   private async ensureCollectionExists() {
     if (!this.client) {
-      throw new Error('Milvus client not initialized');
+      throw new Error("Milvus client not initialized");
     }
 
     const collections = await this.client.listCollections();
@@ -71,9 +79,7 @@ export class MilvusProvider implements OnModuleInit {
     );
 
     if (exists) {
-      this.logger.log(
-        `Collection ${this.collectionName} already exists`,
-      );
+      this.logger.log(`Collection ${this.collectionName} already exists`);
       return;
     }
 
@@ -82,51 +88,51 @@ export class MilvusProvider implements OnModuleInit {
     await this.client.createCollection({
       collection_name: this.collectionName,
       dimension: this.embeddingDimension,
-      primary_field_name: 'message_id',
+      primary_field_name: "message_id",
       fields: [
         {
-          name: 'message_id',
-          description: 'Primary key - message ID',
-          data_type: 'VarChar',
+          name: "message_id",
+          description: "Primary key - message ID",
+          data_type: "VarChar",
           is_primary_key: true,
           max_length: 100,
         },
         {
-          name: 'conversation_id',
-          description: 'Conversation ID for grouping',
-          data_type: 'VarChar',
+          name: "conversation_id",
+          description: "Conversation ID for grouping",
+          data_type: "VarChar",
           max_length: 100,
         },
         {
-          name: 'summary',
-          description: 'Message summary text',
-          data_type: 'VarChar',
+          name: "summary",
+          description: "Message summary text",
+          data_type: "VarChar",
           max_length: 500,
         },
         {
-          name: 'topics',
-          description: 'Topics as JSON array',
-          data_type: 'VarChar',
+          name: "topics",
+          description: "Topics as JSON array",
+          data_type: "VarChar",
           max_length: 1000,
         },
         {
-          name: 'entities',
-          description: 'Entities as JSON array',
-          data_type: 'VarChar',
+          name: "entities",
+          description: "Entities as JSON array",
+          data_type: "VarChar",
           max_length: 1000,
         },
         {
-          name: 'summary_embedding',
-          description: 'Vector embedding of summary',
-          data_type: 'FloatVector',
+          name: "summary_embedding",
+          description: "Vector embedding of summary",
+          data_type: "FloatVector",
           dim: this.embeddingDimension,
         },
       ],
       index_params: [
         {
-          field_name: 'summary_embedding',
-          index_type: 'IVF_FLAT',
-          metric_type: 'L2',
+          field_name: "summary_embedding",
+          index_type: "IVF_FLAT",
+          metric_type: "L2",
           params: { nlist: 128 },
         },
       ],
@@ -141,7 +147,9 @@ export class MilvusProvider implements OnModuleInit {
    */
   async addMessageRecord(record: MessageEmbeddingRecord): Promise<void> {
     if (!this.client) {
-      this.logger.warn('Milvus client not initialized, skipping record insertion');
+      this.logger.warn(
+        "Milvus client not initialized, skipping record insertion",
+      );
       return;
     }
 
@@ -175,11 +183,11 @@ export class MilvusProvider implements OnModuleInit {
   /**
    * 按 conversation_id 查询所有消息记录
    */
-  async getMessagesByConversation(conversationId: string): Promise<
-    MilvusSearchEmbeddingRecord[]
-  > {
+  async getMessagesByConversation(
+    conversationId: string,
+  ): Promise<MilvusSearchEmbeddingRecord[]> {
     if (!this.client) {
-      this.logger.warn('Milvus client not initialized');
+      this.logger.warn("Milvus client not initialized");
       return [];
     }
 
@@ -189,11 +197,11 @@ export class MilvusProvider implements OnModuleInit {
         filter: `conversation_id == "${conversationId}"`,
         limit: 100,
         output_fields: [
-          'message_id',
-          'conversation_id',
-          'summary',
-          'topics',
-          'entities',
+          "message_id",
+          "conversation_id",
+          "summary",
+          "topics",
+          "entities",
         ],
       });
 
@@ -205,8 +213,8 @@ export class MilvusProvider implements OnModuleInit {
         message_id: item.message_id as string,
         conversation_id: item.conversation_id as string,
         summary: item.summary as string,
-        topics: JSON.parse((item.topics as string)) || [],
-        entities: JSON.parse((item.entities as string)) || [],
+        topics: JSON.parse(item.topics as string) || [],
+        entities: JSON.parse(item.entities as string) || [],
       }));
     } catch (error) {
       this.logger.error(
@@ -226,12 +234,12 @@ export class MilvusProvider implements OnModuleInit {
     limit = 5,
   ): Promise<MilvusSearchEmbeddingRecord[]> {
     if (!this.client) {
-      this.logger.warn('Milvus client not initialized');
+      this.logger.warn("Milvus client not initialized");
       return [];
     }
 
     try {
-      let filter = '';
+      let filter = "";
       if (conversationId) {
         filter = `conversation_id == "${conversationId}"`;
       }
@@ -239,15 +247,15 @@ export class MilvusProvider implements OnModuleInit {
       const results = await this.client.search({
         collection_name: this.collectionName,
         data: [embedding],
-        annsField: 'summary_embedding',
+        annsField: "summary_embedding",
         filter: filter || undefined,
         limit,
         output_fields: [
-          'message_id',
-          'conversation_id',
-          'summary',
-          'topics',
-          'entities',
+          "message_id",
+          "conversation_id",
+          "summary",
+          "topics",
+          "entities",
         ],
       });
 
@@ -259,8 +267,8 @@ export class MilvusProvider implements OnModuleInit {
         message_id: item.message_id as string,
         conversation_id: item.conversation_id as string,
         summary: item.summary as string,
-        topics: JSON.parse((item.topics as string) || '[]'),
-        entities: JSON.parse((item.entities as string) || '[]'),
+        topics: JSON.parse((item.topics as string) || "[]"),
+        entities: JSON.parse((item.entities as string) || "[]"),
       }));
     } catch (error) {
       this.logger.error(

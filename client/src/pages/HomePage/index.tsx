@@ -176,7 +176,7 @@ export default function HomePage() {
       item.original_title && item.original_title !== title
         ? item.original_title
         : "";
-    const reason = item.reason || item.summary || item.overview || "暂无说明";
+    const reason = item.summary || item.overview || "暂无说明";
     const releaseDate = item.release_date ? item.release_date : "未知日期";
     const rating =
       typeof item.vote_average === "number"

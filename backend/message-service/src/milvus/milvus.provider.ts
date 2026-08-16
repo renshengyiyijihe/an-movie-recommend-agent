@@ -51,13 +51,7 @@ export class MilvusProvider implements OnModuleInit {
     this.client = new MilvusClient({
       address: milvusUrl,
       timeout: 30000,
-      // 降低 gRPC keepalive 频率，避免被 Milvus 拒绝
-      grpcOptions: {
-        "grpc.keepalive_time_ms": 30000, // 30s 发一次 keepalive（默认可能太短）
-        "grpc.keepalive_timeout_ms": 10000,
-        "grpc.keepalive_permit_without_calls": 0,
-      },
-    } as any);
+    });
 
     // // 验证连接
     // const healthCheck = await this.client.checkHealth();
@@ -68,7 +62,8 @@ export class MilvusProvider implements OnModuleInit {
     // }
 
     // 加上重试轮询，等 Milvus 容器完全启动初始化完成
-    const maxRetries = 10;
+    const maxRetries = 20;
+    const stepDelay = 5000; 
     let isHealthy = false;
 
     for (let i = 0; i < maxRetries; i++) {
@@ -81,12 +76,15 @@ export class MilvusProvider implements OnModuleInit {
         }
       } catch (error) {
         // 启动初期失败是正常的，捕获后继续重试
+        this.logger.warn(
+          `Milvus health check attempt ${i + 1} failed: ${JSON.stringify(error)}`,
+        );
       }
 
       this.logger.warn(
         `Milvus is not ready yet, retrying in 3s... (${i + 1}/${maxRetries})`,
       );
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      await new Promise((resolve) => setTimeout(resolve, stepDelay));
     }
 
     if (!isHealthy) {

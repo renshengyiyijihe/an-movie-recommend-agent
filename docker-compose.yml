@@ -56,10 +56,7 @@ services:
     volumes:
       - milvus_etcd:/etcd
     command: >
-      etcd
-      -advertise-client-urls=http://milvus-etcd:2379
-      -listen-client-urls=http://0.0.0.0:2379
-      --data-dir=/etcd
+      etcd -advertise-client-urls=http://milvus-etcd:2379 -listen-client-urls=http://0.0.0.0:2379 --data-dir=/etcd
     restart: always
 
   milvus-minio:
@@ -71,15 +68,15 @@ services:
       - milvus_minio:/minio_data
     command: minio server /minio_data --console-address ":9001"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
       interval: 5s
       timeout: 3s
-      retries: 10
+      retries: 5
     restart: always
 
   milvus:
     image: milvusdb/milvus:v2.4.15
-    command: ["milvus", "run", "standalone"]
+    command: [ "milvus", "run", "standalone" ]
     environment:
       ETCD_ENDPOINTS: milvus-etcd:2379
       MINIO_ADDRESS: milvus-minio:9000
@@ -88,17 +85,15 @@ services:
     ports:
       - "19530:19530"
       - "9091:9091"
+    depends_on:
+      - milvus-etcd
+      - milvus-minio
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      test: [ "CMD", "curl", "-f", "http://localhost:9091/healthz" ]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 30
       start_period: 30s
-    depends_on:
-      milvus-etcd:
-        condition: service_healthy
-      milvus-minio:
-        condition: service_healthy
     restart: always
 
   # milvus:
@@ -129,17 +124,13 @@ services:
       POSTGRES_URL: postgresql://postgres:password@postgres:5432/anmovie_db
       AUTH_GRPC_ADDRESS: auth-service:50051
       MILVUS_URL: milvus:19530
-    # depends_on:
-    #   - postgres
-    #   - auth-service
-    #   milvus:
-    #     condition: service_healthy  # 确保 Milvus 完全 Ready 后再启动后端
-    postgres:
-      condition: service_started
-    auth-service:
-      condition: service_started
-    milvus:
-      condition: service_healthy  # 确保 Milvus 完全 Ready 后再启动后端
+    depends_on:
+      postgres:
+        condition: service_started
+      auth-service:
+        condition: service_started
+      milvus:
+        condition: service_healthy
     restart: always
 
   frontend:

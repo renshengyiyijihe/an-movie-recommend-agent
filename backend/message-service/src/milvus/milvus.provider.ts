@@ -62,8 +62,8 @@ export class MilvusProvider implements OnModuleInit {
     // }
 
     // 加上重试轮询，等 Milvus 容器完全启动初始化完成
-    const maxRetries = 20;
-    const stepDelay = 5000; 
+    const maxRetries = 30;
+    const stepDelay = 6000; 
     let isHealthy = false;
 
     for (let i = 0; i < maxRetries; i++) {

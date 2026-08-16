@@ -82,7 +82,7 @@ export class MilvusProvider implements OnModuleInit {
       }
 
       this.logger.warn(
-        `Milvus is not ready yet, retrying in 3s... (${i + 1}/${maxRetries})`,
+        `Milvus is not ready yet, retrying in ${stepDelay / 1000}s... (${i + 1}/${maxRetries})`,
       );
       await new Promise((resolve) => setTimeout(resolve, stepDelay));
     }

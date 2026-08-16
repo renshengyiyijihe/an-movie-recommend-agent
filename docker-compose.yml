@@ -74,7 +74,7 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 10
     restart: always
 
   milvus:
@@ -88,9 +88,17 @@ services:
     ports:
       - "19530:19530"
       - "9091:9091"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
     depends_on:
-      - milvus-etcd
-      - milvus-minio
+      milvus-etcd:
+        condition: service_healthy
+      milvus-minio:
+        condition: service_healthy
     restart: always
 
   # milvus:
@@ -121,10 +129,17 @@ services:
       POSTGRES_URL: postgresql://postgres:password@postgres:5432/anmovie_db
       AUTH_GRPC_ADDRESS: auth-service:50051
       MILVUS_URL: milvus:19530
-    depends_on:
-      - postgres
-      - auth-service
-      - milvus
+    # depends_on:
+    #   - postgres
+    #   - auth-service
+    #   milvus:
+    #     condition: service_healthy  # 确保 Milvus 完全 Ready 后再启动后端
+    postgres:
+      condition: service_started
+    auth-service:
+      condition: service_started
+    milvus:
+      condition: service_healthy  # 确保 Milvus 完全 Ready 后再启动后端
     restart: always
 
   frontend:

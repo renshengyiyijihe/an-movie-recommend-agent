@@ -6,6 +6,7 @@ service Message {
   rpc CreateConversation(CreateConversationRequest) returns (CreateConversationResponse);
   rpc AppendMessage(AppendMessageRequest) returns (AppendMessageResponse);
   rpc GetConversation(GetConversationRequest) returns (GetConversationResponse);
+  rpc SearchSimilarContext(SearchSimilarContextRequest) returns (SearchSimilarContextResponse);
 }
 
 message CreateConversationRequest {
@@ -26,6 +27,7 @@ message AppendMessageRequest {
   optional string summary = 6;
   repeated string topics = 7;
   repeated string entities = 8;
+  optional string user_message_id = 9;
 }
 
 message AppendMessageResponse {
@@ -50,4 +52,21 @@ message MessageRecord {
   string stage = 4;
   string content = 5;
   string created_at = 6;
+}
+
+message RelatedContextItem {
+  string role = 1;
+  string content = 2;
+  string message_type = 3;
+  string stage = 4;
+}
+
+message SearchSimilarContextRequest {
+  string user_input = 1;
+  string conversation_id = 2;
+  int32 limit = 3;
+}
+
+message SearchSimilarContextResponse {
+  repeated RelatedContextItem context_items = 1;
 }

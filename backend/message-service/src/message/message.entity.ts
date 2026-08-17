@@ -39,6 +39,9 @@ export class MessageEntity {
   @Column({ name: 'content', type: 'text', nullable: true })
   content!: string | null;
 
+  @Column({ name: 'user_message_id', type: 'uuid', nullable: true })
+  user_message_id!: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   created_at!: Date;
 }

@@ -30,7 +30,7 @@ interface MoviePreference {
   theme?: string;
 }
 
-interface ConversationHistoryItem {
+export interface ConversationHistoryItem {
   role: "user" | "assistant";
   content: string;
   message_type: MessageType;
@@ -115,6 +115,7 @@ export class MovieService {
 
     const conversationHistoryItems = await this.loadConversationHistory(
       conversationId,
+      payload.message,
       authResult,
     );
 
@@ -176,9 +177,6 @@ export class MovieService {
       preferences,
       imageUrl: payload.imageUrl,
       imageData: payload.imageData,
-      conversationHistory: this.buildConversationHistory(
-        conversationHistoryItems,
-      ),
       conversationId,
     };
 
@@ -223,6 +221,7 @@ export class MovieService {
         `Recommendation result ready: preferences ->> ${JSON.stringify(parsed.preferences)} \n recommendations ->> ${JSON.stringify(parsed.recommendations)}`,
       );
 
+      const userMessageId = await this.getLatestUserMessageId(conversationId);
       await this.appendConversationMessage(
         conversationId,
         "assistant",
@@ -238,6 +237,7 @@ export class MovieService {
         parsed.summary,
         parsed.topics,
         parsed.entities,
+        userMessageId,
       );
 
       return {
@@ -321,41 +321,36 @@ export class MovieService {
 
   private async loadConversationHistory(
     conversationId: string,
+    userMessage: string,
     authResult: { ok: boolean; user?: { id: string; email: string } },
   ): Promise<ConversationHistoryItem[] | undefined> {
     if (!conversationId) return undefined;
 
     try {
-      const convo = await this.messageGrpcClient.getConversation({
-        conversation_id: conversationId,
-      });
-      const messages = convo?.messages ?? [];
-      const items: ConversationHistoryItem[] = (
-        messages as Array<ConversationHistoryItem>
-      )
-        .filter((m) => {
-          if (!m) return false;
-          if (m.role === "user") return true;
-          // only include assistant final responses, exclude intermediate agent_execution stages
-          if (
-            m.role === "assistant" &&
-            (m.message_type === "final_response" || m.stage === "final")
-          )
-            return true;
-          return false;
-        })
-        .map((m) => ({
-          role: m.role === "user" ? "user" : "assistant",
-          content:
-            typeof m.content === "string"
-              ? m.content
-              : JSON.stringify(m.content),
-          message_type: m.message_type,
-          stage: m.stage,
-        }));
-      return items;
+      // 调用新的向量搜索接口获取相关的历史上下文
+      const searchResult =
+        await this.messageGrpcClient.searchSimilarContext({
+          user_input: userMessage,
+          conversation_id: conversationId,
+          limit: 5,
+        });
+
+      const contextItems = searchResult.context_items ?? [];
+      this.logger.log(
+        `loadConversationHistory: found ${contextItems.length} related context items via vector search`,
+      );
+
+      if (contextItems.length === 0) {
+        return undefined;
+      }
+
+
+      return contextItems;
     } catch (error) {
-      this.logger.warn("Failed to load conversation history", error as Error);
+      this.logger.warn(
+        `Failed to load conversation history via vector search: ${(error as Error).message}`,
+        error as Error,
+      );
       return undefined;
     }
   }
@@ -369,6 +364,7 @@ export class MovieService {
     summary?: string,
     topics?: string[],
     entities?: string[],
+    userMessageId?: string,
   ) {
     if (!conversationId) {
       return;
@@ -384,9 +380,39 @@ export class MovieService {
         summary,
         topics,
         entities,
+        user_message_id: userMessageId,
       });
     } catch (error) {
       this.logger.warn("Failed to append conversation message", error as Error);
+    }
+  }
+
+  private async getLatestUserMessageId(
+    conversationId: string,
+  ): Promise<string | undefined> {
+    if (!conversationId) {
+      return undefined;
+    }
+
+    try {
+      const conversation = await this.messageGrpcClient.getConversation({
+        conversation_id: conversationId,
+      });
+
+      const messages = conversation?.messages ?? [];
+      for (let i = messages.length - 1; i >= 0; i -= 1) {
+        const message = messages[i];
+        if (message?.role === "user") {
+          return message.id;
+        }
+      }
+
+      return undefined;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to resolve latest user message id for conversation ${conversationId}: ${(error as Error).message}`,
+      );
+      return undefined;
     }
   }
 
@@ -960,10 +986,6 @@ export class MovieService {
         state.searchResult,
         MAX_SEARCH_RESULT_LENGTH,
       ),
-      conversationHistory: this.truncateText(
-        state.conversationHistory,
-        MAX_PROMPT_TEXT_LENGTH,
-      ),
       imageUrl: state.imageUrl,
       imageData: this.sanitizeImageData(state.imageData),
     };
@@ -983,7 +1005,6 @@ export class MovieService {
 
     const pastUser = [...validItems]
       .filter((item) => item.role === "user")
-      .slice(0, -1);
     const pastAssistant = [...validItems].find(
       (item) => item.role === "assistant" && item.stage === "final",
     );

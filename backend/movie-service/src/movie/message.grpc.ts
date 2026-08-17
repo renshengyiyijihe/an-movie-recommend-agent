@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { credentials, loadPackageDefinition } from '@grpc/grpc-js';
 import { loadSync } from '@grpc/proto-loader';
 import { join } from 'path';
+import { ConversationHistoryItem } from './movie.service';
 
 interface CreateConversationRequest {
   user_id?: string;
@@ -39,10 +40,21 @@ interface AppendMessageRequest {
   summary?: string;
   topics?: string[];
   entities?: string[];
+  user_message_id?: string;
 }
 
 interface AppendMessageResponse {
   ok: boolean;
+}
+
+interface SearchSimilarContextRequest {
+  user_input: string;
+  conversation_id: string;
+  limit?: number;
+}
+
+interface SearchSimilarContextResponse {
+  context_items: ConversationHistoryItem[];
 }
 
 @Injectable()
@@ -91,6 +103,26 @@ export class MessageGrpcClient implements OnModuleInit {
     return new Promise((resolve, reject) => {
       this.client.GetConversation(request, (err: any, response: any) => {
         if (err) return reject(err);
+        resolve(response);
+      });
+    });
+  }
+
+  searchSimilarContext(
+    request: SearchSimilarContextRequest,
+  ): Promise<SearchSimilarContextResponse> {
+    this.logger.log(
+      `gRPC SearchSimilarContext user_input=${request.user_input ? request.user_input.slice(0, 50) : ""}... conversation_id=${request.conversation_id} limit=${request.limit ?? 5}`,
+    );
+    return new Promise((resolve, reject) => {
+      this.client.SearchSimilarContext(request, (err: any, response: SearchSimilarContextResponse) => {
+        if (err) {
+          this.logger.error("gRPC SearchSimilarContext call failed", err as Error);
+          return reject(err);
+        }
+        this.logger.log(
+          `gRPC SearchSimilarContext response: found ${response.context_items?.length ?? 0} context items`,
+        );
         resolve(response);
       });
     });

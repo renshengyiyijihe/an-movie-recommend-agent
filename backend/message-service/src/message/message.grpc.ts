@@ -20,6 +20,7 @@ interface AppendMessageRequest {
   summary?: string;
   topics?: string[];
   entities?: string[];
+  user_message_id?: string;
 }
 
 interface AppendMessageResponse {
@@ -28,6 +29,23 @@ interface AppendMessageResponse {
 
 interface GetConversationRequest {
   conversation_id: string;
+}
+
+export interface RelatedContextItem {
+  role?: 'user' | 'assistant';
+  content?: string;
+  message_type?: string;
+  stage?: string;
+}
+
+interface SearchSimilarContextRequest {
+  user_input: string;
+  conversation_id: string;
+  limit?: number;
+}
+
+interface SearchSimilarContextResponse {
+  context_items: RelatedContextItem[];
 }
 
 @Controller()
@@ -79,6 +97,7 @@ export class MessageGrpcService {
       request.summary,
       request.topics,
       request.entities,
+      request.user_message_id,
     );
     return { ok: true };
   }
@@ -89,5 +108,19 @@ export class MessageGrpcService {
       `gRPC GetConversation conversation_id=${request.conversation_id}`,
     );
     return this.messageService.getConversation(request.conversation_id);
+  }
+
+  @GrpcMethod("Message", "SearchSimilarContext")
+  async searchSimilarContext(
+    request: SearchSimilarContextRequest,
+  ): Promise<SearchSimilarContextResponse> {
+    this.logger.log(
+      `gRPC SearchSimilarContext user_input=${request.user_input ? request.user_input.slice(0, 50) : ""}... conversation_id=${request.conversation_id} limit=${request.limit ?? 5}`,
+    );
+    return this.messageService.searchSimilarContext(
+      request.user_input,
+      request.conversation_id,
+      request.limit ?? 5,
+    );
   }
 }

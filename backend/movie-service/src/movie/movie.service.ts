@@ -497,10 +497,7 @@ export class MovieService {
       preferences: this.stringifyPreferences(context.preferences),
       searchResult: "",
       supervisorResult: "",
-      conversationHistory: this.truncateText(
-        context.conversationHistory,
-        MAX_PROMPT_TEXT_LENGTH,
-      ),
+      conversationHistory: context.conversationHistory || '',
     };
 
     const plannerResult = await this.planWorkflowStages(context);
@@ -853,11 +850,6 @@ export class MovieService {
       "5. 语言代码必须是 ISO 639-1 标准代码",
       "",
       `用户输入: ${promptState.message}`,
-      promptState.imageUrl ? `图片链接: ${promptState.imageUrl}` : "",
-      promptState.imageData ? "已上传图片，请分析其情绪和风格。" : "",
-      promptState.conversationHistory
-        ? `历史对话上下文:\n${promptState.conversationHistory}`
-        : "",
       `已知偏好: ${existingPreferences}`,
       '输出示例: {"genre":"科幻","mood":"紧张刺激","actors":"汤姆·克鲁斯","length":"2小时以内","rating":"8分以上","language":"英文","scene":"适合晚上看","theme":"成长"}',
     ];
@@ -871,9 +863,6 @@ export class MovieService {
       `用户输入: ${promptState.message}`,
       promptState.imageUrl ? `图片链接: ${promptState.imageUrl}` : "",
       promptState.imageData ? "附带已上传图片分析。" : "",
-      promptState.conversationHistory
-        ? `历史对话上下文:\n${promptState.conversationHistory}`
-        : "",
       `用户偏好: ${promptState.preferences}`,
       `搜索结果: ${promptState.searchResult}`,
       "输出必须是纯 JSON（不要包含多余注释或说明），顶层字段必须包含：",

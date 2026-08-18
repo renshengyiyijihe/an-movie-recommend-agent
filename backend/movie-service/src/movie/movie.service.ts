@@ -17,6 +17,7 @@ import {
 } from "./message.grpc";
 import { genreToTmdbGenreIdMap, languageToTmdbLanguageMap } from "./config";
 import { WorkflowPlanner, type StageName } from "./workflow.planner";
+import { OrchestratorAgent } from "./agents/orchestrator.agent";
 
 interface MoviePreference {
   genre?: string;
@@ -94,6 +95,7 @@ export class MovieService {
     private readonly tmdbProvider: TmdbProvider,
     private readonly authGrpcClient: AuthGrpcClient,
     private readonly messageGrpcClient: MessageGrpcClient,
+    private readonly orchestratorAgent: OrchestratorAgent,
   ) {}
 
   async recommend(payload: RecommendPayload, authorization?: string) {
@@ -130,26 +132,45 @@ export class MovieService {
       payload.message,
     );
 
-    const intent = await this.classifyIntent(
+    // 使用新的OrchestratorAgent系统进行意图识别和任务规划
+    const model = this.modelProvider.getModel();
+    if (!model) {
+      this.logger.error(
+        "LLM model not configured; aborting recommendation workflow",
+      );
+      return this.buildErrorResponse(payload, preferences, {
+        stage: "model",
+        message: "模型未配置，无法执行推荐",
+        details: "ModelProvider 未返回可用模型",
+      });
+    }
+
+    const conversationHistoryStr = this.buildConversationHistory(conversationHistoryItems);
+    const orchestratorResult = await this.orchestratorAgent.orchestrate(
+      model,
       payload.message,
-      conversationHistoryItems,
+      conversationHistoryStr,
     );
-    await this.appendConversationMessage(
-      conversationId,
-      "assistant",
-      "agent_execution",
-      "intent_classification",
-      intent,
+
+    this.logger.log(
+      `[Orchestrator] Result: intentType=${orchestratorResult.intent_type}, success=${orchestratorResult.success}`,
     );
-    if (intent !== "in_scope") {
-      this.logger.warn(
-        `Non-movie request rejected: ${this.truncateText(payload.message, 200)}`,
+
+    // 如果意图不相关，直接返回
+    if (!orchestratorResult.success || orchestratorResult.intent_type === "out_of_scope") {
+      await this.appendConversationMessage(
+        conversationId,
+        "assistant",
+        "agent_execution",
+        "final",
+        orchestratorResult.result,
       );
       return {
         type: "reject",
         data: {
           preferences,
           message:
+            orchestratorResult.result ||
             "我主要负责电影推荐或介绍。如果你想问电影类型、演员、风格、时长或推荐电影，我可以继续帮你。",
           summary: "",
           topics: [],
@@ -158,7 +179,24 @@ export class MovieService {
       };
     }
 
-    const model = this.modelProvider.getModel();
+    // 保存agent执行结果到对话历史
+    await this.appendConversationMessage(
+      conversationId,
+      "assistant",
+      "agent_execution",
+      "workflow_complete",
+      `使用的Agent: ${orchestratorResult.agents_used.join(", ")}`,
+    );
+
+    // 继续现有的工作流处理
+    const intent = "in_scope";
+    await this.appendConversationMessage(
+      conversationId,
+      "assistant",
+      "agent_execution",
+      "intent_classification",
+      intent,
+    );
     if (!model) {
       this.logger.error(
         "LLM model not configured; aborting recommendation workflow",

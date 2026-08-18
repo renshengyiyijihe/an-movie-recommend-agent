@@ -2,7 +2,6 @@
 import { plainToInstance } from "class-transformer";
 import { validate } from "class-validator";
 import { ModelProvider } from "../model/model.provider";
-import { LangSmithProvider } from "../model/langsmith.provider";
 import {
   TmdbProvider,
   TmdbDiscoverMovieQueryParamsDto,
@@ -92,7 +91,6 @@ export class MovieService {
 
   constructor(
     private readonly modelProvider: ModelProvider,
-    private readonly langsmithProvider: LangSmithProvider,
     private readonly tmdbProvider: TmdbProvider,
     private readonly authGrpcClient: AuthGrpcClient,
     private readonly messageGrpcClient: MessageGrpcClient,
@@ -189,29 +187,6 @@ export class MovieService {
         `Workflow finished: preferences=${this.truncateText(result.preferences, 400)} searchResult=${this.truncateText(result.searchResult, 400)} supervisorResult=${this.truncateText(result.supervisorResult, 400)}`,
       );
 
-      const langsmithEnabled = !!this.langsmithProvider.getClient();
-      if (langsmithEnabled) {
-        await this.langsmithProvider.createRun(
-          "电影推荐请求",
-          {
-            user_message: this.truncateText(payload.message, 500),
-            has_image: !!payload.imageData,
-            image_url: payload.imageUrl ?? undefined,
-          },
-          {
-            supervisor_output: this.truncateText(result.supervisorResult, 1000),
-            stage_outputs: {
-              preferences: this.truncateText(result.preferences, 1000),
-              searchResult: this.truncateText(result.searchResult, 1000),
-            },
-          },
-          {
-            stage: "workflow",
-            langchain_workflow: "in_scope",
-          },
-        );
-      }
-
       const parsed = this.parseRecommendation(
         result.supervisorResult,
         preferences,
@@ -256,9 +231,6 @@ export class MovieService {
         stageOutputs: {
           preferences: result.preferences,
           searchResult: result.searchResult,
-        },
-        monitoring: {
-          langsmith: langsmithEnabled,
         },
       };
     } catch (error) {

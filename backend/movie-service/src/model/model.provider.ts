@@ -1,140 +1,109 @@
 import { Injectable, Logger } from "@nestjs/common";
-import OpenAI from "openai";
-import { LangSmithProvider } from "./langsmith.provider";
+import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
+import { ChatOpenAI } from "@langchain/openai";
 import { sleep } from "../utils/tool";
 
 type ChatRole = "system" | "user" | "assistant";
-
 type ChatMessage = [ChatRole, string];
 
-type OpenAIChatMessage = {
-  role: ChatRole;
-  content: string;
+type CompatibleModel = {
+  invoke(messages: ChatMessage[]): Promise<{ content: unknown }>;
 };
 
-class OpenAIModelWrapper {
-  constructor(
-    private client: OpenAI,
-    private modelName: string,
-    private temperature = 0.3,
-    private langsmithProvider?: LangSmithProvider,
-  ) {}
-
-  async invoke(messages: ChatMessage[]) {
-    await sleep(1000);
-
-
-    const formatted: OpenAIChatMessage[] = messages.map(([role, content]) => ({
-      role,
-      content,
-    }));
-
-    let resp;
-
-    Logger.log("formatted messages:", formatted);
-    // Use chat completions; OpenAI SDK expects messages as objects with role/content
-    try {
-      Logger.log(`Model invocation start`);
-      resp = await this.client.chat.completions.create({
-        model: this.modelName,
-        messages: formatted,
-        temperature: this.temperature,
-        max_tokens: 16384,
-      });
-    } catch (error) {
-      Logger.error("Error invoking model:", error);
-      throw error;
+const toLangChainMessages = (messages: ChatMessage[]) =>
+  messages.map(([role, content]) => {
+    switch (role) {
+      case "assistant":
+        return new AIMessage(content);
+      case "system":
+        return new SystemMessage(content);
+      case "user":
+      default:
+        return new HumanMessage(content);
     }
-    Logger.log(`Model invocation completed`);
-    Logger.log(`Model response: ${JSON.stringify(resp)} --- ${JSON.stringify(resp?.choices)}`);
+  });
 
-    const anyResp: any = resp;
-    const text =
-      anyResp?.choices?.[0]?.message?.content ??
-      anyResp?.choices?.[0]?.text ??
-      "";
-
-    Logger.log(`Model response text: ${JSON.stringify(text)}`);
-
-    const usage = anyResp?.usage;
-    const tokenUsage = usage
-      ? {
-          prompt_tokens: usage.prompt_tokens ?? 0,
-          completion_tokens: usage.completion_tokens ?? 0,
-          total_tokens: usage.total_tokens ?? 0,
-          prompt_tokens_details: usage.prompt_tokens_details ?? null,
-        }
-      : null;
-
-    if (this.langsmithProvider?.isEnabled()) {
-      await this.langsmithProvider.createRun(
-        'LLM Chat Completion',
-        {
-          model: this.modelName,
-          messages: formatted,
-        },
-        {
-          response: String(text),
-          raw_response: JSON.stringify(anyResp),
-          usage: tokenUsage,
-        },
-        {
-          llm: true,
-          model: this.modelName,
-          run_stage: 'chat_completion',
-          usage: tokenUsage,
-        },
-        'llm',
-      );
-    }
-
-    return { content: String(text) };
+const extractContentText = (content: unknown): string => {
+  if (typeof content === "string") {
+    return content;
   }
-}
+
+  if (Array.isArray(content)) {
+    return content
+      .map((item) => {
+        if (typeof item === "string") {
+          return item;
+        }
+        if (typeof item === "object" && item !== null) {
+          const text = (item as { text?: string }).text ?? JSON.stringify(item);
+          return typeof text === "string" ? text : String(text);
+        }
+        return String(item ?? "");
+      })
+      .join("");
+  }
+
+  if (typeof content === "object" && content !== null) {
+    return JSON.stringify(content);
+  }
+
+  return String(content ?? "");
+};
 
 @Injectable()
 export class ModelProvider {
-  private model: OpenAIModelWrapper | null = null;
+  private model: CompatibleModel | null = null;
   private readonly logger = new Logger(ModelProvider.name);
 
-  constructor(private readonly langsmithProvider: LangSmithProvider) {}
-
-  getModel() {
+  getModel(): CompatibleModel | null {
     if (this.model) {
       return this.model;
     }
 
-    // const apiKey = process.env.NVIDIA_API_KEY;
-    const apiKey = "sk-cdpyzrsychrkdllimsziqpzvqjtfgxkiqiwjzjsrjnuukvqy"
-    Logger.log( `apiKey: ${apiKey}; process.env: ${JSON.stringify(process.env)}`);
+    const apiKey = process.env.SILICONFLOW_API_KEY ?? process.env.OPENAI_API_KEY;
     if (!apiKey) {
       this.logger.error(
-        "NVIDIA_API_KEY is not set. Model provider unavailable.",
+        "SILICONFLOW_API_KEY or OPENAI_API_KEY is not set. Model provider unavailable.",
       );
       return null;
     }
 
-    // const baseURL = "https://integrate.api.nvidia.com/v1";
-    const baseURL = "https://api.siliconflow.cn/v1";
-    // const modelName = "minimaxai/minimax-m3";
-    // const modelName = "z-ai/glm-5.2"
-    // const modelName = "mistralai/mistral-nemotron";
-    const modelName = 'deepseek-ai/DeepSeek-V4-Flash'
-    const temperature = process.env.NVIDIA_TEMPERATURE
-      ? Number(process.env.NVIDIA_TEMPERATURE)
-      : 0.3;
+    const baseURL =
+      process.env.SILICONFLOW_BASE_URL ?? "https://api.siliconflow.cn/v1";
+    const modelName = process.env.MODEL_NAME ?? "deepseek-ai/DeepSeek-V4-Flash";
+    const temperature = Number(process.env.MODEL_TEMPERATURE ?? "0.3");
 
-    this.logger.log("Initializing OpenAI client");
-    const client = new OpenAI({
+    this.logger.log("Initializing LangChain ChatOpenAI client");
+    const client = new ChatOpenAI({
       apiKey,
-      baseURL,
-      maxRetries: 0,
-      logLevel: "debug"
+      model: modelName,
+      temperature,
+      maxTokens: 16384,
+      configuration: {
+        baseURL,
+      },
     });
 
-    this.model = new OpenAIModelWrapper(client, modelName, temperature, this.langsmithProvider);
+    this.model = {
+      async invoke(messages: ChatMessage[]) {
+        await sleep(1000);
 
-    this.logger.log(`OpenAI model provider configured: model=${modelName}`);
+        try {
+          Logger.log(`Model invocation start: model=${modelName}`);
+          const response = await client.invoke(toLangChainMessages(messages));
+          const text = extractContentText(response.content);
+          Logger.log(`Model invocation completed: ${JSON.stringify(text)}`);
+          return { content: text };
+        } catch (error) {
+          Logger.error("Error invoking LangChain model:", error);
+          throw error;
+        }
+      },
+    };
+
+    this.logger.log(
+      `LangChain model provider configured: model=${modelName}, baseURL=${baseURL}`,
+    );
     return this.model;
   }
 }

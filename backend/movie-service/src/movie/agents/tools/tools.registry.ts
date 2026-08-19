@@ -1,7 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ITool, ToolResult } from "./tool.interface";
 import { MovieDetailTool } from "./movie-detail.tool";
-import { PersonInfoTool } from "./person-info.tool";
+import { PersonInfoTool } from "./person-detail.tool";
 import { PersonWorkTool } from "./person-work.tool";
 import { MovieRecommendTool } from "./movie-recommend.tool";
 

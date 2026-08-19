@@ -114,11 +114,14 @@ export class OrchestratorAgent {
     conversationHistory?: string,
   ): Promise<IntentClassification> {
     try {
-      const prompt = this.promptTemplateService.getIntentClassificationPrompt(
+      const messages = this.promptTemplateService.getIntentClassificationPrompt(
         query,
         conversationHistory,
       );
-      const response = await model.invoke([["system", prompt]]);
+      const response = await model.invoke([
+        ["system", messages.system],
+        ["user", messages.user],
+      ]);
       const result = tryParseJson<IntentClassification>(
         typeof response.content === "string"
           ? response.content
@@ -157,14 +160,17 @@ export class OrchestratorAgent {
     conversationHistory?: string,
   ): Promise<AgentType[]> {
     try {
-      const prompt = this.promptTemplateService.getTaskPlanningPrompt(
+      const messages = this.promptTemplateService.getTaskPlanningPrompt(
         query,
         intentType,
         conversationHistory,
       );
       const parsed = await executeWithRetry(
         async () => {
-          const response = await model.invoke([["system", prompt]]);
+          const response = await model.invoke([
+            ["system", messages.system],
+            ["user", messages.user],
+          ]);
           const result = tryParseJson<{ agents?: unknown }>(
             typeof response.content === "string"
               ? response.content

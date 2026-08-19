@@ -1,14 +1,18 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { ChatOpenAI } from "@langchain/openai";
-import { sleep } from "../utils/tool";
+import { sleep } from "../movie/helpers";
+import type { ChatMessage, CompatibleModel } from "../movie/types";
 
-type ChatRole = "system" | "user" | "assistant";
-type ChatMessage = [ChatRole, string];
+export class ModelConfigurationError extends Error {
+  readonly stage = "model";
+  readonly details = "ModelProvider 未返回可用模型";
 
-type CompatibleModel = {
-  invoke(messages: ChatMessage[]): Promise<{ content: unknown }>;
-};
+  constructor() {
+    super("模型未配置，无法执行推荐");
+    this.name = ModelConfigurationError.name;
+  }
+}
 
 const toLangChainMessages = (messages: ChatMessage[]) =>
   messages.map(([role, content]) => {
@@ -55,7 +59,7 @@ export class ModelProvider {
   private model: CompatibleModel | null = null;
   private readonly logger = new Logger(ModelProvider.name);
 
-  getModel(): CompatibleModel | null {
+  getModel(): CompatibleModel {
     if (this.model) {
       return this.model;
     }
@@ -65,7 +69,7 @@ export class ModelProvider {
       this.logger.error(
         "SILICONFLOW_API_KEY or OPENAI_API_KEY is not set. Model provider unavailable.",
       );
-      return null;
+      throw new ModelConfigurationError();
     }
 
     const baseURL =

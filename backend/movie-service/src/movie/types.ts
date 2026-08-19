@@ -2,8 +2,12 @@ export const AGENT_TYPES = ["search", "relation"] as const;
 
 export type AgentType = (typeof AGENT_TYPES)[number];
 
+export type ChatRole = "system" | "user" | "assistant";
+
+export type ChatMessage = [ChatRole, string];
+
 export type CompatibleModel = {
-	invoke(messages: Array<[string, string]>): Promise<{ content: unknown }>;
+	invoke(messages: ChatMessage[]): Promise<{ content: unknown }>;
 };
 
 export type IntentType = "in_scope" | "out_of_scope" | "unknown";

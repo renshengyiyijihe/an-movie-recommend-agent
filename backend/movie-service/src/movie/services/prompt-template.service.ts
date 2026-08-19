@@ -192,8 +192,9 @@ ${existingPreferences}
   getIntentClassificationPrompt(
     userMessage: string,
     conversationHistory?: string,
-  ): string {
-    return `# 意图识别
+  ): { system: string; user: string } {
+    return {
+      system: `# 意图识别
 
 ## 任务
 判断用户查询是否与电影、演员相关。
@@ -218,19 +219,6 @@ ${existingPreferences}
 ❌ 其他领域的专业咨询
 ❌ 非电影内容的讨论
 
-## 输入信息
-
-### 用户消息
-\`\`\`
-${userMessage}
-\`\`\`
-
-${
-  conversationHistory
-    ? `### 对话历史\n\`\`\`\n${conversationHistory}\n\`\`\``
-    : ""
-}
-
 ## 输出示例
 
 在范围内：
@@ -249,7 +237,18 @@ ${
   "reason": "这个查询与电影和演员无关"
 }
 \`\`\`
-`;
+`,
+      user: `## 用户消息
+\`\`\`
+${userMessage}
+\`\`\`
+
+${
+  conversationHistory
+    ? `## 对话历史\n\`\`\`\n${conversationHistory}\n\`\`\``
+    : ""
+}`,
+    };
   }
 
   /**
@@ -259,8 +258,9 @@ ${
     userMessage: string,
     intentType: string,
     conversationHistory?: string,
-  ): string {
-    return `# 电影任务规划
+  ): { system: string; user: string } {
+    return {
+      system: `# 电影任务规划
 
 ## 任务
 根据用户意图，为当前请求选择需要执行的Agent。
@@ -277,13 +277,59 @@ ${
 
 只能返回 search、relation。普通查询选择 search，涉及合作、共同作品或实体关系时选择 relation。
 
-## 用户意图
+`,
+      user: `## 用户意图
 ${intentType}
 
 ## 用户消息
 ${userMessage}
 
 ${conversationHistory ? `## 对话历史\n${conversationHistory}` : ""}
-`;
+`,
+    };
+  }
+
+  /**
+   * 搜索工具规划prompt
+   */
+  getSearchToolPlanningPrompt(
+    userMessage: string,
+    toolSchemas: Array<{ name: string; description: string; schema: Record<string, any> }>,
+    conversationHistory?: string,
+  ): { system: string; user: string } {
+    return {
+      system: `# 电影搜索工具规划
+
+## 任务
+根据用户查询选择一个或多个最合适的工具，并为每个工具生成严格符合其 schema 的参数。
+
+## 可用工具
+${JSON.stringify(toolSchemas, null, 2)}
+
+## 规则
+1. 只选择能够直接帮助回答用户查询的工具，不要臆造工具或参数。
+2. 工具名称必须来自可用工具列表。
+3. 每个调用的 input 必须是 JSON 对象，并且字段类型必须符合对应 schema。
+4. 需要多个独立查询时可以返回多个调用；没有必要时只返回一个调用。
+5. 至少返回一个工具调用。
+6. 只能输出纯 JSON，不要输出 Markdown、代码围栏或额外解释。
+
+## 输出格式
+{
+  "tool_calls": [
+    {
+      "tool_name": "工具名称",
+      "input": {}
+    }
+  ],
+  "reasoning": "选择这些工具的简短原因"
+}
+`,
+      user: `## 用户查询
+${userMessage}
+
+${conversationHistory ? `## 对话历史\n${conversationHistory}` : ""}
+`,
+    };
   }
 }

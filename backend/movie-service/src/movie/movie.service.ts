@@ -64,17 +64,8 @@ export class MovieService {
       payload.message,
     );
 
-    const model = this.modelProvider.getModel();
-    if (!model) {
-      this.logger.error("LLM model not configured");
-      return this.buildErrorResponse(payload, preferences, {
-        stage: "model",
-        message: "模型未配置，无法执行推荐",
-        details: "ModelProvider 未返回可用模型",
-      });
-    }
-
     try {
+      const model = this.modelProvider.getModel();
       const orchestratorResult = await this.orchestratorAgent.orchestrate(
         model,
         payload.message,

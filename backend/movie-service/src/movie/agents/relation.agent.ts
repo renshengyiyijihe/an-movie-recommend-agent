@@ -1,9 +1,11 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { SearchAgent, SearchAgentResult } from "./search.agent";
-
-export type CompatibleModel = {
-  invoke(messages: Array<[string, string]>): Promise<{ content: unknown }>;
-};
+import { SearchAgent } from "./search.agent";
+import {
+  CompatibleModel,
+  RelationAgentResult,
+  RelationshipType,
+  SearchAgentResult,
+} from "../types";
 
 /**
  * Relation Agent - 关系代理
@@ -206,19 +208,4 @@ export class RelationAgent {
     
     return `关系处理结果 (实体: ${entities.join(", ")}, 关系类型: ${relationship})`;
   }
-}
-
-type RelationshipType =
-  | "collaboration"
-  | "acted_in"
-  | "directed"
-  | "ranking"
-  | "unknown";
-
-export interface RelationAgentResult {
-  success: boolean;
-  result: string;
-  entities_involved: string[];
-  relationship_type: RelationshipType;
-  error?: string;
 }

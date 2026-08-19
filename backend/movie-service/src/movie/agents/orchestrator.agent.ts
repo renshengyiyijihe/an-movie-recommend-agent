@@ -3,11 +3,15 @@ import { PromptTemplateService } from "../services/prompt-template.service";
 import { executeWithRetry, tryParseJson } from "../helpers";
 import { RelationAgent } from "./relation.agent";
 import { SearchAgent } from "./search.agent";
-import { AGENT_TYPES, AgentType } from "../types";
-
-export type CompatibleModel = {
-  invoke(messages: Array<[string, string]>): Promise<{ content: unknown }>;
-};
+import {
+  AGENT_TYPES,
+  AgentExecutionResult,
+  AgentType,
+  CompatibleModel,
+  IntentClassification,
+  IntentType,
+  OrchestratorResult,
+} from "../types";
 
 type AgentExecutor = (
   model: CompatibleModel,
@@ -266,27 +270,4 @@ export class OrchestratorAgent {
         .join("\n") || "无法处理这个查询"
     );
   }
-}
-
-export type IntentType = "in_scope" | "out_of_scope" | "unknown";
-
-export interface IntentClassification {
-  type: IntentType;
-  confidence: number;
-  reason?: string;
-}
-
-export interface AgentExecutionResult {
-  agent: AgentType;
-  success: boolean;
-  result: string;
-}
-
-export interface OrchestratorResult {
-  success: boolean;
-  intent_type: IntentType;
-  result: string;
-  agents_used: AgentType[];
-  agent_results?: AgentExecutionResult[];
-  error?: string;
 }

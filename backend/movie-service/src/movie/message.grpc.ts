@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { credentials, loadPackageDefinition } from '@grpc/grpc-js';
 import { loadSync } from '@grpc/proto-loader';
 import { join } from 'path';
-import { ConversationHistoryItem } from './movie.service';
+import { ConversationHistoryItem, MessageRole, MessageStage, MessageType } from './types';
 
 interface CreateConversationRequest {
   user_id?: string;
@@ -12,24 +12,6 @@ interface CreateConversationRequest {
 interface CreateConversationResponse {
   conversation_id: string;
 }
-
-// 发送到 message-service 的消息角色，必须与 message.proto 定义保持一致。
-export type MessageRole = 'user' | 'assistant';
-// 事件类型：用户提交、阶段执行记录、最终回复。
-export type MessageType = 'user_query' | 'agent_execution' | 'final_response';
-// 事件所处阶段：任务提交、意图识别、工作流执行阶段、最终输出。
-// 其中 parsePreferences / search / supervisor 是动态规划阶段，不是固定阶段。
-export type MessageStage =
-  | 'start'
-  | 'intent_classification'
-  | 'workflow_complete'
-  | 'final'
-  | 'parsePreferences_start'
-  | 'parsePreferences_completed'
-  | 'search_start'
-  | 'search_completed'
-  | 'supervisor_start'
-  | 'supervisor_completed';
 
 interface AppendMessageRequest {
   conversation_id: string;

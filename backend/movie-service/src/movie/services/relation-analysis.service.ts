@@ -1,4 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { RelationshipType } from "../types";
 
 /**
  * 关系分析服务
@@ -260,8 +261,6 @@ export class RelationAnalysisService {
       .join("\n")}`;
   }
 }
-
-export type RelationshipType = "collaboration" | "acted_in" | "directed" | "ranking" | "unknown";
 
 export interface RelationQueryStep {
   type: string;

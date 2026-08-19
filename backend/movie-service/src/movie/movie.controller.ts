@@ -1,5 +1,6 @@
 import { Body, Controller, Headers, Logger, Post } from '@nestjs/common';
 import { MovieService } from './movie.service';
+import { MoviePreference } from './types';
 
 @Controller('/movie')
 export class MovieController {
@@ -11,16 +12,7 @@ export class MovieController {
   async recommend(
     @Body() payload: {
       message: string;
-      preferences?: {
-        genre?: string;
-        mood?: string;
-        actors?: string;
-        length?: string;
-        rating?: string;
-        language?: string;
-        scene?: string;
-        theme?: string;
-      };
+      preferences?: MoviePreference;
       imageUrl?: string;
       imageData?: string;
       conversationId?: string;

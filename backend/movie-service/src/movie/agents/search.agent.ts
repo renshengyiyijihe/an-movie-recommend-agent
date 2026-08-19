@@ -1,9 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ToolsRegistry } from "./tools/tools.registry";
-
-export type CompatibleModel = {
-  invoke(messages: Array<[string, string]>): Promise<{ content: unknown }>;
-};
+import { CompatibleModel, SearchAgentResult } from "../types";
 
 /**
  * Search Agent - 搜索代理
@@ -58,16 +55,4 @@ export class SearchAgent {
   getTools(): any[] {
     return this.toolsRegistry.getToolSchemas();
   }
-}
-
-export interface SearchAgentResult {
-  success: boolean;
-  result: string;
-  tool_calls: Array<{
-    tool_name: string;
-    input: Record<string, any>;
-    output: any;
-  }>;
-  reasoning?: string;
-  error?: string;
 }

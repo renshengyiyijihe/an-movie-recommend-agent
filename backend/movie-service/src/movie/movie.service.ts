@@ -3,30 +3,16 @@ import { ModelProvider } from "../model/model.provider";
 import { AuthGrpcClient } from "./auth.grpc";
 import {
   MessageGrpcClient,
-  type MessageRole,
-  type MessageStage,
-  type MessageType,
 } from "./message.grpc";
 import { OrchestratorAgent } from "./agents/orchestrator.agent";
 import { getStringValue, normalizeText, tryParseJson } from "./helpers";
-
-interface MoviePreference {
-  genre?: string;
-  mood?: string;
-  actors?: string;
-  length?: string;
-  rating?: string;
-  language?: string;
-  scene?: string;
-  theme?: string;
-}
-
-export interface ConversationHistoryItem {
-  role: "user" | "assistant";
-  content: string;
-  message_type: MessageType;
-  stage: MessageStage;
-}
+import {
+  ConversationHistoryItem,
+  MessageRole,
+  MessageStage,
+  MessageType,
+  MoviePreference,
+} from "./types";
 
 interface RecommendPayload {
   message: string;

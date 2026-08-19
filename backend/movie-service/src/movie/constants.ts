@@ -41,55 +41,61 @@ export const MESSAGE_CONSTANTS = {
 /**
  * 类型名称到TMDB类型ID的映射
  */
-export const GENRE_TO_TMDB_ID: Record<string, string> = {
-  "动作": "28",
-  "action": "28",
-  "冒险": "12",
-  "adventure": "12",
-  "动画": "16",
-  "animation": "16",
-  "喜剧": "35",
-  "comedy": "35",
-  "犯罪": "80",
-  "crime": "80",
-  "纪录": "99",
-  "documentary": "99",
-  "剧情": "18",
-  "drama": "18",
-  "家庭": "10751",
-  "family": "10751",
-  "奇幻": "14",
-  "fantasy": "14",
-  "历史": "36",
-  "history": "36",
-  "恐怖": "27",
-  "horror": "27",
-  "音乐": "10402",
-  "music": "10402",
-  "悬念": "9648",
-  "mystery": "9648",
-  "浪漫": "10749",
-  "romance": "10749",
-  "科幻": "878",
-  "sci-fi": "878",
-  "科幻电影": "878",
-  "science fiction": "878",
-  "电视电影": "10770",
-  "tv movie": "10770",
-  "惊悚": "53",
-  "thriller": "53",
-  "战争": "10752",
-  "war": "10752",
-  "西部": "37",
-  "western": "37",
+export const GENRE_TO_TMDB_ID: Record<string, number> = {
+  // 英文 / 通用名称映射 
+  "action": 28,
+  "adventure": 12,
+  "animation": 16,
+  "comedy": 35,
+  "crime": 80,
+  "documentary": 99,
+  "drama": 18,
+  "family": 10751,
+  "fantasy": 14,
+  "history": 36,
+  "horror": 27,
+  "music": 10402,
+  "mystery": 9648,
+  "romance": 10749,
+  "science-fiction": 878,
+  "sci-fi": 878, // 常见缩写补充
+  "tv-movie": 10770,
+  "thriller": 53,
+  "war": 10752,
+  "western": 37,
+
+  // 中文名称映射 (方便 LLM 直接传中文检索)
+  "动作": 28,
+  "冒险": 12,
+  "动画": 16,
+  "喜剧": 35,
+  "犯罪": 80,
+  "纪录": 99,
+  "纪录片": 99,
+  "剧情": 18,
+  "家庭": 10751,
+  "奇幻": 14,
+  "历史": 36,
+  "恐怖": 27,
+  "音乐": 10402,
+  "悬疑": 9648,
+  "爱情": 10749,
+  "科幻": 878,
+  "电视电影": 10770,
+  "惊悚": 53,
+  "战争": 10752,
+  "西部": 37
 } as const;
+
 
 /**
  * 语言名称到TMDB语言代码的映射
  */
 export const LANGUAGE_TO_TMDB_CODE: Record<string, string> = {
   "中文": "zh",
+  "中英双语": "zh",
   "英文": "en",
+  "english": "en",
   "英语": "en",
   "日文": "ja",
   "日语": "ja",
@@ -100,12 +106,16 @@ export const LANGUAGE_TO_TMDB_CODE: Record<string, string> = {
   "德文": "de",
   "德语": "de",
   "西班牙文": "es",
+  "spanish": "es",
   "西班牙语": "es",
   "俄文": "ru",
   "俄语": "ru",
   "葡萄牙文": "pt",
   "葡萄牙语": "pt",
 } as const;
+
+export const genreToTmdbGenreIdMap = GENRE_TO_TMDB_ID;
+export const languageToTmdbLanguageMap = LANGUAGE_TO_TMDB_CODE;
 
 // ========== 意图识别关键词 ==========
 export const INTENT_CLASSIFICATION_KEYWORDS = {

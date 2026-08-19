@@ -3,7 +3,7 @@ import { OrchestratorAgent } from "./orchestrator.agent";
 import { SearchAgent } from "./search.agent";
 import { RelationAgent } from "./relation.agent";
 import { ToolsRegistry } from "./tools/tools.registry";
-import { MovieTool } from "./tools/movie.tool";
+import { MovieDetailTool } from "./tools/movie-detail.tool";
 import { PersonInfoTool } from "./tools/person-info.tool";
 import { PersonWorkTool } from "./tools/person-work.tool";
 import { MovieRecommendTool } from "./tools/movie-recommend.tool";
@@ -14,7 +14,7 @@ import { ServicesModule } from "../services/services.module";
   imports: [ServicesModule],
   providers: [
     // Tools
-    MovieTool,
+    MovieDetailTool,
     PersonInfoTool,
     PersonWorkTool,
     MovieRecommendTool,

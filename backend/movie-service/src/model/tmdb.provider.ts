@@ -524,6 +524,22 @@ export class TmdbProvider {
     return Boolean(this.apiKey);
   }
 
+  getApiUrl(): string {
+    if (!this.isEnabled()) {
+      this.logger.error("TMDB API key is not configured.");
+      throw new Error("TMDB API key is not configured.");
+    }
+
+    return this.apiUrl;
+  }
+
+  getRequestHeaders(): HeadersInit {
+    return {
+      accept: "application/json",
+      Authorization: "Bearer " + this.apiKey,
+    };
+  }
+
   async search(
     query: Partial<TMDBDiscoverMovieQueryParams>,
     options: Partial<TMDBDiscoverMovieQueryParams> = {},
@@ -586,4 +602,5 @@ export class TmdbProvider {
       request_id: `${Date.now()}`,
     };
   }
+
 }

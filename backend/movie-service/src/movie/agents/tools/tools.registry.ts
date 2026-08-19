@@ -1,6 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ITool, ToolResult } from "./tool.interface";
-import { MovieTool } from "./movie.tool";
+import { MovieDetailTool } from "./movie-detail.tool";
 import { PersonInfoTool } from "./person-info.tool";
 import { PersonWorkTool } from "./person-work.tool";
 import { MovieRecommendTool } from "./movie-recommend.tool";
@@ -15,7 +15,7 @@ export class ToolsRegistry {
   private readonly tools: Map<string, ITool> = new Map();
 
   constructor(
-    private readonly movieTool: MovieTool,
+    private readonly movieDetailTool: MovieDetailTool,
     private readonly personInfoTool: PersonInfoTool,
     private readonly personWorkTool: PersonWorkTool,
     private readonly movieRecommendTool: MovieRecommendTool,
@@ -24,7 +24,7 @@ export class ToolsRegistry {
   }
 
   private registerTools() {
-    this.tools.set(this.movieTool.name, this.movieTool);
+    this.tools.set(this.movieDetailTool.name, this.movieDetailTool);
     this.tools.set(this.personInfoTool.name, this.personInfoTool);
     this.tools.set(this.personWorkTool.name, this.personWorkTool);
     this.tools.set(this.movieRecommendTool.name, this.movieRecommendTool);

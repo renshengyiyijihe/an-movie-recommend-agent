@@ -8,8 +8,10 @@ import { PersonInfoTool } from "./tools/person-info.tool";
 import { PersonWorkTool } from "./tools/person-work.tool";
 import { MovieRecommendTool } from "./tools/movie-recommend.tool";
 import { TmdbProvider } from "../../model/tmdb.provider";
+import { ServicesModule } from "../services/services.module";
 
 @Module({
+  imports: [ServicesModule],
   providers: [
     // Tools
     MovieTool,

@@ -69,7 +69,10 @@ export class PromptTemplateService {
   /**
    * 用户偏好提取prompt
    */
-  getPreferenceExtractionPrompt(userMessage: string, existingPreferences: string): string {
+  getPreferenceExtractionPrompt(
+    userMessage: string,
+    existingPreferences: string,
+  ): string {
     return `# 电影偏好提取
 
 ## 任务
@@ -130,19 +133,6 @@ export class PromptTemplateService {
 - \`with_keywords\` (string): 包含的主题/关键词 ID
 - \`without_keywords\` (string): 排除的主题/关键词 ID
 
-### 分级与家长控制
-- \`certification\` (string): 电影分级（如 "PG-13", "R"），需配合 \`certification_country\`
-- \`certification.gte\` (string): 分级下限
-- \`certification.lte\` (string): 分级上限
-- \`certification_country\` (string): 分级对应的国家代码，如 "US"
-
-### 流媒体与播放平台
-- \`watch_region\` (string): 播放服务所在的地区代码，如 "US"
-- \`with_watch_providers\` (string): 包含的播放平台 ID（如 Netflix）
-- \`without_watch_providers\` (string): 排除的播放平台 ID
-- \`with_watch_monetization_types\` (string): 观看变现模式，需配合 \`watch_region\`
-  - "flatrate"=订阅, "free"=免费, "ads"=含广告, "rent"=租借, "buy"=购买
-
 ## 逻辑解析与处理规则
 
 ### 多选项组合逻辑
@@ -191,114 +181,6 @@ ${existingPreferences}
   "language": "英文",
   "scene": "",
   "theme": ""
-}
-\`\`\`
-`;
-  }
-
-  /**
-   * 监督智能体prompt - 整合搜索结果为最终答案
-   */
-  getSupervisorPrompt(
-    userMessage: string,
-    preferences: string,
-    searchResult: string,
-    imageUrl?: string,
-    imageData?: boolean,
-  ): string {
-    return `# 监督智能体 - 结果整合
-
-## 任务
-将搜索结果整合为最终答案，提供给用户。
-
-## 输出要求
-输出必须是纯 JSON（不要包含多余注释或说明）。
-
-## 输出字段
-
-### 必填字段
-- \`recommendations\` (数组) - 推荐电影列表，每项为推荐对象
-- \`explanation\` (字符串) - 对整组推荐的总结性说明（为何匹配用户偏好）
-- \`preferences\` (对象) - 规范化后的用户偏好（用于记录/回显/后续搜索）
-- \`summary\` (字符串) - 缩略版本的总结，只保留未来对话可能有用的信息
-  - 最多50字
-  - 不要复述完整答案
-  - 不要保留解释过程
-  - 不要保留客套话
-- \`topics\` (数组) - 讨论的主题列表，如 ["科幻", "推荐系统"]
-- \`entities\` (数组) - 具体的人/项目/技术/产品等实体名称，如 ["电影", "科幻"]
-
-### 推荐对象字段
-\`\`\`json
-{
-  "name": "电影名",
-  "title": "英文名",
-  "reason": "推荐理由",
-  "summary": "简短介绍",
-  "overview": "完整描述",
-  "poster_url": "海报URL",
-  "backdrop_url": "背景图URL",
-  "tmdb_url": "TMDB页面URL",
-  "id": 12345,
-  "release_date": "2023-01-01",
-  "vote_average": 8.5,
-  "vote_count": 1000,
-  "genre_ids": [28, 12],
-  "original_language": "en",
-  "original_title": "Original Title",
-  "adult": false,
-  "video": false
-}
-\`\`\`
-
-### 降级方案
-仅在无法生成推荐时，使用 \`fallback_reason\` 字段说明原因。
-
-## 输入信息
-
-### 用户输入
-\`\`\`
-${userMessage}
-\`\`\`
-
-${imageUrl ? `### 图片链接\n\`\`\`\n${imageUrl}\n\`\`\`` : ""}
-${imageData ? "\n### 图片数据\n附带已上传图片分析。" : ""}
-
-### 用户偏好
-\`\`\`json
-${preferences}
-\`\`\`
-
-### 搜索结果
-\`\`\`json
-${searchResult}
-\`\`\`
-
-## 输出示例
-
-\`\`\`json
-{
-  "recommendations": [
-    {
-      "name": "盗梦空间",
-      "reason": "紧张且富有想象力",
-      "summary": "一支入侵梦境的团队执行高风险任务...",
-      "poster_url": "https://image.tmdb.org/t/p/w500/xxx.jpg",
-      "tmdb_url": "https://www.themoviedb.org/movie/27205",
-      "id": 27205,
-      "release_date": "2010-07-16",
-      "vote_average": 8.8,
-      "vote_count": 31000
-    }
-  ],
-  "explanation": "基于你偏好科幻与心理悬疑，推荐了以下高评分影片...",
-  "preferences": {
-    "genre": "科幻",
-    "mood": "紧张刺激"
-  },
-  "summary": "推荐了2部高评分科幻电影",
-  "topics": ["科幻", "推荐系统"],
-  "entities": ["盗梦空间", "电影"]
 }
 \`\`\`
 `;
@@ -367,6 +249,41 @@ ${
   "reason": "这个查询与电影和演员无关"
 }
 \`\`\`
+`;
+  }
+
+  /**
+   * 任务规划prompt
+   */
+  getTaskPlanningPrompt(
+    userMessage: string,
+    intentType: string,
+    conversationHistory?: string,
+  ): string {
+    return `# 电影任务规划
+
+## 任务
+根据用户意图，为当前请求选择需要执行的Agent。
+
+## 可用Agent
+- search: 电影、演员、导演信息查询和普通电影推荐
+- relation: 演员合作、导演作品关系、跨实体关系分析
+
+## 输出要求
+只返回纯JSON，不要包含Markdown或解释文字。格式必须为：
+{
+  "agents": ["search"]
+}
+
+只能返回 search、relation。普通查询选择 search，涉及合作、共同作品或实体关系时选择 relation。
+
+## 用户意图
+${intentType}
+
+## 用户消息
+${userMessage}
+
+${conversationHistory ? `## 对话历史\n${conversationHistory}` : ""}
 `;
   }
 }

@@ -1,13 +1,5 @@
 ﻿import { Injectable, Logger } from "@nestjs/common";
-import { plainToInstance } from "class-transformer";
-import { validate } from "class-validator";
 import { ModelProvider } from "../model/model.provider";
-import {
-  TmdbProvider,
-  TmdbDiscoverMovieQueryParamsDto,
-  type TMDBDiscoverMovieQueryParams,
-  type TMDBMovieResult,
-} from "../model/tmdb.provider";
 import { AuthGrpcClient } from "./auth.grpc";
 import {
   MessageGrpcClient,
@@ -15,9 +7,8 @@ import {
   type MessageStage,
   type MessageType,
 } from "./message.grpc";
-import { genreToTmdbGenreIdMap, languageToTmdbLanguageMap } from "./config";
-import { WorkflowPlanner, type StageName } from "./workflow.planner";
 import { OrchestratorAgent } from "./agents/orchestrator.agent";
+import { getStringValue, normalizeText, tryParseJson } from "./helpers";
 
 interface MoviePreference {
   genre?: string;
@@ -46,53 +37,18 @@ interface RecommendPayload {
   conversationId?: string;
 }
 
-interface WorkflowContext {
-  message: string;
-  preferences?: MoviePreference;
-  imageUrl?: string;
-  imageData?: string;
-  conversationHistory?: string;
-  conversationId?: string;
+interface AuthResult {
+  ok: boolean;
+  user?: { id: string; email: string };
+  error?: string;
 }
-
-interface WorkflowState {
-  message: string;
-  imageUrl?: string;
-  imageData?: string;
-  preferences: string;
-  searchResult: string;
-  supervisorResult: string;
-  conversationHistory: string;
-}
-
-interface TmdbSearchRequest {
-  params?: Partial<TMDBDiscoverMovieQueryParams>;
-  query?: string;
-}
-
-interface TmdbSearchResponse {
-  query?: string | Partial<TMDBDiscoverMovieQueryParams>;
-  results?: TMDBMovieResult[];
-  request_id?: string;
-}
-
-type IntentType = "in_scope" | "out_of_scope";
-
-const MAX_PROMPT_TEXT_LENGTH = 2500;
-const MAX_SEARCH_RESULT_LENGTH = 4000;
-const MAX_IMAGE_DATA_LENGTH = 1200;
-const MAX_RETRIES = 3;
-const RETRY_BACKOFF_MS = 500;
-const TMDB_IMAGE_BASE_URL = "https://image.tmdb.org/t/p/w500";
 
 @Injectable()
 export class MovieService {
   private readonly logger = new Logger(MovieService.name);
-  private readonly workflowPlanner = new WorkflowPlanner(this.logger);
 
   constructor(
     private readonly modelProvider: ModelProvider,
-    private readonly tmdbProvider: TmdbProvider,
     private readonly authGrpcClient: AuthGrpcClient,
     private readonly messageGrpcClient: MessageGrpcClient,
     private readonly orchestratorAgent: OrchestratorAgent,
@@ -102,26 +58,16 @@ export class MovieService {
     this.logger.log(
       `recommend request received: messageLength=${payload.message?.length ?? 0}, hasImage=${Boolean(payload.imageUrl || payload.imageData)}, authHeader=${authorization ? "present" : "absent"}`,
     );
-    const preferences = this.normalizePreferences(payload.preferences);
 
+    const preferences = this._normalizePreferences(payload.preferences);
     const authResult = authorization
       ? await this.validateAuthorization(authorization)
       : { ok: false, error: "no_authorization_header" };
-    this.logger.log(
-      `authorization check: ok=${authResult.ok}, error=${authResult.error ?? "none"}, user=${authResult.user?.email ?? "anonymous"}`,
-    );
-
     const conversationId = await this.ensureConversation(payload, authResult);
-
-    const conversationHistoryItems = await this.loadConversationHistory(
+    const conversationHistory = await this.loadConversationHistory(
       conversationId,
       payload.message,
       authResult,
-    );
-
-    this.logger.log(
-      `conversationId ->> ${conversationId},\n
-       Loaded history ->>  ${conversationHistoryItems}`,
     );
 
     await this.appendConversationMessage(
@@ -132,12 +78,9 @@ export class MovieService {
       payload.message,
     );
 
-    // 使用新的OrchestratorAgent系统进行意图识别和任务规划
     const model = this.modelProvider.getModel();
     if (!model) {
-      this.logger.error(
-        "LLM model not configured; aborting recommendation workflow",
-      );
+      this.logger.error("LLM model not configured");
       return this.buildErrorResponse(payload, preferences, {
         stage: "model",
         message: "模型未配置，无法执行推荐",
@@ -145,130 +88,79 @@ export class MovieService {
       });
     }
 
-    const conversationHistoryStr = this.buildConversationHistory(conversationHistoryItems);
-    const orchestratorResult = await this.orchestratorAgent.orchestrate(
-      model,
-      payload.message,
-      conversationHistoryStr,
-    );
+    try {
+      const orchestratorResult = await this.orchestratorAgent.orchestrate(
+        model,
+        payload.message,
+        this._buildConversationHistory(conversationHistory),
+      );
 
-    this.logger.log(
-      `[Orchestrator] Result: intentType=${orchestratorResult.intent_type}, success=${orchestratorResult.success}`,
-    );
+      this.logger.log(
+        `[Orchestrator] intentType=${orchestratorResult.intent_type}, success=${orchestratorResult.success}`,
+      );
 
-    // 如果意图不相关，直接返回
-    if (!orchestratorResult.success || orchestratorResult.intent_type === "out_of_scope") {
+      if (
+        !orchestratorResult.success ||
+        orchestratorResult.intent_type === "out_of_scope"
+      ) {
+        await this.appendConversationMessage(
+          conversationId,
+          "assistant",
+          "agent_execution",
+          "final",
+          orchestratorResult.result,
+        );
+        return {
+          type: "reject",
+          data: {
+            preferences,
+            message:
+              orchestratorResult.result ||
+              "我主要负责电影推荐或介绍。如果你想问电影类型、演员、风格、时长或推荐电影，我可以继续帮你。",
+            summary: "",
+            topics: [],
+            entities: [],
+          },
+        };
+      }
+
       await this.appendConversationMessage(
         conversationId,
         "assistant",
         "agent_execution",
-        "final",
-        orchestratorResult.result,
+        "workflow_complete",
+        `使用的Agent: ${orchestratorResult.agents_used.join(", ")}`,
       );
-      return {
-        type: "reject",
-        data: {
-          preferences,
-          message:
-            orchestratorResult.result ||
-            "我主要负责电影推荐或介绍。如果你想问电影类型、演员、风格、时长或推荐电影，我可以继续帮你。",
-          summary: "",
-          topics: [],
-          entities: [],
-        },
-      };
-    }
-
-    // 保存agent执行结果到对话历史
-    await this.appendConversationMessage(
-      conversationId,
-      "assistant",
-      "agent_execution",
-      "workflow_complete",
-      `使用的Agent: ${orchestratorResult.agents_used.join(", ")}`,
-    );
-
-    // 继续现有的工作流处理
-    const intent = "in_scope";
-    await this.appendConversationMessage(
-      conversationId,
-      "assistant",
-      "agent_execution",
-      "intent_classification",
-      intent,
-    );
-    if (!model) {
-      this.logger.error(
-        "LLM model not configured; aborting recommendation workflow",
-      );
-      return this.buildErrorResponse(payload, preferences, {
-        stage: "model",
-        message: "模型未配置，无法执行推荐",
-        details: "ModelProvider 未返回可用模型",
-      });
-    }
-
-    const context: WorkflowContext = {
-      message: payload.message,
-      preferences,
-      imageUrl: payload.imageUrl,
-      imageData: payload.imageData,
-      conversationId,
-    };
-
-    try {
-      this.logger.log(
-        `Starting movie recommendation workflow message=${this.truncateText(payload.message, 200)} history=${this.truncateText(this.buildConversationHistory(conversationHistoryItems), 200)}`,
-      );
-      const result = await this.runLangGraphWorkflow(context);
-      this.logger.log(
-        `Workflow finished: preferences=${this.truncateText(result.preferences, 400)} searchResult=${this.truncateText(result.searchResult, 400)} supervisorResult=${this.truncateText(result.supervisorResult, 400)}`,
+      await this.appendConversationMessage(
+        conversationId,
+        "assistant",
+        "agent_execution",
+        "intent_classification",
+        "in_scope",
       );
 
       const parsed = this.parseRecommendation(
-        result.supervisorResult,
+        orchestratorResult.result,
         preferences,
-        result.searchResult,
       );
-      this.logger.log(
-        `Recommendation result ready: preferences ->> ${JSON.stringify(parsed.preferences)} \n recommendations ->> ${JSON.stringify(parsed.recommendations)}`,
-      );
-
-      const userMessageId = await this.getLatestUserMessageId(conversationId);
       await this.appendConversationMessage(
         conversationId,
         "assistant",
         "final_response",
         "final",
-        JSON.stringify({
-          preferences: parsed.preferences,
-          recommendations: parsed.recommendations,
-          explanation: parsed.explanation,
-          message: parsed.message,
-          fallback_reason: parsed.fallback_reason,
-        }),
+        JSON.stringify(parsed),
         parsed.summary,
         parsed.topics,
         parsed.entities,
-        userMessageId,
+        await this.getLatestUserMessageId(conversationId),
       );
 
       return {
         conversationId,
         type: "success",
-        data: {
-          preferences: parsed.preferences,
-          recommendations: parsed.recommendations,
-          explanation: parsed.explanation,
-          message: parsed.message,
-          fallback_reason: parsed.fallback_reason,
-          summary: parsed.summary,
-          topics: parsed.topics,
-          entities: parsed.entities,
-        },
+        data: parsed,
         stageOutputs: {
-          preferences: result.preferences,
-          searchResult: result.searchResult,
+          preferences: JSON.stringify(parsed.preferences),
         },
       };
     } catch (error) {
@@ -277,53 +169,32 @@ export class MovieService {
         details?: string;
       };
       this.logger.error(
-        `Workflow failed: stage=${workflowError.stage ?? "unknown"} message=${workflowError.message} details=${workflowError.details ?? "none"}`,
+        `Orchestrator workflow failed: stage=${workflowError.stage ?? "unknown"} message=${workflowError.message}`,
         workflowError,
       );
-      const response = this.buildErrorResponse(payload, preferences, {
-        stage: workflowError.stage ?? "workflow",
-        message: workflowError.message ?? "推荐工作流执行失败",
+      return this.buildErrorResponse(payload, preferences, {
+        stage: workflowError.stage ?? "orchestrator",
+        message: workflowError.message ?? "Agent 工作流执行失败",
         details: workflowError.details ?? "请查看服务日志获取完整上下文",
       });
-      if (conversationId) {
-        await this.appendConversationMessage(
-          conversationId,
-          "assistant",
-          "final_response",
-          "final",
-          JSON.stringify({ error: response }),
-        ).catch(() => undefined);
-      }
-      return response;
     }
   }
 
   private async ensureConversation(
     payload: RecommendPayload,
-    authResult: { ok: boolean; user?: { id: string; email: string } },
-  ) {
-    if (payload.conversationId) {
-      this.logger.log(
-        `ensureConversation: payload already has conversationId=${payload.conversationId}`,
-      );
-      return payload.conversationId;
-    }
+    authResult: AuthResult,
+  ): Promise<string> {
+    if (payload.conversationId) return payload.conversationId;
 
     try {
-      const createResponse = await this.messageGrpcClient.createConversation({
+      const response = await this.messageGrpcClient.createConversation({
         user_id: authResult.ok ? authResult.user?.id : undefined,
         title: payload.message,
       });
-      this.logger.log(
-        `ensureConversation: created conversation_id=${createResponse.conversation_id}`,
-      );
-      return createResponse.conversation_id;
+      return response.conversation_id;
     } catch (error) {
       this.logger.warn(
-        `Failed to create conversation via message service, continuing without conversation tracking: ${
-          (error as Error)?.message ?? String(error)
-        }`,
-        error as Error,
+        `Failed to create conversation: ${(error as Error)?.message ?? String(error)}`,
       );
       return "";
     }
@@ -332,34 +203,20 @@ export class MovieService {
   private async loadConversationHistory(
     conversationId: string,
     userMessage: string,
-    authResult: { ok: boolean; user?: { id: string; email: string } },
+    _authResult: AuthResult,
   ): Promise<ConversationHistoryItem[] | undefined> {
     if (!conversationId) return undefined;
 
     try {
-      // 调用新的向量搜索接口获取相关的历史上下文
-      const searchResult =
-        await this.messageGrpcClient.searchSimilarContext({
-          user_input: userMessage,
-          conversation_id: conversationId,
-          limit: 5,
-        });
-
-      const contextItems = searchResult.context_items ?? [];
-      this.logger.log(
-        `loadConversationHistory: found ${contextItems.length} related context items via vector search`,
-      );
-
-      if (contextItems.length === 0) {
-        return undefined;
-      }
-
-
-      return contextItems;
+      const response = await this.messageGrpcClient.searchSimilarContext({
+        user_input: userMessage,
+        conversation_id: conversationId,
+        limit: 5,
+      });
+      return response.context_items?.length ? response.context_items : undefined;
     } catch (error) {
       this.logger.warn(
-        `Failed to load conversation history via vector search: ${(error as Error).message}`,
-        error as Error,
+        `Failed to load conversation history: ${(error as Error).message}`,
       );
       return undefined;
     }
@@ -375,10 +232,8 @@ export class MovieService {
     topics?: string[],
     entities?: string[],
     userMessageId?: string,
-  ) {
-    if (!conversationId) {
-      return;
-    }
+  ): Promise<void> {
+    if (!conversationId) return;
 
     try {
       await this.messageGrpcClient.appendMessage({
@@ -400,118 +255,33 @@ export class MovieService {
   private async getLatestUserMessageId(
     conversationId: string,
   ): Promise<string | undefined> {
-    if (!conversationId) {
-      return undefined;
-    }
+    if (!conversationId) return undefined;
 
     try {
       const conversation = await this.messageGrpcClient.getConversation({
         conversation_id: conversationId,
       });
-
       const messages = conversation?.messages ?? [];
-      for (let i = messages.length - 1; i >= 0; i -= 1) {
-        const message = messages[i];
-        if (message?.role === "user") {
-          return message.id;
-        }
+      for (let index = messages.length - 1; index >= 0; index -= 1) {
+        if (messages[index]?.role === "user") return messages[index].id;
       }
-
-      return undefined;
     } catch (error) {
       this.logger.warn(
-        `Failed to resolve latest user message id for conversation ${conversationId}: ${(error as Error).message}`,
+        `Failed to resolve latest user message id: ${(error as Error).message}`,
       );
-      return undefined;
     }
+    return undefined;
   }
 
-  private buildSystemPrompt() {
-    return [
-      "你是一个电影推荐专家智能体。",
-      "根据用户描述的影片类型、心情、演员、时长、评分偏好，给出 3-4 个推荐。",
-      "如果用户提供了图片，请简要分析图片里的风格、场景或情绪。",
-      "输出格式必须为纯 JSON，顶层字段必须包含：recommendations（数组）、explanation（字符串）、preferences（对象）。",
-      "如果无法生成推荐，可使用 fallback_reason 字段说明失败原因。",
-      '示例输出结构：{"recommendations":[{"name":"电影名","reason":"推荐理由","summary":"简短介绍","poster_url":"https://...","tmdb_url":"https://...","id":12345}],"explanation":"总结性说明","preferences":{"genre":"科幻"}}',
-    ].join("\n");
-  }
-
-  private async classifyIntent(
-    message: string,
-    history?: ConversationHistoryItem[],
-  ): Promise<IntentType> {
-    const normalized = message.trim();
-    this.logger.log(
-      `classifyIntent start: messageLength=${normalized.length}, historyLength=${history?.length ?? 0}`,
-    );
-    if (!normalized) {
-      this.logger.warn("classifyIntent rejected empty message");
-      return "out_of_scope";
-    }
-
-    try {
-      const model = this.modelProvider.getModel();
-      if (!model) {
-        this.logger.warn(
-          "classifyIntent could not run because model is unavailable",
-        );
-        return "out_of_scope";
-      }
-
-      const historyText = this.buildConversationHistory(history);
-      const systemPrompt = [
-        "你是一个意图分类器。",
-        "请根据当前用户输入判断是否与电影/演员/电影推荐相关。",
-        "你的输出必须且只能是以下两个值中的一个：in_scope 或 out_of_scope，in_scope 表示用户请求与电影/演员/电影推荐相关，out_of_scope 表示用户请求不相关。",
-        historyText ? `上一轮任务历史:\n${historyText}` : "",
-      ]
-        .filter(Boolean)
-        .join("\n");
-
-      const response = await model.invoke([
-        ["system", systemPrompt],
-        ["user", normalized],
-      ]);
-
-      const text = this.extractText(response.content).trim().toLowerCase();
-      const intent = text.includes("in_scope") ? "in_scope" : "out_of_scope";
-      this.logger.log(
-        `classifyIntent finished: intent=${intent}, rawResponse=${this.truncateText(text, 200)}`,
-      );
-      return intent;
-    } catch (error) {
-      this.logger.warn(`意图识别失败，默认拒绝: ${(error as Error).message}`);
-      return "out_of_scope";
-    }
-  }
-
-  private async validateAuthorization(authorization: string): Promise<{
-    ok: boolean;
-    user?: { id: string; email: string };
-    error?: string;
-  }> {
-    this.logger.log(
-      `validateAuthorization start: authLength=${authorization.length}`,
-    );
+  private async validateAuthorization(authorization: string): Promise<AuthResult> {
     const token = authorization.replace(/^Bearer\s+/i, "").trim();
-    if (!token) {
-      this.logger.warn("validateAuthorization failed: no bearer token found");
-      return { ok: false, error: "no_token" };
-    }
+    if (!token) return { ok: false, error: "no_token" };
 
     try {
       const response = await this.authGrpcClient.validateToken(token);
       if (!response.ok) {
-        this.logger.warn(
-          `validateAuthorization failed: ${response.error ?? "unknown error"}`,
-        );
         return { ok: false, error: response.error ?? "invalid_token" };
       }
-
-      this.logger.log(
-        `validateAuthorization success: user=${response.user?.email ?? response.user?.id ?? "unknown"}`,
-      );
       return {
         ok: true,
         user: {
@@ -525,521 +295,24 @@ export class MovieService {
     }
   }
 
-  private async runLangGraphWorkflow(context: WorkflowContext) {
-    const initialState: WorkflowState = {
-      message: this.truncateText(context.message, MAX_PROMPT_TEXT_LENGTH),
-      imageUrl: context.imageUrl,
-      imageData: this.sanitizeImageData(context.imageData),
-      preferences: this.stringifyPreferences(context.preferences),
-      searchResult: "",
-      supervisorResult: "",
-      conversationHistory: context.conversationHistory || '',
-    };
-
-    const plannerResult = await this.planWorkflowStages(context);
-    const state = { ...initialState };
-
-    this.logger.log(
-      `workflow planner raw=${plannerResult.rawPlan} plan=${plannerResult.plan.join(" -> ")}`,
-    );
-
-    for (const [index, stage] of plannerResult.plan.entries()) {
-      this.logger.log(`workflow executing stage=${stage} stageIndex=${index}`);
-      await this.appendConversationMessage(
-        context.conversationId ?? "",
-        "assistant",
-        "agent_execution",
-        `${stage}_start` as MessageStage,
-      );
-
-      switch (stage) {
-        case "parsePreferences": {
-          const content =
-            await this.runPreferenceExtractionWithValidation(state);
-          const parsedPreferences = this.parseStructuredPreferences(
-            content,
-            state,
-          );
-          state.preferences = this.stringifyPreferences(parsedPreferences);
-          (await this.appendConversationMessage(
-            context.conversationId ?? "",
-            "assistant",
-            "agent_execution",
-            `${stage}_completed` as MessageStage,
-            state.preferences,
-          ),
-            this.logger.log(
-              `workflow stage completed stage=parsePreferences preferences=${state.preferences}`,
-            ));
-          break;
-        }
-        case "search": {
-          const content = await this.runTmdbSearch(state);
-          state.searchResult = content;
-          await this.appendConversationMessage(
-            context.conversationId ?? "",
-            "assistant",
-            "agent_execution",
-            `${stage}_completed` as MessageStage,
-            content,
-          );
-          this.logger.log(
-            `workflow stage completed stage=search searchResult=${this.truncateText(content, 400)}`,
-          );
-          break;
-        }
-        case "supervisor": {
-          const prompt = this.buildSupervisorPrompt(state);
-          this.logger.log(`supervisor prompt:\n${prompt}`);
-          const content = await this.runAgentNode("supervisor", prompt);
-          state.supervisorResult = content;
-          await this.appendConversationMessage(
-            context.conversationId ?? "",
-            "assistant",
-            "agent_execution",
-            `${stage}_completed` as MessageStage,
-            content,
-          );
-          this.logger.log(
-            `workflow stage completed stage=supervisor supervisorResult=${this.truncateText(content, 400)}`,
-          );
-          break;
-        }
-        default:
-          throw new Error(`未知阶段: ${stage}`);
-      }
-    }
-
-    return {
-      preferences: state.preferences || "",
-      searchResult: state.searchResult || "",
-      supervisorResult: state.supervisorResult || "",
-    };
-  }
-
-  private async planWorkflowStages(context: WorkflowContext) {
-    const model = this.modelProvider.getModel();
-    return this.workflowPlanner.plan(
-      {
-        message: context.message,
-        conversationHistory: context.conversationHistory,
-      },
-      model,
-    );
-  }
-
-  private async runAgentNode(stage: StageName, prompt: string) {
-    const model = this.modelProvider.getModel();
-    if (!model) {
-      throw new Error(`阶段 ${stage} 失败：模型未配置`);
-    }
-
-    this.logger.log(`runAgentNode start stage=${stage} prompt=\n${prompt}`);
-
-    return this.runWithRetry(stage, async () => {
-      try {
-        const response = await model.invoke([
-          ["system", this.buildStageInstruction(stage)],
-          ["user", this.truncateText(prompt, MAX_PROMPT_TEXT_LENGTH)],
-        ]);
-        const text = this.extractText(response.content);
-        this.logger.log(
-          `runAgentNode response stage=${stage} content=${this.truncateText(text, 400)}`,
-        );
-        return text;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        this.logger.error(
-          `runAgentNode failed stage=${stage} error=${message}`,
-          error,
-        );
-        throw error;
-      }
-    });
-  }
-
-  private async runTmdbSearch(state: WorkflowState) {
-    if (!this.tmdbProvider.isEnabled()) {
-      throw new Error("TMDB 未配置，无法执行搜索阶段");
-    }
-
-    const request = this.buildTmdbQuery(state);
-    this.logger.log(`runTmdbSearch start query=${request.query ?? ""}`);
-
-    const validationError = await this.validateTmdbQueryParams(
-      request.params ?? {},
-    );
-    if (validationError) {
-      throw new Error(`TMDB 查询参数校验失败: ${validationError}`);
-    }
-
-    return this.runWithRetry("search", async () => {
-      try {
-        const response = await this.tmdbProvider.search(request.params ?? {}, {
-          max_results: 4,
-        });
-
-        const summary = this.buildStructuredSearchSummary(response);
-        this.logger.log(`runTmdbSearch success summary=${summary}`);
-        return summary;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        this.logger.error(`runTmdbSearch failed error=${message}`, error);
-        throw error;
-      }
-    });
-  }
-
-  private buildStructuredSearchSummary(response: TmdbSearchResponse) {
-    const results = (response.results ?? []).map((item) => {
-      const overview = this.normalizeText(item.overview);
-      const summary = this.summarizeText(overview, 160);
-      const posterPath = item.poster_path ?? "";
-      const backdropPath = item.backdrop_path ?? "";
-
-      return {
-        adult: item.adult ?? false,
-        poster_path: item.poster_path ?? null,
-        id: item.id ?? undefined,
-        backdrop_path: item.backdrop_path ?? null,
-        genre_ids: item.genre_ids ?? [],
-        original_language: item.original_language ?? "",
-        original_title: item.original_title ?? "",
-        overview,
-        popularity: item.popularity ?? 0,
-        release_date: item.release_date ?? "",
-        title: this.normalizeText(item.title),
-        video: item.video ?? false,
-        vote_average: item.vote_average ?? 0,
-        vote_count: item.vote_count ?? 0,
-        tmdb_url: item.id ? `https://www.themoviedb.org/movie/${item.id}` : "",
-        poster_url: posterPath ? `${TMDB_IMAGE_BASE_URL}${posterPath}` : "",
-        backdrop_url: backdropPath
-          ? `${TMDB_IMAGE_BASE_URL}${backdropPath}`
-          : "",
-        summary,
-        truncated: overview.length > 220,
-      };
-    });
-
-    return JSON.stringify({
-      query:
-        typeof response.query === "string"
-          ? this.normalizeText(response.query)
-          : this.normalizeText(JSON.stringify(response.query ?? {})),
-      results,
-      request_id: response.request_id ?? "",
-    });
-  }
-
-  private normalizeText(text?: string): string {
-    if (!text) {
-      return "";
-    }
-
-    return text.replace(/\s+/g, " ").trim();
-  }
-
-  private summarizeText(text: string, maxLength = 140): string {
-    const normalized = this.normalizeText(text);
-    if (!normalized) {
-      return "";
-    }
-
-    if (normalized.length <= maxLength) {
-      return normalized;
-    }
-
-    return `${normalized.slice(0, maxLength)}...`;
-  }
-
-  private buildTmdbQuery(state: WorkflowState): TmdbSearchRequest {
-    const preferences = this.normalizePreferences(state.preferences);
-    const params = this.buildTmdbQueryParamsFromPreferences(preferences);
-
-    const query = [
-      preferences.genre,
-      preferences.mood,
-      preferences.actors,
-      preferences.theme,
-      preferences.scene,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .trim();
-
-    return {
-      params: Object.keys(params).length > 0 ? params : undefined,
-      query: query || "电影推荐",
-    };
-  }
-
-  private buildParsePrompt(state: WorkflowState) {
-    const promptState = this.buildPromptState(state);
-    const existingPreferences = this.stringifyPreferences(
-      this.normalizePreferences(promptState.preferences),
-    );
-    const lines = [
-      "请从用户输入中提取结构化偏好。",
-      "必须输出一个纯 JSON 对象，如果某项无法确定，请使用空字符串，字段如下",
-
-      `
-      【基础与分页】
-      - language (string): 接口返回内容的语言，默认 "zh-CN"，可选 "en-US" 等。
-      - region (string): 所在国家/地区代码（ISO 3166-1，如 "US", "CN"），用于辅助分级和上映时间计算。
-      - sort_by (string): 排序规则。可选值：["popularity.desc", "popularity.asc", "vote_average.desc", "vote_average.asc", "primary_release_date.desc", "primary_release_date.asc", "revenue.desc", "revenue.asc", "vote_count.desc", "vote_count.asc"]
-      - page (integer): 返回的页码，默认 1。
-      - include_adult (boolean): 是否包含成人/限制级内容，默认 false。
-      - include_video (boolean): 是否包含视频记录，默认 false。
-      `,
-
-      `
-      【时间与日期】
-      - primary_release_year (integer): 首发国家上映年份，如 2023。
-      - primary_release_date.gte (string): 首发上映日期下限，格式 "YYYY-MM-DD"。
-      - primary_release_date.lte (string): 首发上映日期上限，格式 "YYYY-MM-DD"。
-      - release_date.gte (string): 任意地区上映日期下限，格式 "YYYY-MM-DD"。
-      - release_date.lte (string): 任意地区上映日期上限，格式 "YYYY-MM-DD"。
-      - year (integer): 任意地区上映年份。
-      - with_release_type (string/integer): 发行类型，可多选（','代表且，'|'代表或）。可选值：1(首映), 2(点映), 3(影院), 4(数字/流媒体), 5(实体), 6(电视)。
-      `,
-
-      `
-      【评分与评价人数】
-      - vote_average.gte (number): 最低评分下限（0.0 至 10.0），如 8.0 表示8分以上。
-      - vote_average.lte (number): 最高评分上限（0.0 至 10.0）。
-      - vote_count.gte (number): 最少打分人数下限，用于过滤冷门影片，如 100。
-      - vote_count.lte (number): 最多打分人数上限。
-      `,
-      `
-      【片长范围】
-      - with_runtime.gte (integer): 片长最小值（单位：分钟）。
-      - with_runtime.lte (integer): 片长最大值（单位：分钟）
-      `,
-
-      `
-      【语言与国家】
-      - with_original_language (string): 电影原声语言代码，如 "ja"(日语), "en"(英语), "zh"(中文), "ko"(韩语)。
-      - with_origin_country (string): 出品国家/地区代码，如 "US"(美国), "JP"(日本), "CN"(中国大陆)。
-      `,
-
-      `
-      【阵容、流派与主题】
-      - with_genres (string): 包含的流派 ID（多选时: ',' 代表同时满足，'|' 代表满足其一）。
-      - without_genres (string): 排除的流派 ID。
-      - with_cast (string): 包含的演员 ID（多选可用 ',' 或 '|'）。
-      - with_crew (string): 包含的幕后人员/导演 ID。
-      - with_people (string): 包含的演职人员 ID。
-      - with_companies (string): 包含的制作公司 ID。
-      - without_companies (string): 排除的制作公司 ID。
-      - with_keywords (string): 包含的主题/关键词 ID。
-      - without_keywords (string): 排除的主题/关键词 ID。
-      `,
-
-      `
-      【分级与家长控制】
-      - certification (string): 电影分级（如 "PG-13", "R"），需配合 certification_country。
-      - certification.gte (string): 分级下限。
-      - certification.lte (string): 分级上限。
-      - certification_country (string): 分级对应的国家代码，如 "US"。   
-      `,
-
-      `
-      【流媒体与播放平台】
-      - watch_region (string): 播放服务所在的地区代码，如 "US"。
-      - with_watch_providers (string): 包含的播放平台 ID（如 Netflix）。
-      - without_watch_providers (string): 排除的播放平台 ID。
-      - with_watch_monetization_types (string): 观看变现模式，可选 ["flatrate"(订阅), "free"(免费), "ads"(含广告), "rent"(租借), "buy"(购买)]，需配合 watch_region。
-      `,
-
-      `
-      ### 逻辑解析与处理规则：
-      1. 多选项组合逻辑：
-        - 当用户要求“既要A又要B”时，参数值内部用逗号 ',' 连接。
-        - 当用户要求“要么A要么B”时，参数值内部用管道符 '|' 连接。
-      2. 语义映射示例：
-        - “高分/好片” -> "vote_average.gte": 7.5, "vote_count.gte": 100, "sort_by": "vote_average.desc"
-        - “热门/最火” -> "sort_by": "popularity.desc"
-        - “最新” -> "sort_by": "primary_release_date.desc"
-        - “短片/1小时以内” -> "with_runtime.lte": 60
-      3. 如果用户提及了具体的演员名、导演名或电影类型名称，但你无法确定其在 TMDB 中的数字 ID，请将识别到的名称提取放在 "unresolved_entities" 字段中。
-    `,
-
-      "【转换示例】",
-      "用户输入：'我想看一部评分在8分以上的科幻电影，英文原声，时长在2小时以内'",
-      "提取偏好：{",
-      "  'genre': '科幻',",
-      "  'rating': '8分以上',",
-      "  'length': '2小时以内',",
-      "  'language': '英文',",
-      "  'mood': '',",
-      "  'actors': '',",
-      "  'scene': '',",
-      "  'theme': ''",
-      "}",
-      "",
-      "【重要规则】",
-      "1. 数值必须能直接提取（如 '8分以上' → 8，'2小时' → 120分钟）",
-      "2. 无法识别的值返回空字符串",
-      "3. 所有数值参数必须是数字类型，不能包含文字",
-      "4. 日期格式必须是 YYYY-MM-DD",
-      "5. 语言代码必须是 ISO 639-1 标准代码",
-      "",
-      `用户输入: ${promptState.message}`,
-      `已知偏好: ${existingPreferences}`,
-      '输出示例: {"genre":"科幻","mood":"紧张刺激","actors":"汤姆·克鲁斯","length":"2小时以内","rating":"8分以上","language":"英文","scene":"适合晚上看","theme":"成长"}',
-    ];
-    return lines.filter(Boolean).join("\n");
-  }
-
-  private buildSupervisorPrompt(state: WorkflowState) {
-    const promptState = this.buildPromptState(state);
-    return [
-      "你是监督智能体，将搜索结果整合为最终答案。",
-      `用户输入: ${promptState.message}`,
-      promptState.imageUrl ? `图片链接: ${promptState.imageUrl}` : "",
-      promptState.imageData ? "附带已上传图片分析。" : "",
-      `用户偏好: ${promptState.preferences}`,
-      `搜索结果: ${promptState.searchResult}`,
-      "输出必须是纯 JSON（不要包含多余注释或说明），顶层字段必须包含：",
-      "- recommendations: 数组，每项代表一条推荐，用于直接展示（推荐对象示例见下）。",
-      "- explanation: 字符串，对整组推荐的总结性说明（为何匹配用户偏好）。",
-      "- preferences: 对象，规范化后的用户偏好（用于记录/回显/后续搜索）。",
-      "- summary: 字符串，缩略版本的总结，只保留未来对话可能有用的信息。不要复述完整答案，不要保留解释过程，不要保留客套话。最多50字。",
-      "- topics: 数组，讨论的主题列表，如 [\"科幻\", \"推荐系统\"]。",
-      "- entities: 数组，具体的人/项目/技术/产品等实体名称，如 [\"NestJS\", \"LangChain\", \"Ragas\"]。",
-      "仅在无法生成推荐时，使用 fallback_reason 字段说明原因。",
-      "recommendations 数组中每项建议包含（示例字段）：name, title, reason, summary, overview, poster_url, tmdb_url, id, release_date, vote_average, vote_count, genre_ids, original_language, original_title, additional。",
-      '示例输出：{\n  "recommendations": [\n    {"name": "盗梦空间", "reason": "紧张且富有想象力", "summary": "一支入侵梦境的团队执行高风险任务...", "poster_url": "https://image.tmdb.org/t/p/w500/xxx.jpg", "tmdb_url": "https://www.themoviedb.org/movie/27205", "id":27205}\n  ],\n  "explanation": "基于你偏好科幻与心理悬疑，推荐以下影片...",\n  "preferences": {"genre":"科幻","mood":"紧张刺激"},\n  "summary": "用户想看科幻电影，推荐了2部高评分作品(超级少女、蜘蛛侠)",\n  "topics": ["科幻", "推荐系统"],\n  "entities": ["电影", "科幻"]\n}',
-    ].join("\n");
-  }
-
-  private buildStageInstruction(stage: StageName) {
-    switch (stage) {
-      case "parsePreferences":
-        return [
-          "你是偏好提取智能体。",
-          "从用户输入中提取电影类型、剧情风格、演员偏好、时长、评分、语言、观看场景和情绪。",
-          "输出必须是一个纯 JSON 对象，字段仅限 genre, mood, actors, length, rating, language, scene, theme。",
-          "如果无法确定，请使用空字符串。",
-        ].join("\n");
-      case "search":
-        return [
-          "你是搜索智能体。",
-          "基于用户偏好推荐电影。",
-          "输出 JSON，不要包含多余文本。",
-        ].join("\n");
-      case "supervisor":
-        return [
-          "你是监督智能体。",
-          "整合搜索和链接结果，给出最终可直接展示给用户的回答。",
-          "输出必须是纯 JSON 对象，顶层字段必须包含：recommendations（数组）、explanation（字符串）、preferences（对象）。",
-          "recommendations 中每项示例字段：name, title, reason, summary, poster_url, tmdb_url, id, release_date, vote_average, genre_ids, original_language, original_title, additional。",
-          "不要输出多余文字或注释，严格返回可解析的 JSON。",
-        ].join("\n");
-      default:
-        return this.buildSystemPrompt();
-    }
-  }
-
-  private async runWithRetry<T>(
-    stage: StageName,
-    operation: () => Promise<T>,
-  ): Promise<T> {
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-      try {
-        this.logger.log(`Stage ${stage} attempt ${attempt} started`);
-        const result = await operation();
-        this.logger.log(`Stage ${stage} attempt ${attempt} succeeded`);
-        return result;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        this.logger.error(
-          `Stage ${stage} attempt ${attempt}/${MAX_RETRIES} failed: ${message}`,
-          error,
-        );
-        if (attempt === MAX_RETRIES) break;
-        await new Promise((resolve) =>
-          setTimeout(resolve, RETRY_BACKOFF_MS * attempt),
-        );
-      }
-    }
-    const finalError = new Error(
-      `Stage ${stage} failed after ${MAX_RETRIES} attempts`,
-    );
-    this.logger.error(`Stage ${stage} exhausted retries`, finalError);
-    throw finalError;
-  }
-
-  private truncateText(
-    text: string | undefined,
-    maxLength = MAX_PROMPT_TEXT_LENGTH,
-  ): string {
-    if (!text) return "";
-    if (text.length <= maxLength) return text;
-    return `${text.slice(0, maxLength)}\n...[truncated]`;
-  }
-
-  private sanitizeImageData(imageData?: string): string | undefined {
-    if (!imageData) return undefined;
-    if (imageData.length > MAX_IMAGE_DATA_LENGTH) {
-      return `[image-data-truncated:${imageData.length} chars]`;
-    }
-    return imageData;
-  }
-
-  private buildPromptState(state: WorkflowState) {
-    return {
-      message: this.truncateText(state.message, MAX_PROMPT_TEXT_LENGTH),
-      preferences: this.truncateText(state.preferences, MAX_PROMPT_TEXT_LENGTH),
-      searchResult: this.truncateText(
-        state.searchResult,
-        MAX_SEARCH_RESULT_LENGTH,
-      ),
-      imageUrl: state.imageUrl,
-      imageData: this.sanitizeImageData(state.imageData),
-    };
-  }
-
-  private buildConversationHistory(
+  private _buildConversationHistory(
     history?: ConversationHistoryItem[],
   ): string {
-    if (!history || history.length === 0) {
-      return "";
-    }
+    if (!history?.length) return "";
 
     const validItems = history.filter((item) => !!item?.content);
-    if (validItems.length === 0) {
-      return "";
-    }
-
-    const pastUser = [...validItems]
-      .filter((item) => item.role === "user")
-    const pastAssistant = [...validItems].find(
+    const pastUser = validItems.filter((item) => item.role === "user");
+    const pastAssistant = validItems.find(
       (item) => item.role === "assistant" && item.stage === "final",
     );
 
-    const lines: string[] = [];
-
-    [...pastUser, pastAssistant].forEach((item) => {
-      if (!item) return;
-      const roleLabel = item.role === "user" ? "用户" : "AI";
-      lines.push(`${roleLabel}: ${this.normalizeText(item.content)}`);
-    });
-
-    return lines.join("\n");
-  }
-
-  private extractText(content: unknown): string {
-    if (typeof content === "string") return content;
-    if (Array.isArray(content)) {
-      return content
-        .map((item) => (typeof item === "string" ? item : JSON.stringify(item)))
-        .join("\n");
-    }
-    if (typeof content === "object" && content !== null)
-      return JSON.stringify(content);
-    return String(content ?? "");
+    return [...pastUser, pastAssistant]
+      .filter((item): item is ConversationHistoryItem => Boolean(item))
+      .map(
+        (item) =>
+          `${item.role === "user" ? "用户" : "AI"}: ${normalizeText(item.content)}`,
+      )
+      .join("\n");
   }
 
   private buildErrorResponse(
@@ -1066,621 +339,36 @@ export class MovieService {
     };
   }
 
-  private async runPreferenceExtractionWithValidation(
-    state: WorkflowState,
-  ): Promise<string> {
-    const basePrompt = this.buildParsePrompt(state);
-    let lastError = "";
-
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-      const prompt =
-        attempt === 1
-          ? basePrompt
-          : `${basePrompt}\n\n上一次生成的数据结构校验失败：${lastError}\n请严格按照要求重新生成一个只包含 genre, mood, actors, length, rating, language, scene, theme 的 JSON 对象，并确保字段值可被成功映射到 TMDB 查询参数。`;
-
-      const content = await this.runAgentNode("parsePreferences", prompt);
-      this.logger.log(
-        `[parsePreferences] attempt ${attempt} rawContentLength=${content.length} content=${content}`,
-      );
-      const parsed = this.tryParseJsonObject<Partial<MoviePreference>>(
-        content,
-        `parsePreferences-attempt-${attempt}`,
-      );
-      if (!parsed) {
-        lastError = "返回内容不是合法的 JSON 对象。";
-        this.logger.warn(
-          `[parsePreferences] attempt ${attempt} failed: ${lastError}`,
-        );
-        continue;
-      }
-
-      this.logger.log(
-        `[parsePreferences] attempt ${attempt} parsedPreferences=${JSON.stringify(parsed)}`,
-      );
-      const preferences = this.normalizePreferences(parsed);
-      const tmdbQueryParams =
-        this.buildTmdbQueryParamsFromPreferences(preferences);
-      this.logger.log(
-        `[parsePreferences] attempt ${attempt} tmdbQueryParams=${JSON.stringify(tmdbQueryParams)}`,
-      );
-      const validationError =
-        await this.validateTmdbQueryParams(tmdbQueryParams);
-      if (!validationError) {
-        return content;
-      }
-
-      lastError = validationError;
-      this.logger.warn(
-        `[parsePreferences] attempt ${attempt} validation failed: ${lastError}`,
-      );
-    }
-
-    throw new Error(`偏好提取失败: ${lastError || "未能生成合法偏好"}`);
-  }
-
-  private parseStructuredPreferences(
-    content: string,
-    state: WorkflowState,
-  ): MoviePreference {
-    this.logger.log(
-      `[parseStructuredPreferences] start: contentLength=${content.length} content=${content}`,
-    );
-    const parsed = this.tryParseJsonObject<Partial<MoviePreference>>(
-      content,
-      "parseStructuredPreferences",
-    );
-    const fromState = this.normalizePreferences(state.preferences);
-    const merged = this.mergePreferences(fromState, parsed ?? {});
-    this.logger.log(
-      `[parseStructuredPreferences] parsed=${JSON.stringify(parsed ?? {})} merged=${JSON.stringify(merged)}`,
-    );
-    return merged;
-  }
-
-  private normalizePreferences(
+  private _normalizePreferences(
     preferences?: Partial<MoviePreference> | string | null,
   ): MoviePreference {
-    if (!preferences) {
-      return {};
-    }
-
+    if (!preferences) return {};
     if (typeof preferences === "string") {
-      const trimmed = preferences.trim();
-      if (!trimmed) {
-        return {};
-      }
-
-      this.logger.log(
-        `[normalizePreferences] parsing string input: length=${trimmed.length} content=${trimmed}`,
-      );
-      const parsed = this.tryParseJsonObject<Partial<MoviePreference>>(
-        trimmed,
-        "normalizePreferences",
-      );
-      if (parsed) {
-        this.logger.log(
-          `[normalizePreferences] parsed string input -> ${JSON.stringify(parsed)}`,
-        );
-        return this.normalizePreferences(parsed);
-      }
-
-      this.logger.warn(
-        `[normalizePreferences] failed to parse string input: ${trimmed}`,
-      );
-      return {};
+      const parsed = tryParseJson<Partial<MoviePreference>>(preferences);
+      return parsed ? this._normalizePreferences(parsed) : {};
     }
 
     return {
-      genre: this.normalizePreferenceValue(preferences.genre),
-      mood: this.normalizePreferenceValue(preferences.mood),
-      actors: this.normalizePreferenceValue(preferences.actors),
-      length: this.normalizePreferenceValue(preferences.length),
-      rating: this.normalizePreferenceValue(preferences.rating),
-      language: this.normalizePreferenceValue(preferences.language),
-      scene: this.normalizePreferenceValue(preferences.scene),
-      theme: this.normalizePreferenceValue(preferences.theme),
+      genre: getStringValue(preferences.genre),
+      mood: getStringValue(preferences.mood),
+      actors: getStringValue(preferences.actors),
+      length: getStringValue(preferences.length),
+      rating: getStringValue(preferences.rating),
+      language: getStringValue(preferences.language),
+      scene: getStringValue(preferences.scene),
+      theme: getStringValue(preferences.theme),
     };
-  }
-
-  private mergePreferences(
-    base: MoviePreference,
-    incoming: Partial<MoviePreference> = {},
-  ): MoviePreference {
-    return {
-      genre: this.normalizePreferenceValue(incoming.genre ?? base.genre),
-      mood: this.normalizePreferenceValue(incoming.mood ?? base.mood),
-      actors: this.normalizePreferenceValue(incoming.actors ?? base.actors),
-      length: this.normalizePreferenceValue(incoming.length ?? base.length),
-      rating: this.normalizePreferenceValue(incoming.rating ?? base.rating),
-      language: this.normalizePreferenceValue(
-        incoming.language ?? base.language,
-      ),
-      scene: this.normalizePreferenceValue(incoming.scene ?? base.scene),
-      theme: this.normalizePreferenceValue(incoming.theme ?? base.theme),
-    };
-  }
-
-  private stringifyPreferences(preferences?: Partial<MoviePreference>): string {
-    return JSON.stringify(this.normalizePreferences(preferences));
   }
 
   private normalizePreferenceValue(value: unknown): string {
-    if (typeof value === "string") {
-      return value.trim();
-    }
-    if (value === undefined || value === null) {
-      return "";
-    }
-    return String(value).trim();
+    return getStringValue(value);
   }
 
-  private tryParseJsonObject<T = Partial<MoviePreference>>(
-    value: string,
-    stage = "unknown",
-  ): T | null {
-    const trimmed = value.trim();
-    if (!trimmed) {
-      this.logger.warn(`[${stage}] empty input for JSON parse`);
-      return null;
-    }
-
-    this.logger.log(
-      `[${stage}] parse start: inputLength=${trimmed.length} content=${trimmed}`,
-    );
-    const candidate = this.extractJsonCandidate(trimmed);
-    this.logger.log(
-      `[${stage}] candidateLength=${candidate?.length ?? 0} candidate=${candidate}`,
-    );
-    if (!candidate) {
-      this.logger.warn(`[${stage}] no JSON candidate extracted`);
-      return null;
-    }
-
-    try {
-      const sanitized = this.sanitizeJsonLikeText(candidate);
-      this.logger.log(
-        `[${stage}] sanitizedLength=${sanitized.length} sanitized=${sanitized}`,
-      );
-      const parsed = JSON.parse(sanitized);
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        this.logger.log(
-          `[${stage}] parsed object successfully: ${JSON.stringify(parsed)}`,
-        );
-        return parsed as T;
-      }
-      this.logger.warn(`[${stage}] parsed value is not a plain object`);
-      return null;
-    } catch (error) {
-      this.logger.warn(
-        `[${stage}] JSON parse failed: ${(error as Error).message}`,
-      );
-      return null;
-    }
-  }
-
-  private extractJsonCandidate(value: string): string | null {
-    const trimmed = value.trim();
-    if (!trimmed) {
-      return null;
-    }
-
-    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-    if (fenced?.[1]) {
-      this.logger.log(
-        `[extractJsonCandidate] found fenced JSON block: length=${fenced[1].trim().length}`,
-      );
-      return fenced[1].trim();
-    }
-
-    const start = trimmed.indexOf("{");
-    const end = trimmed.lastIndexOf("}");
-    if (start >= 0 && end > start) {
-      this.logger.log(`[extractJsonCandidate] sliced from ${start} to ${end}`);
-      return trimmed.slice(start, end + 1);
-    }
-
-    this.logger.warn(`[extractJsonCandidate] no JSON braces found`);
-    return trimmed;
-  }
-
-  private sanitizeJsonLikeText(value: string): string {
-    let text = value.trim();
-    this.logger.log(
-      `[sanitizeJsonLikeText] inputLength=${text.length} input=${text}`,
-    );
-    text = text.replace(/^```(?:json)?/i, "").replace(/```$/i, "");
-    text = text.replace(/[\u0000-\u001f]/g, (char) => {
-      if (char === "\n" || char === "\r" || char === "\t") {
-        return char;
-      }
-      return " ";
-    });
-
-    const start = text.indexOf("{");
-    const end = text.lastIndexOf("}");
-    if (start >= 0 && end > start) {
-      text = text.slice(start, end + 1);
-    }
-
-    let result = "";
-    let inString = false;
-    let escaped = false;
-
-    for (let index = 0; index < text.length; index += 1) {
-      const char = text[index];
-
-      if (escaped) {
-        result += char;
-        escaped = false;
-        continue;
-      }
-
-      if (char === "\\") {
-        result += char;
-        escaped = true;
-        continue;
-      }
-
-      if (char === '"') {
-        if (!inString) {
-          inString = true;
-          result += char;
-          continue;
-        }
-
-        const next = this.peekNonWhitespaceChar(text, index + 1);
-        const shouldCloseString =
-          next === ":" ||
-          next === "," ||
-          next === "}" ||
-          next === "]" ||
-          next === undefined;
-
-        if (shouldCloseString) {
-          inString = false;
-          result += char;
-          continue;
-        }
-
-        result += '\\"';
-        continue;
-      }
-
-      if (char === "\n" || char === "\r" || char === "\t") {
-        result += " ";
-        continue;
-      }
-
-      result += char;
-    }
-
-    this.logger.log(
-      `[sanitizeJsonLikeText] outputLength=${result.length} output=${result}`,
-    );
-    return result;
-  }
-
-  private peekNonWhitespaceChar(
-    text: string,
-    startIndex: number,
-  ): string | undefined {
-    for (let index = startIndex; index < text.length; index += 1) {
-      const char = text[index];
-      if (/\s/.test(char)) {
-        continue;
-      }
-      return char;
-    }
-    return undefined;
-  }
-
-  private buildTmdbQueryParamsFromPreferences(
-    preferences: MoviePreference,
-  ): Partial<TMDBDiscoverMovieQueryParams> {
-    const params: Partial<TMDBDiscoverMovieQueryParams> = {};
-
-    if (preferences.genre) {
-      const genreId = this.mapGenreToTmdbGenreId(preferences.genre);
-      if (genreId) {
-        params.with_genres = genreId;
-      }
-    }
-
-    if (preferences.rating) {
-      const rating = this.extractNumber(preferences.rating);
-      if (rating !== null) {
-        params["vote_average.gte"] = rating;
-      }
-    }
-
-    if (preferences.length) {
-      const runtime = this.extractRuntimeMinutes(preferences.length);
-      if (runtime !== null) {
-        params["with_runtime.lte"] = runtime;
-      }
-    }
-
-    if (preferences.language) {
-      const language = this.mapLanguageToTmdb(preferences.language);
-      if (language) {
-        params.with_original_language = language;
-      }
-    }
-
-    return params;
-  }
-
-  private async validateTmdbQueryParams(
-    params: Partial<TMDBDiscoverMovieQueryParams>,
-  ): Promise<string | null> {
-    if (!params || typeof params !== "object" || Array.isArray(params)) {
-      return "TMDB 查询参数必须是一个对象。";
-    }
-
-    const dto = plainToInstance(TmdbDiscoverMovieQueryParamsDto, params);
-    const errors = await validate(dto, {
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      stopAtFirstError: true,
-    });
-
-    if (errors.length === 0) {
-      return null;
-    }
-
-    const firstError = errors[0];
-    const message = firstError.constraints
-      ? Object.values(firstError.constraints)[0]
-      : "参数校验失败";
-    return message;
-  }
-
-  private mapGenreToTmdbGenreId(genre: string): string | undefined {
-    const normalized = genre.trim().toLowerCase();
-    return genreToTmdbGenreIdMap[normalized];
-  }
-
-  private extractNumber(value: string): number | null {
-    const match = value.match(/(\d+(?:\.\d+)?)/);
-    if (!match) {
-      return null;
-    }
-    return Number(match[1]);
-  }
-
-  private extractRuntimeMinutes(value: string): number | null {
-    const normalized = value.toLowerCase();
-    const match = normalized.match(/(\d+(?:\.\d+)?)/);
-    if (!match) {
-      return null;
-    }
-
-    const number = Number(match[1]);
-    if (
-      normalized.includes("小时") ||
-      normalized.includes("hr") ||
-      normalized.includes("h")
-    ) {
-      return Math.round(number * 60);
-    }
-
-    if (
-      normalized.includes("分钟") ||
-      normalized.includes("min") ||
-      normalized.includes("m")
-    ) {
-      return Math.round(number);
-    }
-
-    return null;
-  }
-
-  private mapLanguageToTmdb(language: string): string | undefined {
-    const normalized = language.trim().toLowerCase();
-    return languageToTmdbLanguageMap[normalized];
-  }
-
-  private parseSearchResultMetadata(
-    searchResult: string,
-  ): Array<Record<string, unknown>> {
-    if (!searchResult) {
-      return [];
-    }
-
-    const parsed = this.tryParseJsonObject<Record<string, unknown>>(
-      searchResult,
-      "parseSearchResultMetadata",
-    );
-    const results = parsed?.results;
-    if (!Array.isArray(results)) {
-      return [];
-    }
-
-    return results.filter(
-      (item): item is Record<string, unknown> =>
-        Boolean(item) && typeof item === "object" && !Array.isArray(item),
-    );
-  }
-
-  private getStringValue(value: unknown): string {
-    if (typeof value === "string") {
-      return value.trim();
-    }
-    if (value === null || value === undefined) {
-      return "";
-    }
-    return String(value).trim();
-  }
-
-  private matchTmdbMovie(
-    recommendation: Record<string, unknown>,
-    movie: Record<string, unknown>,
-  ): boolean {
-    const targetTitles = [
-      this.getStringValue(recommendation.name),
-      this.getStringValue(recommendation.title),
-      this.getStringValue(recommendation.original_title),
-    ];
-    const movieTitles = [
-      this.getStringValue(movie.title),
-      this.getStringValue(movie.original_title),
-    ];
-
-    return targetTitles.some((targetTitle) => {
-      if (!targetTitle) {
-        return false;
-      }
-      const normalizedTarget = this.normalizeText(targetTitle);
-      if (!normalizedTarget) {
-        return false;
-      }
-      return movieTitles.some((movieTitle) => {
-        const normalizedMovieTitle = this.normalizeText(movieTitle);
-        if (!normalizedMovieTitle) {
-          return false;
-        }
-        return (
-          normalizedTarget === normalizedMovieTitle ||
-          normalizedTarget.includes(normalizedMovieTitle) ||
-          normalizedMovieTitle.includes(normalizedTarget)
-        );
-      });
-    });
-  }
-
-  private enrichRecommendationWithTmdbMetadata(
-    recommendation: Record<string, unknown>,
-    movie: Record<string, unknown>,
-  ) {
-    return {
-      ...recommendation,
-      name:
-        this.getStringValue(recommendation.name) ||
-        this.getStringValue(movie.title),
-      title:
-        this.getStringValue(recommendation.title) ||
-        this.getStringValue(movie.title),
-      reason:
-        this.getStringValue(recommendation.reason) ||
-        this.getStringValue(movie.summary),
-      summary:
-        this.getStringValue(recommendation.summary) ||
-        this.getStringValue(movie.summary),
-      overview:
-        this.getStringValue(recommendation.overview) ||
-        this.getStringValue(movie.overview),
-      release_date:
-        this.getStringValue(recommendation.release_date) ||
-        this.getStringValue(movie.release_date),
-      vote_average:
-        recommendation.vote_average ?? movie.vote_average ?? undefined,
-      vote_count: recommendation.vote_count ?? movie.vote_count ?? undefined,
-      popularity: recommendation.popularity ?? movie.popularity ?? undefined,
-      original_language:
-        this.getStringValue(recommendation.original_language) ||
-        this.getStringValue(movie.original_language),
-      genre_ids: Array.isArray(recommendation.genre_ids)
-        ? recommendation.genre_ids
-        : Array.isArray(movie.genre_ids)
-          ? movie.genre_ids
-          : [],
-      poster_path: recommendation.poster_path ?? movie.poster_path ?? null,
-      poster_url:
-        this.getStringValue(recommendation.poster_url) ||
-        this.getStringValue(movie.poster_url),
-      backdrop_path:
-        recommendation.backdrop_path ?? movie.backdrop_path ?? null,
-      backdrop_url:
-        this.getStringValue(recommendation.backdrop_url) ||
-        this.getStringValue(movie.backdrop_url),
-      tmdb_url:
-        this.getStringValue(recommendation.tmdb_url) ||
-        this.getStringValue(movie.tmdb_url),
-      id: recommendation.id ?? movie.id ?? undefined,
-      adult: recommendation.adult ?? movie.adult ?? false,
-      video: recommendation.video ?? movie.video ?? false,
-      original_title:
-        this.getStringValue(recommendation.original_title) ||
-        this.getStringValue(movie.original_title),
-    };
-  }
-
-  private parseRecommendation(
-    text: string,
-    preferences: MoviePreference,
-    searchResult?: string,
-  ) {
-    this.logger.log(
-      `[parseRecommendation] start: textLength=${text.length} text=${text} preferences=${JSON.stringify(preferences)}`,
-    );
-    try {
-      const parsed = this.tryParseJsonObject<Record<string, unknown>>(
-        text,
-        "parseRecommendation",
-      );
-      if (!parsed) {
-        throw new Error("No JSON found");
-      }
-      this.logger.log(
-        `[parseRecommendation] parsed JSON: ${JSON.stringify(parsed)}`,
-      );
-      const parsedObject = parsed as Record<string, unknown>;
-      const tmdbMovies = this.parseSearchResultMetadata(searchResult ?? "");
-      const recommendations = Array.isArray(parsedObject.recommendations)
-        ? parsedObject.recommendations
-        : [];
-
-      const enrichedRecommendations = recommendations.map((item) => {
-        if (!item || typeof item !== "object" || Array.isArray(item)) {
-          return item;
-        }
-
-        const recommendation = item as Record<string, unknown>;
-        const matchedMovie = tmdbMovies.find((movie) =>
-          this.matchTmdbMovie(recommendation, movie),
-        );
-
-        return matchedMovie
-          ? this.enrichRecommendationWithTmdbMetadata(
-              recommendation,
-              matchedMovie,
-            )
-          : recommendation;
-      });
-
+  private parseRecommendation(text: string, preferences: MoviePreference) {
+    const parsed = tryParseJson<Record<string, unknown>>(text);
+    if (!parsed) {
       return {
-        preferences: this.normalizePreferences(
-          (parsedObject.preferences as Partial<MoviePreference> | undefined) ??
-            preferences,
-        ),
-        recommendations: enrichedRecommendations,
-        explanation:
-          typeof parsedObject.explanation === "string"
-            ? parsedObject.explanation
-            : "",
-        message:
-          typeof parsedObject.message === "string" ? parsedObject.message : "",
-        fallback_reason:
-          typeof parsedObject.fallback_reason === "string"
-            ? parsedObject.fallback_reason
-            : "",
-        summary:
-          typeof parsedObject.summary === "string"
-            ? parsedObject.summary
-            : "",
-        topics: Array.isArray(parsedObject.topics)
-          ? parsedObject.topics.map((t) => this.normalizePreferenceValue(t)).filter(Boolean)
-          : [],
-        entities: Array.isArray(parsedObject.entities)
-          ? parsedObject.entities.map((e) => this.normalizePreferenceValue(e)).filter(Boolean)
-          : [],
-      };
-    } catch (err) {
-      this.logger.error(
-        `[parseRecommendation] failed to parse JSON, returning fallback. err ->> ${JSON.stringify(err)}`,
-      );
-      return {
-        preferences: this.normalizePreferences(preferences),
+        preferences,
         recommendations: [],
         message: "解析失败，无法生成推荐。",
         fallback_reason: "无法解析模型输出。",
@@ -1690,5 +378,25 @@ export class MovieService {
         entities: [],
       };
     }
+
+    const stringArray = (value: unknown): string[] =>
+      Array.isArray(value)
+        ? value.map((item) => this.normalizePreferenceValue(item)).filter(Boolean)
+        : [];
+
+    return {
+      preferences: this._normalizePreferences(
+        (parsed.preferences as Partial<MoviePreference> | undefined) ?? preferences,
+      ),
+      recommendations: Array.isArray(parsed.recommendations)
+        ? parsed.recommendations
+        : [],
+      explanation: getStringValue(parsed.explanation),
+      message: getStringValue(parsed.message),
+      fallback_reason: getStringValue(parsed.fallback_reason),
+      summary: getStringValue(parsed.summary),
+      topics: stringArray(parsed.topics),
+      entities: stringArray(parsed.entities),
+    };
   }
 }

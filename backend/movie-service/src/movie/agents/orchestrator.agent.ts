@@ -1,10 +1,19 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { SearchAgent, SearchAgentResult } from "./search.agent";
-import { RelationAgent, RelationAgentResult } from "./relation.agent";
+import { PromptTemplateService } from "../services/prompt-template.service";
+import { executeWithRetry, tryParseJson } from "../helpers";
+import { RelationAgent } from "./relation.agent";
+import { SearchAgent } from "./search.agent";
+import { AGENT_TYPES, AgentType } from "../types";
 
 export type CompatibleModel = {
   invoke(messages: Array<[string, string]>): Promise<{ content: unknown }>;
 };
+
+type AgentExecutor = (
+  model: CompatibleModel,
+  query: string,
+  conversationHistory?: string,
+) => Promise<{ success: boolean; result: string }>;
 
 /**
  * Orchestrator Agent - 主控代理
@@ -16,15 +25,21 @@ export type CompatibleModel = {
 @Injectable()
 export class OrchestratorAgent {
   private readonly logger = new Logger(OrchestratorAgent.name);
+  private readonly agentExecutors: Record<AgentType, AgentExecutor>;
 
   constructor(
     private readonly searchAgent: SearchAgent,
     private readonly relationAgent: RelationAgent,
-  ) {}
+    private readonly promptTemplateService: PromptTemplateService,
+  ) {
+    this.agentExecutors = {
+      search: (model, query, conversationHistory) =>
+        this.searchAgent.execute(model, query, conversationHistory),
+      relation: (model, query, conversationHistory) =>
+        this.relationAgent.execute(model, query, conversationHistory),
+    };
+  }
 
-  /**
-   * 执行主控流程
-   */
   async orchestrate(
     model: CompatibleModel,
     query: string,
@@ -34,7 +49,7 @@ export class OrchestratorAgent {
 
     try {
       // 步骤1: 意图识别
-      const intent = await this.classifyIntent(model, query);
+      const intent = await this.classifyIntent(model, query, conversationHistory);
       this.logger.log(`[Orchestrator] Intent classification: ${intent.type}`);
 
       if (intent.type === "out_of_scope") {
@@ -47,8 +62,12 @@ export class OrchestratorAgent {
       }
 
       // 步骤2: 任务规划
-      const plan = await this.planTask(model, query, intent.type);
-      this.logger.log(`[Orchestrator] Task plan: ${JSON.stringify(plan)}`);
+      const plan = await this.planTask(
+        model,
+        query,
+        intent.type,
+        conversationHistory,
+      );
 
       // 步骤3: 执行plan中指定的agents
       const agentResults = await this.executeAgentPlan(
@@ -59,28 +78,24 @@ export class OrchestratorAgent {
       );
 
       // 步骤4: 整合结果
-      const finalResult = await this.synthesizeResults(
-        model,
-        query,
-        agentResults,
-        conversationHistory,
-      );
+      const finalResult = this.synthesizeResults(agentResults);
 
       return {
-        success: true,
+        success: intent.type === "in_scope",
         intent_type: intent.type,
         result: finalResult,
         agents_used: plan,
         agent_results: agentResults,
       };
     } catch (error) {
-      this.logger.error(`[Orchestrator] Error: ${error instanceof Error ? error.message : String(error)}`);
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`[Orchestrator] Error: ${message}`);
       return {
         success: false,
         intent_type: "unknown",
-        result: `处理失败: ${error instanceof Error ? error.message : "未知错误"}`,
+        result: `处理失败: ${message}`,
         agents_used: [],
-        error: error instanceof Error ? error.message : String(error),
+        error: message,
       };
     }
   }
@@ -88,37 +103,36 @@ export class OrchestratorAgent {
   /**
    * 意图识别 - 判断查询是否与电影/演员相关
    */
+
   private async classifyIntent(
     model: CompatibleModel,
     query: string,
+    conversationHistory?: string,
   ): Promise<IntentClassification> {
     try {
-      // TODO: 使用LLM进行意图分类
-      // 当前使用简单的关键字匹配
-      
-      const movieKeywords = [
-        "电影", "movie", "film", "电影",
-        "推荐", "recommend", "suggest",
-        "演员", "actor", "actress", "导演", "director",
-        "上映", "release", "评分", "rating", "票房",
-        "观看", "watch", "看过", "追剧",
-      ];
-
-      const isMovieRelated = movieKeywords.some((keyword) =>
-        query.toLowerCase().includes(keyword),
+      const prompt = this.promptTemplateService.getIntentClassificationPrompt(
+        query,
+        conversationHistory,
+      );
+      const response = await model.invoke([["system", prompt]]);
+      const result = tryParseJson<IntentClassification>(
+        typeof response.content === "string"
+          ? response.content
+          : JSON.stringify(response.content),
       );
 
-      if (!isMovieRelated) {
+      if (!result || !["in_scope", "out_of_scope"].includes(result.type)) {
         return {
-          type: "out_of_scope",
-          reason: "这个查询与电影或演员无关",
-          confidence: 0.8,
+          type: "unknown",
+          reason: "模型返回的意图分类结果无效",
+          confidence: 0,
         };
       }
 
       return {
-        type: "in_scope",
-        confidence: 0.9,
+        type: result.type,
+        confidence: Math.max(0, Math.min(1, Number(result.confidence) || 0)),
+        reason: result.reason,
       };
     } catch (error) {
       return {
@@ -136,35 +150,66 @@ export class OrchestratorAgent {
     model: CompatibleModel,
     query: string,
     intentType: IntentType,
+    conversationHistory?: string,
   ): Promise<AgentType[]> {
     try {
-      // TODO: 使用LLM进行任务规划
-      // 当前使用简单的启发式规则
-      
-      const lowerQuery = query.toLowerCase();
-      const plan: AgentType[] = [];
-
-      // 检测是否是复杂的关系问题
-      const relationshipKeywords = ["合作", "collaboration", "和...合作", "导演...电影"];
-      const isRelationshipQuery = relationshipKeywords.some((kw) =>
-        lowerQuery.includes(kw),
+      const prompt = this.promptTemplateService.getTaskPlanningPrompt(
+        query,
+        intentType,
+        conversationHistory,
       );
-
-      if (isRelationshipQuery) {
-        plan.push("relation");
-      } else {
-        plan.push("search");
-      }
-
-      return plan;
+      const parsed = await executeWithRetry(
+        async () => {
+          const response = await model.invoke([["system", prompt]]);
+          const result = tryParseJson<{ agents?: unknown }>(
+            typeof response.content === "string"
+              ? response.content
+              : JSON.stringify(response.content),
+          );
+          if (!result) {
+            throw new Error("模型返回的任务规划不是有效JSON");
+          }
+          const agents = this.validateAgentPlan(result.agents);
+          if (agents.length === 0) {
+            throw new Error("模型返回了空的或无效的Agent计划");
+          }
+          return agents;
+        },
+      );
+      return parsed;
     } catch (error) {
-      // 默认使用search agent
-      return ["search"];
+      this.logger.warn(
+        `Task planning failed after retries: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw error;
     }
+  }
+
+  private validateAgentPlan(value: unknown): AgentType[] {
+    if (!Array.isArray(value) || value.length === 0) {
+      return [];
+    }
+
+    if (!value.every((agent) => this.isAgentType(agent))) {
+      this.logger.warn(`Invalid agent plan: ${JSON.stringify(value)}`);
+      return [];
+    }
+
+    return Array.from(new Set(value));
+  }
+
+  private isAgentType(value: unknown): value is AgentType {
+    return (
+      typeof value === "string" &&
+      (AGENT_TYPES as readonly string[]).includes(value)
+    );
   }
 
   /**
    * 执行agent plan
+   *
+   * 新增agent时，只需要扩展AgentType和agentExecutors注册表，
+   * 不需要修改这里的执行循环。
    */
   private async executeAgentPlan(
     model: CompatibleModel,
@@ -176,29 +221,22 @@ export class OrchestratorAgent {
 
     for (const agentType of plan) {
       try {
-        if (agentType === "search") {
-          const result = await this.searchAgent.execute(
-            model,
-            query,
-            conversationHistory,
-          );
+        const executor = this.agentExecutors[agentType];
+        if (!executor) {
           results.push({
-            agent: "search",
-            success: result.success,
-            result: result.result,
+            agent: agentType,
+            success: false,
+            result: `未注册的Agent: ${agentType}`,
           });
-        } else if (agentType === "relation") {
-          const result = await this.relationAgent.execute(
-            model,
-            query,
-            conversationHistory,
-          );
-          results.push({
-            agent: "relation",
-            success: result.success,
-            result: result.result,
-          });
+          continue;
         }
+
+        const result = await executor(model, query, conversationHistory);
+        results.push({
+          agent: agentType,
+          success: result.success,
+          result: result.result,
+        });
       } catch (error) {
         results.push({
           agent: agentType,
@@ -214,39 +252,23 @@ export class OrchestratorAgent {
   /**
    * 整合来自不同agent的结果
    */
-  private async synthesizeResults(
-    model: CompatibleModel,
-    query: string,
-    agentResults: AgentExecutionResult[],
-    conversationHistory?: string,
-  ): Promise<string> {
-    try {
-      // TODO: 使用LLM整合结果
-      // 当前简单地合并所有结果
-      
-      const successResults = agentResults
-        .filter((r) => r.success)
-        .map((r) => r.result)
-        .join("\n");
+  private synthesizeResults(agentResults: AgentExecutionResult[]): string {
+    const successfulResults = agentResults
+      .filter((result) => result.success)
+      .map((result) => result.result)
+      .join("\n");
+    if (successfulResults) return successfulResults;
 
-      if (successResults) {
-        return successResults;
-      }
-
-      const errorResults = agentResults
-        .filter((r) => !r.success)
-        .map((r) => r.result)
-        .join("\n");
-
-      return errorResults || "无法处理这个查询";
-    } catch (error) {
-      return error instanceof Error ? error.message : String(error);
-    }
+    return (
+      agentResults
+        .filter((result) => !result.success)
+        .map((result) => result.result)
+        .join("\n") || "无法处理这个查询"
+    );
   }
 }
 
 export type IntentType = "in_scope" | "out_of_scope" | "unknown";
-export type AgentType = "search" | "relation";
 
 export interface IntentClassification {
   type: IntentType;

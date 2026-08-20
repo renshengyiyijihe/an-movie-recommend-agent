@@ -1,9 +1,10 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ITool, ToolResult } from "./tool.interface";
 import { MovieDetailTool } from "./movie-detail.tool";
-import { PersonInfoTool } from "./person-detail.tool";
-import { PersonWorkTool } from "./person-search.tool";
-import { MovieRecommendTool } from "./movie-discover.tool";
+import { MovieDiscoverTool } from "./movie-discover.tool";
+import { MovieSearchTool } from "./movie-search.tool";
+import { PersonDetailTool } from "./person-detail.tool";
+import { PersonSearchTool } from "./person-search.tool";
 
 /**
  * ToolsRegistry - Tools管理器
@@ -16,19 +17,21 @@ export class ToolsRegistry {
 
   constructor(
     private readonly movieDetailTool: MovieDetailTool,
-    private readonly personInfoTool: PersonInfoTool,
-    private readonly personWorkTool: PersonWorkTool,
-    private readonly movieRecommendTool: MovieRecommendTool,
+    private readonly movieDiscoverTool: MovieDiscoverTool,
+    private readonly movieSearchTool: MovieSearchTool,
+    private readonly personDetailTool: PersonDetailTool,
+    private readonly personSearchTool: PersonSearchTool,
   ) {
     this.registerTools();
   }
 
   private registerTools() {
     this.tools.set(this.movieDetailTool.name, this.movieDetailTool);
-    this.tools.set(this.personInfoTool.name, this.personInfoTool);
-    this.tools.set(this.personWorkTool.name, this.personWorkTool);
-    this.tools.set(this.movieRecommendTool.name, this.movieRecommendTool);
-    
+    this.tools.set(this.movieDiscoverTool.name, this.movieDiscoverTool);
+    this.tools.set(this.movieSearchTool.name, this.movieSearchTool);
+    this.tools.set(this.personDetailTool.name, this.personDetailTool);
+    this.tools.set(this.personSearchTool.name, this.personSearchTool);
+
     this.logger.log(
       `Registered ${this.tools.size} tools: ${Array.from(this.tools.keys()).join(", ")}`,
     );

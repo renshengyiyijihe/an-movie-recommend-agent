@@ -113,7 +113,7 @@ export class PersonDetailTool implements ITool {
 
   name = "person_detail";
   description =
-    "通过演职人员（演员/导演等）的唯一标识符（ID）获取该人物的详细信息，例如生平简介、出生日期、出生地、参演作品等；需要先通过其他工具获取 person_id 后才能使用。";
+    "根据 TMDB 演职人员 ID 查询人物简介、出生信息、代表作品，并可追加电影作品、图片和外部账号。需要先通过其他工具获取 人物ID 后才能使用。";
 
   schema = {
     type: "object",

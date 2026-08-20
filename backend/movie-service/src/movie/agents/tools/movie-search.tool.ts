@@ -64,7 +64,7 @@ export class MovieSearchTool implements ITool {
 
   name = "movie_search";
   description =
-    "通过电影名称或关键字模糊搜索电影，获取对应的电影 ID (movie_id)、片名、上映日期、梗概基本信息。";
+    "按电影名称或关键词搜索 TMDB 电影，返回电影 ID、片名、上映日期和简介，用于后续详情查询。";
 
   schema = {
     type: "object",

@@ -159,7 +159,7 @@ export class MovieDetailTool implements ITool {
 
   name = "movie_detail";
   description =
-    "通过电影的唯一标识符（ID）获取该电影的详细信息，例如上映日期、电影概述等；需要先通过其他工具获取电影 ID 后才能使用。";
+    "根据 TMDB 电影 ID 查询电影详情，包括片名、上映日期、简介、海报，并可追加演职员、视频等资源；需要先通过其他工具获取 电影ID 后才能使用。";
 
   schema = {
     type: "object",

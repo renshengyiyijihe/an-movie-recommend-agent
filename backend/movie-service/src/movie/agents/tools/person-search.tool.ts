@@ -88,9 +88,9 @@ export class PersonSearchTool implements ITool {
 
   name = "person_search";
   description =
-    "通过名字模糊搜索演员、导演等演职人员，获取对应的人物 ID (person_id) 以及其知名代表作品等基本信息。";
+    "按演员、导演等演职人员姓名搜索 TMDB，返回人物 ID、姓名及代表作品，用于后续人物详情查询。";
 
-  schema = {
+  schema = {  
     type: "object",
     properties: {
       query: {

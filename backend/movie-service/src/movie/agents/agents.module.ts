@@ -4,9 +4,10 @@ import { SearchAgent } from "./search.agent";
 import { RelationAgent } from "./relation.agent";
 import { ToolsRegistry } from "./tools/tools.registry";
 import { MovieDetailTool } from "./tools/movie-detail.tool";
+import { MovieDiscoverTool } from "./tools/movie-discover.tool";
+import { MovieSearchTool } from "./tools/movie-search.tool";
 import { PersonDetailTool } from "./tools/person-detail.tool";
-import { PersonWorkTool } from "./tools/person-search.tool";
-import { MovieRecommendTool } from "./tools/movie-discover.tool";
+import { PersonSearchTool } from "./tools/person-search.tool";
 import { TmdbProvider } from "../../model/tmdb.provider";
 import { ServicesModule } from "../services/services.module";
 
@@ -15,9 +16,10 @@ import { ServicesModule } from "../services/services.module";
   providers: [
     // Tools
     MovieDetailTool,
+    MovieDiscoverTool,
+    MovieSearchTool,
     PersonDetailTool,
-    PersonWorkTool,
-    MovieRecommendTool,
+    PersonSearchTool,
     ToolsRegistry,
     
     // Agents

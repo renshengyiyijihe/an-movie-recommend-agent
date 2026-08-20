@@ -142,17 +142,17 @@ export interface TmdbMovieDetailsResponse {
   [key: string]: any;
 }
 
-/**
- * Movie Tool - 查询电影基本信息
- * 用途：查询电影名、上映年份、评分、演员等基本信息
- * 示例：《星际穿越》是哪一年上映的
- */
 export interface MovieDetailInput {
   movie_id: number;
   language?: string;
   append_to_response?: string;
 }
 
+/**
+ * Movie Detail Tool - 查询电影基本信息
+ * 用途：查询电影名、上映年份、评分、演员等基本信息
+ * 示例：《星际穿越》是哪一年上映的
+ */
 @Injectable()
 export class MovieDetailTool implements ITool {
   private readonly logger = new Logger(MovieDetailTool.name);
@@ -239,11 +239,20 @@ export class MovieDetailTool implements ITool {
 
       const movieDetails = (await response.json()) as TmdbMovieDetailsResponse;
 
+      const simplifiedResult = {
+        movie_id: movieDetails.id,
+        title: movieDetails.title,
+        original_title: movieDetails.original_title,
+        release_date: movieDetails.release_date,
+        overview: movieDetails.overview,
+        poster_path: movieDetails.poster_path,
+      }
+
       return {
         success: true,
-        data: movieDetails,
+        data: simplifiedResult,
         raw_result: movieDetails,
-        structured_data: movieDetails,
+        structured_data: simplifiedResult,
         metadata: {
           movie_id: movieId,
           language,

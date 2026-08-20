@@ -5,8 +5,8 @@ import { RelationAgent } from "./relation.agent";
 import { ToolsRegistry } from "./tools/tools.registry";
 import { MovieDetailTool } from "./tools/movie-detail.tool";
 import { PersonDetailTool } from "./tools/person-detail.tool";
-import { PersonWorkTool } from "./tools/person-work.tool";
-import { MovieRecommendTool } from "./tools/movie-recommend.tool";
+import { PersonWorkTool } from "./tools/person-search.tool";
+import { MovieRecommendTool } from "./tools/movie-discover.tool";
 import { TmdbProvider } from "../../model/tmdb.provider";
 import { ServicesModule } from "../services/services.module";
 

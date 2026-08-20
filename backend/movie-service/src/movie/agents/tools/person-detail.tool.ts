@@ -113,7 +113,7 @@ export class PersonDetailTool implements ITool {
 
   name = "person_detail";
   description =
-    "通过演职人员（演员/导演等）的唯一标识符（ID）获取该人物的详细信息，例如生平简介、出生日期、出生地等；需要先通过其他工具获取 person_id 后才能使用。";
+    "通过演职人员（演员/导演等）的唯一标识符（ID）获取该人物的详细信息，例如生平简介、出生日期、出生地、参演作品等；需要先通过其他工具获取 person_id 后才能使用。";
 
   schema = {
     type: "object",
@@ -191,11 +191,27 @@ export class PersonDetailTool implements ITool {
 
       const personDetails = (await response.json()) as TmdbPersonDetailsResponse;
 
+      const simplifiedResult = {
+        person_id: personDetails.id,
+        name: personDetails.name,
+        original_name: personDetails.also_known_as,
+        gender: personDetails.gender,
+        birthday: personDetails.birthday,
+        deathday: personDetails.deathday,
+        place_of_birth: personDetails.place_of_birth,
+        biography: personDetails.biography,
+        movie_credits: personDetails.movie_credits?.cast.map((work) => ({
+          id: work.id,
+          title: work.title,
+          release_date: work.release_date,
+        })),
+      };
+
       return {
         success: true,
-        data: personDetails,
+        data: simplifiedResult,
         raw_result: personDetails,
-        structured_data: personDetails,
+        structured_data: simplifiedResult,
         metadata: {
           person_id: personId,
           language,

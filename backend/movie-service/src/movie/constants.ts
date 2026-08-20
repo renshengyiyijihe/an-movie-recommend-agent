@@ -8,6 +8,8 @@ export const WORKFLOW_CONSTANTS = {
   MAX_PROMPT_TEXT_LENGTH: 2500,
   /** 搜索结果最大长度 */
   MAX_SEARCH_RESULT_LENGTH: 4000,
+  /** 汇总给 LLM 的检索证据最大长度 */
+  MAX_SYNTHESIS_EVIDENCE_LENGTH: 8000,
   /** 图片数据最大长度 */
   MAX_IMAGE_DATA_LENGTH: 1200,
   /** 最大重试次数 */

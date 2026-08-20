@@ -67,23 +67,10 @@ export type MessageStage =
 	| "intent_classification"
 	| "workflow_complete"
 	| "final"
-	| "parsePreferences_start"
-	| "parsePreferences_completed"
 	| "search_start"
 	| "search_completed"
 	| "supervisor_start"
 	| "supervisor_completed";
-
-export interface MoviePreference {
-	genre?: string;
-	mood?: string;
-	actors?: string;
-	length?: string;
-	rating?: string;
-	language?: string;
-	scene?: string;
-	theme?: string;
-}
 
 export interface ConversationHistoryItem {
 	role: MessageRole;

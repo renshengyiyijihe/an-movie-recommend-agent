@@ -56,51 +56,6 @@ export function sanitizeImageData(imageData?: string): string | undefined {
 }
 
 /**
- * 从文本中提取数字
- * @param value 输入值
- * @returns 提取的数字，或null
- */
-export function extractNumber(value: string): number | null {
-  const match = value.match(/(\d+(?:\.\d+)?)/);
-  if (!match) return null;
-  return Number(match[1]);
-}
-
-/**
- * 从时长描述中提取分钟数
- * 支持格式：2小时、120分钟、2h、120min 等
- * @param value 时长描述
- * @returns 分钟数，或null
- */
-export function extractRuntimeMinutes(value: string): number | null {
-  const normalized = value.toLowerCase();
-  const match = normalized.match(/(\d+(?:\.\d+)?)/);
-  if (!match) return null;
-
-  const number = Number(match[1]);
-
-  // 处理小时转分钟
-  if (
-    normalized.includes("小时") ||
-    normalized.includes("hr") ||
-    normalized.includes("h")
-  ) {
-    return number * 60;
-  }
-
-  // 处理分钟
-  if (
-    normalized.includes("分钟") ||
-    normalized.includes("min") ||
-    normalized.includes("m")
-  ) {
-    return number;
-  }
-
-  return null;
-}
-
-/**
  * 尝试从JSON字符串提取有效的JSON对象
  * @param value JSON字符串
  * @param stage 阶段名称（用于日志）

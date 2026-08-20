@@ -60,10 +60,10 @@ auth-service    ──► Postgres
    - 可选 gRPC 验票；无 token 仍可继续，但会话 `user_id` 为空。
    - `ensureConversation` / `loadConversationHistory`（Milvus 相似检索，limit=5）/ 追加 user 消息。
    - 调用 `OrchestratorAgent.orchestrate(model, query, history)`。
-3. Orchestrator：意图分类 → 任务规划 → 按 plan 执行 Agent → 字符串拼接汇总。
+3. Orchestrator：意图分类 → 任务规划 → 按 plan 执行 Agent → `synthesizeResults` 再调 LLM，把工具结果整理成推荐 JSON。
 4. 域外（`out_of_scope`）返回 `{ type: "reject" }`；成功则 `parseRecommendation()` 解析 JSON 后 `{ type: "success", data, conversationId }`。
 
-**当前缺口：** Orchestrator 的 `synthesizeResults()` 只拼接 Agent 字符串，不会再调 LLM 生成推荐 JSON。`SearchAgent` 返回的是 tool 调用结果 JSON。`MovieService.parseRecommendation()` 期望顶层有 `recommendations` / `explanation` / `preferences`。若模型未把工具结果整理成该格式，前端会拿到空推荐。改推荐质量时优先补「工具结果 → 最终 JSON」这一步，而不是把逻辑写回 `movie.service.ts`。
+检索参数由 SearchAgent 按 tool schema 填写，不再单独做偏好提取。`MovieService.parseRecommendation()` 只解析，不负责生成。Relation 能力仍未完成。
 
 ## 后端服务
 
@@ -95,7 +95,7 @@ LLM：优先 `SILICONFLOW_API_KEY`，否则 `OPENAI_API_KEY`。默认 `SILICONFL
 
 `LangSmithProvider` 存在，但当前 `ModelProvider` 未接入追踪。部署脚本仍写 `NVIDIA_API_KEY`，与代码读取的 SiliconFlow/OpenAI 变量不一致。
 
-`MovieSearchService`、`RelationAnalysisService` 已在 `ServicesModule` 注册，**没有被 Agent / MovieService 引用**。关系逻辑目前写在 `RelationAgent` 内部且未完成。不要平行再实现一套。
+关系逻辑写在 `RelationAgent` 内部且未完成。不要再平行实现一套搜索或关系服务。
 
 `REFACTORING_PLAN.md` 过时（当时 `movie.service.ts` ~1700 行，现约 380 行），不要按其步骤改。
 
@@ -115,7 +115,7 @@ OrchestratorAgent
   ├─ classifyIntent     → in_scope | out_of_scope | unknown
   ├─ planTask           → AgentType[]  目前仅 "search" | "relation"
   ├─ executeAgentPlan   → 按注册表顺序执行
-  └─ synthesizeResults  → 拼接成功结果字符串
+  └─ synthesizeResults  → LLM 整理成 recommendations JSON
         ├─ SearchAgent  → LLM 规划 tool_calls（1–4 个）→ ToolsRegistry.execute
         └─ RelationAgent → 分析实体/关系 → 调 SearchAgent → 关系运算（未完成）
 ```
@@ -132,8 +132,7 @@ OrchestratorAgent
 
 Prompt 入口（改提示词只动这个文件）：
 
-- `getSystemPrompt`
-- `getPreferenceExtractionPrompt`
+- `getResultSynthesisPrompt`（工具结果 → 最终推荐 JSON）
 - `getIntentClassificationPrompt`
 - `getTaskPlanningPrompt`
 - `getSearchToolPlanningPrompt`（会注入实时 tool schema）
@@ -183,7 +182,7 @@ Prompt 入口（改提示词只动这个文件）：
 - 新增 / 修改 **Prompt**：只改 `PromptTemplateService`。
 - 通用文本、JSON、重试：用 `helpers.ts`，不要在 service 里再实现一遍。
 - 类型、genre/language 映射：用 `types.ts` / `constants.ts`。
-- LLM 结构化输出必须可被 `tryParseJson` 解析；对外推荐响应保持 `recommendations` + `explanation` + `preferences`。
+- LLM 结构化输出必须可被 `tryParseJson` 解析；对外响应保持 `recommendations` + `explanation`。
 - 跨服务契约先改 `backend/proto/*.proto`，再改 client/server 实现。
 - 日志用 `Logger`，关键路径已有 `query` / `intent` / `tool` 日志，保持同风格。
 - 不要提交 `.env`、密钥、`node_modules`、`dist`。
@@ -207,8 +206,8 @@ Prompt 入口（改提示词只动这个文件）：
 ## 已知坑
 
 - 鉴权白名单邮箱写死在 `AuthService.validateToken`。
-- 图片与偏好提取 prompt 已写，主链路未真正消费 `imageData` / `preferences`。
-- Relation 能力未完成；`RelationAnalysisService` 与 Agent 内逻辑重复且均是半成品。
+- 图片主链路仍未消费 `imageData`。
+- Relation 能力未完成。
 - Compose 的 movie-service `env_file` 是 `backend/movie-service/.env`，auth/message 用 `backend/.env`。
 - 前端 Dockerfile 激活的是 pnpm 9，`package.json` 声明 10.15.0。
 - auth-service 用原始 `pg` Pool，message-service 用 TypeORM，不要混用两套用户表假设。

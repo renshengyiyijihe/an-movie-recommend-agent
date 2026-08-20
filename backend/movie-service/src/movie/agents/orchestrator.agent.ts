@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PromptTemplateService } from "../services/prompt-template.service";
-import { executeWithRetry, tryParseJson } from "../helpers";
+import { executeWithRetry, tryParseJson, truncateText } from "../helpers";
+import { WORKFLOW_CONSTANTS } from "../constants";
 import { RelationAgent } from "./relation.agent";
 import { SearchAgent } from "./search.agent";
 import {
@@ -81,8 +82,13 @@ export class OrchestratorAgent {
         conversationHistory,
       );
 
-      // 步骤4: 整合结果
-      const finalResult = this.synthesizeResults(agentResults);
+      // 步骤4: 根据检索结果生成最终推荐 JSON
+      const finalResult = await this.synthesizeResults(
+        model,
+        query,
+        agentResults,
+        conversationHistory,
+      );
 
       return {
         success: intent.type === "in_scope",
@@ -260,20 +266,91 @@ export class OrchestratorAgent {
   }
 
   /**
-   * 整合来自不同agent的结果
+   * 将各 Agent 的检索结果交给 LLM，整理成前端可解析的推荐 JSON。
    */
-  private synthesizeResults(agentResults: AgentExecutionResult[]): string {
-    const successfulResults = agentResults
-      .filter((result) => result.success)
-      .map((result) => result.result)
-      .join("\n");
-    if (successfulResults) return successfulResults;
+  private async synthesizeResults(
+    model: CompatibleModel,
+    query: string,
+    agentResults: AgentExecutionResult[],
+    conversationHistory?: string,
+  ): Promise<string> {
+    const emptyResult = (message: string, fallbackReason: string) =>
+      JSON.stringify({
+        recommendations: [],
+        explanation: "",
+        message,
+        fallback_reason: fallbackReason,
+      });
 
-    return (
-      agentResults
-        .filter((result) => !result.success)
-        .map((result) => result.result)
-        .join("\n") || "无法处理这个查询"
+    const successfulResults = agentResults.filter((result) => result.success);
+    if (successfulResults.length === 0) {
+      return emptyResult(
+        agentResults.map((result) => result.result).join("\n") ||
+          "无法处理这个查询",
+        "所有Agent均未成功返回可用结果",
+      );
+    }
+
+    const evidence = this.compactAgentEvidence(successfulResults);
+    const messages = this.promptTemplateService.getResultSynthesisPrompt(
+      query,
+      evidence,
+      conversationHistory,
     );
+
+    try {
+      return await executeWithRetry(async () => {
+        const response = await model.invoke([
+          ["system", messages.system],
+          ["user", messages.user],
+        ]);
+        const parsed = tryParseJson<Record<string, unknown>>(
+          typeof response.content === "string"
+            ? response.content
+            : JSON.stringify(response.content),
+        );
+        if (!parsed || !Array.isArray(parsed.recommendations)) {
+          throw new Error("模型返回的推荐结果不是有效JSON");
+        }
+        return JSON.stringify(parsed);
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`[Orchestrator] Result synthesis failed: ${message}`);
+      return emptyResult("无法根据检索结果生成推荐。", message);
+    }
+  }
+
+  /**
+   * 去掉 TMDB 原始大字段并截断，避免把过长证据塞进汇总 prompt。
+   */
+  private compactAgentEvidence(agentResults: AgentExecutionResult[]): string {
+    const compacted = agentResults.map((item) => {
+      const parsed = tryParseJson(item.result);
+      return {
+        agent: item.agent,
+        success: item.success,
+        result: parsed ? this.stripRawToolPayload(parsed) : item.result,
+      };
+    });
+
+    return truncateText(
+      JSON.stringify(compacted),
+      WORKFLOW_CONSTANTS.MAX_SYNTHESIS_EVIDENCE_LENGTH,
+    );
+  }
+
+  private stripRawToolPayload(value: unknown): unknown {
+    if (Array.isArray(value)) {
+      return value.map((item) => this.stripRawToolPayload(item));
+    }
+    if (value && typeof value === "object") {
+      return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>)
+          .filter(([key]) => key !== "raw_result")
+          .map(([key, nested]) => [key, this.stripRawToolPayload(nested)]),
+      );
+    }
+    return value;
   }
 }

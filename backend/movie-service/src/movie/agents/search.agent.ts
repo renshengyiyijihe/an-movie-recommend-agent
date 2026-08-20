@@ -99,7 +99,11 @@ export class SearchAgent {
           query,
           results: toolCalls.map((call) => ({
             tool_name: call.tool_name,
-            output: call.output,
+            output: {
+              success: call.output?.success !== false,
+              data: call.output?.data ?? call.output?.structured_data,
+              error: call.output?.error,
+            },
           })),
         }),
         tool_calls: toolCalls,

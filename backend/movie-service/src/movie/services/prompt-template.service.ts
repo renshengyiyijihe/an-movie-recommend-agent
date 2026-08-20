@@ -9,181 +9,50 @@ export class PromptTemplateService {
   private readonly logger = new Logger(PromptTemplateService.name);
 
   /**
-   * 系统级电影推荐prompt
+   * 将 Agent/Tool 检索结果整理成最终回答 JSON
    */
-  getSystemPrompt(): string {
-    return `# 电影推荐专家
+  getResultSynthesisPrompt(
+    userMessage: string,
+    agentEvidence: string,
+    conversationHistory?: string,
+  ): { system: string; user: string } {
+    return {
+      system: `# 电影领域回答汇总
 
-你是一个电影推荐专家智能体。
+你是电影领域助手，负责根据用户问题和已执行的检索结果作答。能力包括电影/演员查询、作品介绍、条件筛选和推荐，不限于推荐片单。
 
-## 职责
-- 根据用户描述的影片类型、心情、演员、时长、评分偏好，给出 3-4 个推荐
-- 如果用户提供了图片，请简要分析图片里的风格、场景或情绪
-- 输出必须为纯 JSON 格式
+## 规则
+1. 先判断用户要什么：查一部具体电影、查演员/导演、按条件筛选，还是要推荐。回答形态必须跟问题匹配，不要把所有请求都做成推荐片单。
+2. 影片数量由用户决定。用户说要 N 部就尽量给 N 部；说“一部/几部/一批”就按语义理解；没说数量且确实是在要片单时，从检索结果里选最相关的即可，不要为凑数而补片。
+3. 事实问答（上映时间、主演、简介等）以 \`explanation\` 为主；只有需要展示具体影片卡片时才往 \`recommendations\` 里放对应电影。
+4. \`recommendations\` 里的电影必须来自检索结果，不要编造不存在的影片、ID 或海报。检索结果不够用时，有多少用多少，不要用无关影片凑数。
+5. 电影 ID 可能出现在 \`id\` 或 \`movie_id\` 字段，输出时统一写入 \`id\`。
+6. \`reason\` 说明这部片为什么出现在本次回答里；\`explanation\` 直接回应用户问题，不要写成固定的“推荐说明”。
+7. 检索结果无法回答时，\`recommendations\` 返回空数组，并用 \`fallback_reason\` 说明原因。
+8. 只能输出纯 JSON，不要 Markdown、代码围栏或解释文字。
 
 ## 输出格式
-
-输出格式必须为纯 JSON，顶层字段必须包含：
-- \`recommendations\` (数组) - 推荐电影列表
-- \`explanation\` (字符串) - 推荐说明
-- \`preferences\` (对象) - 规范化后的用户偏好
-
-### 推荐对象示例
-\`\`\`json
-{
-  "name": "电影名",
-  "reason": "推荐理由",
-  "summary": "简短介绍",
-  "poster_url": "https://...",
-  "tmdb_url": "https://...",
-  "id": 12345
-}
-\`\`\`
-
-### 完整输出示例
-\`\`\`json
 {
   "recommendations": [
     {
-      "name": "盗梦空间",
-      "reason": "紧张且富有想象力",
-      "summary": "一支入侵梦境的团队执行高风险任务...",
+      "name": "电影名",
+      "reason": "与用户问题相关的原因",
+      "summary": "简短介绍",
       "poster_url": "https://image.tmdb.org/t/p/w500/xxx.jpg",
       "tmdb_url": "https://www.themoviedb.org/movie/27205",
       "id": 27205
     }
   ],
-  "explanation": "基于你偏好科幻与心理悬疑，推荐以下影片...",
-  "preferences": {
-    "genre": "科幻",
-    "mood": "紧张刺激"
-  }
+  "explanation": "针对用户问题的回答"
 }
-\`\`\`
-
-## 降级方案
-如果无法生成推荐，可使用 \`fallback_reason\` 字段说明原因。
-`;
-  }
-
-  /**
-   * 用户偏好提取prompt
-   */
-  getPreferenceExtractionPrompt(
-    userMessage: string,
-    existingPreferences: string,
-  ): string {
-    return `# 电影偏好提取
-
-## 任务
-从用户输入中提取结构化偏好。
-
-## 输出要求
-必须输出一个纯 JSON 对象，如果某项无法确定，请使用空字符串。
-
-## 支持的参数字段
-
-### 基础与分页
-- \`language\` (string): 接口返回内容的语言，默认 "zh-CN"，可选 "en-US" 等
-- \`region\` (string): 所在国家/地区代码（ISO 3166-1，如 "US", "CN"）
-- \`sort_by\` (string): 排序规则，可选值：
-  - \`popularity.desc\` / \`popularity.asc\`
-  - \`vote_average.desc\` / \`vote_average.asc\`
-  - \`primary_release_date.desc\` / \`primary_release_date.asc\`
-  - \`revenue.desc\` / \`revenue.asc\`
-  - \`vote_count.desc\` / \`vote_count.asc\`
-- \`page\` (integer): 返回的页码，默认 1
-- \`include_adult\` (boolean): 是否包含成人/限制级内容，默认 false
-- \`include_video\` (boolean): 是否包含视频记录，默认 false
-
-### 时间与日期
-- \`primary_release_year\` (integer): 首发国家上映年份，如 2023
-- \`primary_release_date.gte\` (string): 首发上映日期下限，格式 "YYYY-MM-DD"
-- \`primary_release_date.lte\` (string): 首发上映日期上限，格式 "YYYY-MM-DD"
-- \`release_date.gte\` (string): 任意地区上映日期下限，格式 "YYYY-MM-DD"
-- \`release_date.lte\` (string): 任意地区上映日期上限，格式 "YYYY-MM-DD"
-- \`year\` (integer): 任意地区上映年份
-- \`with_release_type\` (string/integer): 发行类型（多选时用 ',' 表示且，'|' 表示或）
-  - 1=首映, 2=点映, 3=影院, 4=数字/流媒体, 5=实体, 6=电视
-
-### 评分与评价人数
-- \`vote_average.gte\` (number): 最低评分下限（0.0-10.0），如 8.0 表示8分以上
-- \`vote_average.lte\` (number): 最高评分上限（0.0-10.0）
-- \`vote_count.gte\` (number): 最少打分人数下限，用于过滤冷门影片，如 100
-- \`vote_count.lte\` (number): 最多打分人数上限
-
-### 片长范围
-- \`with_runtime.gte\` (integer): 片长最小值（单位：分钟）
-- \`with_runtime.lte\` (integer): 片长最大值（单位：分钟）
-
-### 语言与国家
-- \`with_original_language\` (string): 电影原声语言代码
-  - "ja"=日语, "en"=英语, "zh"=中文, "ko"=韩语
-- \`with_origin_country\` (string): 出品国家/地区代码
-  - "US"=美国, "JP"=日本, "CN"=中国大陆
-
-### 阵容、流派与主题
-- \`with_genres\` (string): 包含的流派 ID（多选时 ',' 表示且，'|' 表示或）
-- \`without_genres\` (string): 排除的流派 ID
-- \`with_cast\` (string): 包含的演员 ID
-- \`with_crew\` (string): 包含的幕后人员/导演 ID
-- \`with_people\` (string): 包含的演职人员 ID
-- \`with_companies\` (string): 包含的制作公司 ID
-- \`without_companies\` (string): 排除的制作公司 ID
-- \`with_keywords\` (string): 包含的主题/关键词 ID
-- \`without_keywords\` (string): 排除的主题/关键词 ID
-
-## 逻辑解析与处理规则
-
-### 多选项组合逻辑
-- 当用户要求"既要A又要B"时，参数值内部用逗号 ',' 连接
-- 当用户要求"要么A要么B"时，参数值内部用管道符 '|' 连接
-
-### 语义映射示例
-| 用户表述 | 对应参数 |
-|--------|--------|
-| 高分/好片 | \`vote_average.gte\`: 7.5, \`vote_count.gte\`: 100, \`sort_by\`: "vote_average.desc" |
-| 热门/最火 | \`sort_by\`: "popularity.desc" |
-| 最新 | \`sort_by\`: "primary_release_date.desc" |
-| 短片/1小时以内 | \`with_runtime.lte\`: 60 |
-
-### 重要规则
-1. 数值必须能直接提取（如 '8分以上' → 8，'2小时' → 120分钟）
-2. 无法识别的值返回空字符串
-3. 所有数值参数必须是数字类型，不能包含文字
-4. 日期格式必须是 YYYY-MM-DD
-5. 语言代码必须是 ISO 639-1 标准代码
-6. 如果用户提及具体的演员名、导演名或电影类型名，但无法确定其在TMDB中的ID，请放在 \`unresolved_entities\` 字段
-
-## 输入信息
-
-### 用户输入
-\`\`\`
+`,
+      user: `## 用户问题
 ${userMessage}
-\`\`\`
 
-### 已知偏好
-\`\`\`json
-${existingPreferences}
-\`\`\`
-
-## 输出示例
-
-对于输入"我想看一部评分在8分以上的科幻电影，英文原声，时长在2小时以内"：
-
-\`\`\`json
-{
-  "genre": "科幻",
-  "mood": "",
-  "actors": "",
-  "length": "2小时以内",
-  "rating": "8分以上",
-  "language": "英文",
-  "scene": "",
-  "theme": ""
-}
-\`\`\`
-`;
+${conversationHistory ? `## 对话历史\n${conversationHistory}\n` : ""}## 检索结果
+${agentEvidence}
+`,
+    };
   }
 
   /**

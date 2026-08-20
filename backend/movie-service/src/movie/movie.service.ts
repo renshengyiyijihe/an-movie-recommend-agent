@@ -11,12 +11,10 @@ import {
   MessageRole,
   MessageStage,
   MessageType,
-  MoviePreference,
 } from "./types";
 
 interface RecommendPayload {
   message: string;
-  preferences?: MoviePreference;
   imageUrl?: string;
   imageData?: string;
   history?: ConversationHistoryItem[];
@@ -45,7 +43,6 @@ export class MovieService {
       `recommend request received: messageLength=${payload.message?.length ?? 0}, hasImage=${Boolean(payload.imageUrl || payload.imageData)}, authHeader=${authorization ? "present" : "absent"}`,
     );
 
-    const preferences = this._normalizePreferences(payload.preferences);
     const authResult = authorization
       ? await this.validateAuthorization(authorization)
       : { ok: false, error: "no_authorization_header" };
@@ -90,7 +87,6 @@ export class MovieService {
         return {
           type: "reject",
           data: {
-            preferences,
             message:
               orchestratorResult.result ||
               "我主要负责电影推荐或介绍。如果你想问电影类型、演员、风格、时长或推荐电影，我可以继续帮你。",
@@ -116,10 +112,7 @@ export class MovieService {
         "in_scope",
       );
 
-      const parsed = this.parseRecommendation(
-        orchestratorResult.result,
-        preferences,
-      );
+      const parsed = this.parseRecommendation(orchestratorResult.result);
       await this.appendConversationMessage(
         conversationId,
         "assistant",
@@ -136,9 +129,6 @@ export class MovieService {
         conversationId,
         type: "success",
         data: parsed,
-        stageOutputs: {
-          preferences: JSON.stringify(parsed.preferences),
-        },
       };
     } catch (error) {
       const workflowError = error as Error & {
@@ -149,7 +139,7 @@ export class MovieService {
         `Orchestrator workflow failed: stage=${workflowError.stage ?? "unknown"} message=${workflowError.message}`,
         workflowError,
       );
-      return this.buildErrorResponse(payload, preferences, {
+      return this.buildErrorResponse(payload, {
         stage: workflowError.stage ?? "orchestrator",
         message: workflowError.message ?? "Agent 工作流执行失败",
         details: workflowError.details ?? "请查看服务日志获取完整上下文",
@@ -294,13 +284,11 @@ export class MovieService {
 
   private buildErrorResponse(
     payload: RecommendPayload,
-    preferences: MoviePreference,
     error: { stage: string; message: string; details?: string },
   ) {
     return {
       type: "error",
       data: {
-        preferences,
         message: `推荐流程执行失败：${error.message}`,
         fallback_reason: error.message,
         summary: "",
@@ -316,36 +304,10 @@ export class MovieService {
     };
   }
 
-  private _normalizePreferences(
-    preferences?: Partial<MoviePreference> | string | null,
-  ): MoviePreference {
-    if (!preferences) return {};
-    if (typeof preferences === "string") {
-      const parsed = tryParseJson<Partial<MoviePreference>>(preferences);
-      return parsed ? this._normalizePreferences(parsed) : {};
-    }
-
-    return {
-      genre: getStringValue(preferences.genre),
-      mood: getStringValue(preferences.mood),
-      actors: getStringValue(preferences.actors),
-      length: getStringValue(preferences.length),
-      rating: getStringValue(preferences.rating),
-      language: getStringValue(preferences.language),
-      scene: getStringValue(preferences.scene),
-      theme: getStringValue(preferences.theme),
-    };
-  }
-
-  private normalizePreferenceValue(value: unknown): string {
-    return getStringValue(value);
-  }
-
-  private parseRecommendation(text: string, preferences: MoviePreference) {
+  private parseRecommendation(text: string) {
     const parsed = tryParseJson<Record<string, unknown>>(text);
     if (!parsed) {
       return {
-        preferences,
         recommendations: [],
         message: "解析失败，无法生成推荐。",
         fallback_reason: "无法解析模型输出。",
@@ -358,13 +320,10 @@ export class MovieService {
 
     const stringArray = (value: unknown): string[] =>
       Array.isArray(value)
-        ? value.map((item) => this.normalizePreferenceValue(item)).filter(Boolean)
+        ? value.map((item) => getStringValue(item)).filter(Boolean)
         : [];
 
     return {
-      preferences: this._normalizePreferences(
-        (parsed.preferences as Partial<MoviePreference> | undefined) ?? preferences,
-      ),
       recommendations: Array.isArray(parsed.recommendations)
         ? parsed.recommendations
         : [],

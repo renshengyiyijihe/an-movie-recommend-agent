@@ -58,8 +58,8 @@ auth-service    ──► Postgres
 1. 前端 `HomePage` `POST /api/movie/recommend`，带 `message`、可选 `imageData`、`conversationId`，Header `Authorization: Bearer <jwt>`。
 2. `MovieController` → `MovieService.recommend()`：
    - 可选 gRPC 验票；无 token 仍可继续，但会话 `user_id` 为空。
-   - `ensureConversation` / `loadConversationHistory`（Milvus 相似检索，limit=5）/ 追加 user 消息。
-   - 调用 `OrchestratorAgent.orchestrate(model, query, history)`。
+   - `ensureConversation` / `loadConversationHistory`（gRPC `GetConversation`，读 Postgres 里该会话的 `user_query` + `final_response`，按时间序）/ 追加 user 消息。
+   - 调用 `OrchestratorAgent.orchestrate(model, ctx)`；`ctx.shared.turns` 为结构化历史，prompt 按阶段投影，不要提前拼成一段字符串。
 3. Orchestrator：意图分类 → 任务规划 → 按 plan 执行 Agent → `synthesizeResults` 再调 LLM，把工具结果整理成推荐 JSON。
 4. 域外（`out_of_scope`）返回 `{ type: "reject" }`；成功则 `parseRecommendation()` 解析 JSON 后 `{ type: "success", data, conversationId }`。
 
@@ -137,6 +137,8 @@ Prompt 入口（改提示词只动这个文件）：
 - `getTaskPlanningPrompt`
 - `getSearchToolPlanningPrompt`（会注入实时 tool schema）
 
+对话历史以 `ConversationHistoryItem[]` 传入，由 `projectConversationHistory` 按阶段裁剪/压缩后再写入 prompt。
+
 `SearchAgent` 用 Zod 校验计划，再按各 tool 的 JSON Schema 校验参数；失败走 `executeWithRetry`（`MAX_RETRIES=3`）。
 
 **RelationAgent 现状：** `analyzeRelationQuery` 是关键字启发式且实体列表常为空；`processRelation` 返回占位字符串。不要在未接 LLM/NER 前把它当可用能力宣传。
@@ -179,8 +181,9 @@ Prompt 入口（改提示词只动这个文件）：
 - 语言：TypeScript。后端 NestJS injectable；前端函数组件。
 - 新增 **Agent**：扩展 `AGENT_TYPES`，在 `OrchestratorAgent` 的 `agentExecutors` 注册，不要改执行循环本身。
 - 新增 **Tool**：实现 `ITool`，在 `ToolsRegistry.registerTools()` 注册。SearchAgent 会自动拿到 schema，不要在 Agent 里再写一份参数定义。
-- 新增 / 修改 **Prompt**：只改 `PromptTemplateService`。
+- 新增 / 修改 **Prompt**：只改 `PromptTemplateService`。对话历史在 prompt 内按阶段投影，不要在 service 里先拼成字符串。
 - 通用文本、JSON、重试：用 `helpers.ts`，不要在 service 里再实现一遍。
+- 会话历史投影：用 `conversation-history.ts`。
 - 类型、genre/language 映射：用 `types.ts` / `constants.ts`。
 - LLM 结构化输出必须可被 `tryParseJson` 解析；对外响应保持 `recommendations` + `explanation`。
 - 跨服务契约先改 `backend/proto/*.proto`，再改 client/server 实现。
@@ -193,6 +196,8 @@ Prompt 入口（改提示词只动这个文件）：
 | 目的 | 文件 |
 | --- | --- |
 | 推荐入口与会话 | `backend/movie-service/src/movie/movie.service.ts` |
+| 工作流上下文 | `backend/movie-service/src/movie/agents/workflow-context.ts` |
+| 历史投影 | `backend/movie-service/src/movie/conversation-history.ts` |
 | 意图与调度 | `backend/movie-service/src/movie/agents/orchestrator.agent.ts` |
 | 工具规划与执行 | `backend/movie-service/src/movie/agents/search.agent.ts` |
 | 注册工具 | `backend/movie-service/src/movie/agents/tools/tools.registry.ts` |

@@ -12,10 +12,23 @@ export const WORKFLOW_CONSTANTS = {
   MAX_SYNTHESIS_EVIDENCE_LENGTH: 8000,
   /** 图片数据最大长度 */
   MAX_IMAGE_DATA_LENGTH: 1200,
+  /** 写入共享态的历史消息上限（Postgres 按时间序截取最近 N 条） */
+  MAX_SHARED_HISTORY_TURNS: 20,
+  /** 用户历史单条截断 */
+  HISTORY_USER_MAX_LENGTH: 400,
+  /** 助手历史单条截断（压缩片单 JSON 后） */
+  HISTORY_ASSISTANT_MAX_LENGTH: 280,
   /** 最大重试次数 */
   MAX_RETRIES: 3,
   /** 重试退避时间（毫秒） */
   RETRY_BACKOFF_MS: 500,
+} as const;
+
+export const HISTORY_PROJECTION = {
+  intentMaxTurns: 4,
+  planningMaxTurns: 4,
+  searchMaxTurns: 8,
+  synthesisMaxTurns: 6,
 } as const;
 
 // ========== TMDB 配置 ==========

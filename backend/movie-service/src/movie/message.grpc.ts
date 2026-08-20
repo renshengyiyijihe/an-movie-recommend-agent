@@ -29,6 +29,24 @@ interface AppendMessageResponse {
   ok: boolean;
 }
 
+interface GetConversationRequest {
+  conversation_id: string;
+}
+
+interface GetConversationResponse {
+  conversation_id?: string;
+  user_id?: string;
+  title?: string;
+  messages?: Array<{
+    id?: string;
+    role?: string;
+    message_type?: string;
+    stage?: string;
+    content?: string;
+    created_at?: string;
+  }>;
+}
+
 interface SearchSimilarContextRequest {
   user_input: string;
   conversation_id: string;
@@ -81,12 +99,17 @@ export class MessageGrpcClient implements OnModuleInit {
     });
   }
 
-  getConversation(request: { conversation_id: string }): Promise<any> {
+  getConversation(
+    request: GetConversationRequest,
+  ): Promise<GetConversationResponse> {
     return new Promise((resolve, reject) => {
-      this.client.GetConversation(request, (err: any, response: any) => {
-        if (err) return reject(err);
-        resolve(response);
-      });
+      this.client.GetConversation(
+        request,
+        (err: any, response: GetConversationResponse) => {
+          if (err) return reject(err);
+          resolve(response ?? { messages: [] });
+        },
+      );
     });
   }
 

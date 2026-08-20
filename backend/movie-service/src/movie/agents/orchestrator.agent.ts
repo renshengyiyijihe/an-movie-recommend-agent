@@ -4,21 +4,20 @@ import { executeWithRetry, tryParseJson, truncateText } from "../helpers";
 import { WORKFLOW_CONSTANTS } from "../constants";
 import { RelationAgent } from "./relation.agent";
 import { SearchAgent } from "./search.agent";
+import { WorkflowContext } from "./workflow-context";
 import {
   AGENT_TYPES,
   AgentExecutionResult,
   AgentType,
   CompatibleModel,
   IntentClassification,
-  IntentType,
   OrchestratorResult,
 } from "../types";
 
 type AgentExecutor = (
   model: CompatibleModel,
-  query: string,
-  conversationHistory?: string,
-) => Promise<{ success: boolean; result: string }>;
+  ctx: WorkflowContext,
+) => Promise<void>;
 
 /**
  * Orchestrator Agent - 主控代理
@@ -38,73 +37,56 @@ export class OrchestratorAgent {
     private readonly promptTemplateService: PromptTemplateService,
   ) {
     this.agentExecutors = {
-      search: (model, query, conversationHistory) =>
-        this.searchAgent.execute(model, query, conversationHistory),
-      relation: (model, query, conversationHistory) =>
-        this.relationAgent.execute(model, query, conversationHistory),
+      search: (model, ctx) =>
+        this.searchAgent.execute(model, ctx.forAgent("search")),
+      relation: (model, ctx) =>
+        this.relationAgent.execute(model, ctx.forAgent("relation")),
     };
   }
 
   async orchestrate(
     model: CompatibleModel,
-    query: string,
-    conversationHistory?: string,
+    ctx: WorkflowContext,
   ): Promise<OrchestratorResult> {
-    this.logger.log(`[Orchestrator] Processing query: ${query}`);
+    this.logger.log(`[Orchestrator] Processing query: ${ctx.shared.query}`);
 
     try {
-      // 步骤1: 意图识别
-      const intent = await this.classifyIntent(model, query, conversationHistory);
-      this.logger.log(`[Orchestrator] Intent classification: ${intent.type}`);
+      ctx.shared.intent = await this.classifyIntent(model, ctx);
+      this.logger.log(
+        `[Orchestrator] Intent classification: ${ctx.shared.intent.type}`,
+      );
 
-      if (intent.type === "out_of_scope") {
+      if (ctx.shared.intent.type === "out_of_scope") {
+        ctx.shared.finalResult =
+          ctx.shared.intent.reason || "这个查询与电影或演员无关";
         return {
           success: false,
           intent_type: "out_of_scope",
-          result: intent.reason || "这个查询与电影或演员无关",
+          result: ctx.shared.finalResult,
           agents_used: [],
         };
       }
 
-      // 步骤2: 任务规划
-      const plan = await this.planTask(
-        model,
-        query,
-        intent.type,
-        conversationHistory,
-      );
-
-      // 步骤3: 执行plan中指定的agents
-      const agentResults = await this.executeAgentPlan(
-        model,
-        plan,
-        query,
-        conversationHistory,
-      );
-
-      // 步骤4: 根据检索结果生成最终推荐 JSON
-      const finalResult = await this.synthesizeResults(
-        model,
-        query,
-        agentResults,
-        conversationHistory,
-      );
+      ctx.shared.plan = await this.planTask(model, ctx);
+      await this.executeAgentPlan(model, ctx);
+      ctx.shared.finalResult = await this.synthesizeResults(model, ctx);
 
       return {
-        success: intent.type === "in_scope",
-        intent_type: intent.type,
-        result: finalResult,
-        agents_used: plan,
-        agent_results: agentResults,
+        success: ctx.shared.intent.type === "in_scope",
+        intent_type: ctx.shared.intent.type,
+        result: ctx.shared.finalResult,
+        agents_used: ctx.shared.plan,
+        agent_results: ctx.getPublicResults(),
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`[Orchestrator] Error: ${message}`);
+      ctx.shared.finalResult = `处理失败: ${message}`;
       return {
         success: false,
         intent_type: "unknown",
-        result: `处理失败: ${message}`,
-        agents_used: [],
+        result: ctx.shared.finalResult,
+        agents_used: ctx.shared.plan,
         error: message,
       };
     }
@@ -113,16 +95,14 @@ export class OrchestratorAgent {
   /**
    * 意图识别 - 判断查询是否与电影/演员相关
    */
-
   private async classifyIntent(
     model: CompatibleModel,
-    query: string,
-    conversationHistory?: string,
+    ctx: WorkflowContext,
   ): Promise<IntentClassification> {
     try {
       const messages = this.promptTemplateService.getIntentClassificationPrompt(
-        query,
-        conversationHistory,
+        ctx.shared.query,
+        ctx.shared.turns,
       );
       const response = await model.invoke([
         ["system", messages.system],
@@ -161,37 +141,33 @@ export class OrchestratorAgent {
    */
   private async planTask(
     model: CompatibleModel,
-    query: string,
-    intentType: IntentType,
-    conversationHistory?: string,
+    ctx: WorkflowContext,
   ): Promise<AgentType[]> {
     try {
       const messages = this.promptTemplateService.getTaskPlanningPrompt(
-        query,
-        intentType,
-        conversationHistory,
+        ctx.shared.query,
+        ctx.shared.intent?.type ?? "unknown",
+        ctx.shared.turns,
       );
-      const parsed = await executeWithRetry(
-        async () => {
-          const response = await model.invoke([
-            ["system", messages.system],
-            ["user", messages.user],
-          ]);
-          const result = tryParseJson<{ agents?: unknown }>(
-            typeof response.content === "string"
-              ? response.content
-              : JSON.stringify(response.content),
-          );
-          if (!result) {
-            throw new Error("模型返回的任务规划不是有效JSON");
-          }
-          const agents = this.validateAgentPlan(result.agents);
-          if (agents.length === 0) {
-            throw new Error("模型返回了空的或无效的Agent计划");
-          }
-          return agents;
-        },
-      );
+      const parsed = await executeWithRetry(async () => {
+        const response = await model.invoke([
+          ["system", messages.system],
+          ["user", messages.user],
+        ]);
+        const result = tryParseJson<{ agents?: unknown }>(
+          typeof response.content === "string"
+            ? response.content
+            : JSON.stringify(response.content),
+        );
+        if (!result) {
+          throw new Error("模型返回的任务规划不是有效JSON");
+        }
+        const agents = this.validateAgentPlan(result.agents);
+        if (agents.length === 0) {
+          throw new Error("模型返回了空的或无效的Agent计划");
+        }
+        return agents;
+      });
       return parsed;
     } catch (error) {
       this.logger.warn(
@@ -224,45 +200,38 @@ export class OrchestratorAgent {
   /**
    * 执行agent plan
    *
-   * 新增agent时，只需要扩展AgentType和agentExecutors注册表，
+   * 新增agent时，只需要扩展AgentType、AgentLocalMap和agentExecutors注册表，
    * 不需要修改这里的执行循环。
    */
   private async executeAgentPlan(
     model: CompatibleModel,
-    plan: AgentType[],
-    query: string,
-    conversationHistory?: string,
-  ): Promise<AgentExecutionResult[]> {
-    const results: AgentExecutionResult[] = [];
-
-    for (const agentType of plan) {
+    ctx: WorkflowContext,
+  ): Promise<void> {
+    for (const agentType of ctx.shared.plan) {
       try {
         const executor = this.agentExecutors[agentType];
         if (!executor) {
-          results.push({
-            agent: agentType,
+          ctx.publish(agentType, {
             success: false,
             result: `未注册的Agent: ${agentType}`,
           });
           continue;
         }
 
-        const result = await executor(model, query, conversationHistory);
-        results.push({
-          agent: agentType,
-          success: result.success,
-          result: result.result,
-        });
+        await executor(model, ctx);
+        if (!ctx.shared.agentOutputs[agentType]) {
+          ctx.publish(agentType, {
+            success: false,
+            result: `Agent ${agentType} 未发布公开结果`,
+          });
+        }
       } catch (error) {
-        results.push({
-          agent: agentType,
+        ctx.publish(agentType, {
           success: false,
           result: error instanceof Error ? error.message : String(error),
         });
       }
     }
-
-    return results;
   }
 
   /**
@@ -270,9 +239,7 @@ export class OrchestratorAgent {
    */
   private async synthesizeResults(
     model: CompatibleModel,
-    query: string,
-    agentResults: AgentExecutionResult[],
-    conversationHistory?: string,
+    ctx: WorkflowContext,
   ): Promise<string> {
     const emptyResult = (message: string, fallbackReason: string) =>
       JSON.stringify({
@@ -282,6 +249,7 @@ export class OrchestratorAgent {
         fallback_reason: fallbackReason,
       });
 
+    const agentResults = ctx.getPublicResults();
     const successfulResults = agentResults.filter((result) => result.success);
     if (successfulResults.length === 0) {
       return emptyResult(
@@ -293,9 +261,9 @@ export class OrchestratorAgent {
 
     const evidence = this.compactAgentEvidence(successfulResults);
     const messages = this.promptTemplateService.getResultSynthesisPrompt(
-      query,
+      ctx.shared.query,
       evidence,
-      conversationHistory,
+      ctx.shared.turns,
     );
 
     try {

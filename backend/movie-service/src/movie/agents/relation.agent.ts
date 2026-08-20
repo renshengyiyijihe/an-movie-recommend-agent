@@ -1,8 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { SearchAgent } from "./search.agent";
+import { AgentRuntime, RelationPrivateState } from "./workflow-context";
 import {
+  ConversationHistoryItem,
   CompatibleModel,
-  RelationAgentResult,
   RelationshipType,
   SearchAgentResult,
 } from "../types";
@@ -18,83 +19,75 @@ import {
 export class RelationAgent {
   private readonly logger = new Logger(RelationAgent.name);
 
-  constructor(
-    private readonly searchAgent: SearchAgent,
-  ) {}
+  constructor(private readonly searchAgent: SearchAgent) {}
 
   /**
-   * 执行关系推理任务
-   * @param model LLM模型
-   * @param query 用户查询
-   * @param conversationHistory 对话历史
+   * Orchestrator 入口：实体分析、内部检索都进 local，只把关系结论 publish。
    */
   async execute(
     model: CompatibleModel,
-    query: string,
-    conversationHistory?: string,
-  ): Promise<RelationAgentResult> {
-    this.logger.log(`[RelationAgent] Executing relation reasoning: query=${query}`);
+    runtime: AgentRuntime<RelationPrivateState>,
+  ): Promise<void> {
+    const query = runtime.shared.query;
+    this.logger.log(
+      `[RelationAgent] Executing relation reasoning: query=${query}`,
+    );
 
     try {
-      // 分析查询以识别涉及的实体和关系类型
       const analysis = await this.analyzeRelationQuery(model, query);
-      
+      runtime.local.entities = analysis.entities;
+      runtime.local.relationship = analysis.relationship;
+      runtime.local.error = analysis.error;
+
       if (!analysis.success) {
-        return {
+        runtime.publish({
           success: false,
           result: analysis.error || "无法分析查询",
-          entities_involved: [],
-          relationship_type: "unknown",
-          error: analysis.error,
-        };
+        });
+        return;
       }
 
       this.logger.log(
         `[RelationAgent] Analysis complete: entities=${JSON.stringify(analysis.entities)}, relationship=${analysis.relationship}`,
       );
 
-      // 根据关系类型调用SearchAgent获取必要数据
       const searchResults = await this.gatherRelationData(
         model,
         analysis.entities,
         analysis.relationship,
       );
+      runtime.local.gatheredData = searchResults.result;
 
       if (!searchResults.success) {
-        return {
+        runtime.local.error = searchResults.error;
+        runtime.publish({
           success: false,
           result: `数据收集失败: ${searchResults.error}`,
-          entities_involved: analysis.entities,
-          relationship_type: analysis.relationship,
-          error: searchResults.error,
-        };
+        });
+        return;
       }
 
-      // 使用LLM执行跨实体逻辑运算
       const relationResult = await this.processRelation(
         model,
         query,
         analysis.entities,
         analysis.relationship,
         searchResults,
-        conversationHistory,
+        runtime.shared.turns,
       );
 
-      return {
+      runtime.publish({
         success: true,
         result: relationResult,
-        entities_involved: analysis.entities,
-        relationship_type: analysis.relationship,
-      };
+      });
     } catch (error) {
-      this.logger.error(`[RelationAgent] Error: ${error instanceof Error ? error.message : String(error)}`);
-      return {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`[RelationAgent] Error: ${message}`);
+      runtime.local.error = message;
+      runtime.publish({
         success: false,
-        result: `关系推理失败: ${error instanceof Error ? error.message : "未知错误"}`,
-        entities_involved: [],
-        relationship_type: "unknown",
-        error: error instanceof Error ? error.message : String(error),
-      };
+        result: `关系推理失败: ${message}`,
+      });
     }
   }
 
@@ -113,7 +106,7 @@ export class RelationAgent {
     try {
       // TODO: 使用LLM来解析查询并识别实体和关系
       // 当前返回简单的启发式分析
-      
+
       const lowerQuery = query.toLowerCase();
       let relationship: RelationshipType = "unknown";
       const entities: string[] = [];
@@ -123,14 +116,17 @@ export class RelationAgent {
         relationship = "collaboration";
       } else if (lowerQuery.includes("演过") || lowerQuery.includes("acted")) {
         relationship = "acted_in";
-      } else if (lowerQuery.includes("导演") || lowerQuery.includes("directed")) {
+      } else if (
+        lowerQuery.includes("导演") ||
+        lowerQuery.includes("directed")
+      ) {
         relationship = "directed";
       } else if (lowerQuery.includes("最多") || lowerQuery.includes("most")) {
         relationship = "ranking";
       }
 
       // TODO: 使用NER或其他技术从查询中提取实体名称
-      
+
       return {
         success: true,
         entities,
@@ -148,7 +144,7 @@ export class RelationAgent {
 
   /**
    * 收集关系数据
-   * 根据实体和关系类型，调用SearchAgent获取必要的信息
+   * 根据实体和关系类型，调用 SearchAgent.run（不写 Search 的 shared/local）
    */
   private async gatherRelationData(
     model: CompatibleModel,
@@ -159,12 +155,11 @@ export class RelationAgent {
       `[RelationAgent] Gathering relation data: entities=${entities}, relationship=${relationship}`,
     );
 
-    // 为每个实体调用SearchAgent获取相关信息
     const allSearchResults = [];
-    
+
     for (const entity of entities) {
       let searchQuery = "";
-      
+
       if (relationship === "collaboration") {
         searchQuery = `${entity} 作品`;
       } else if (relationship === "acted_in") {
@@ -175,14 +170,13 @@ export class RelationAgent {
         searchQuery = entity;
       }
 
-      const result = await this.searchAgent.execute(model, searchQuery);
+      const result = await this.searchAgent.run(model, searchQuery);
       allSearchResults.push({
         entity,
         result,
       });
     }
 
-    // 合并结果
     return {
       success: true,
       result: JSON.stringify(allSearchResults),
@@ -199,13 +193,13 @@ export class RelationAgent {
     entities: string[],
     relationship: RelationshipType,
     searchResults: SearchAgentResult,
-    conversationHistory?: string,
+    turns?: ConversationHistoryItem[],
   ): Promise<string> {
     // TODO: 使用LLM执行复杂的关系逻辑运算
     // - 求交集（两个演员的合作作品）
     // - 排序/排名（某演员在特定导演作品中的频率最高）
     // - 链式推理
-    
+
     return `关系处理结果 (实体: ${entities.join(", ")}, 关系类型: ${relationship})`;
   }
 }

@@ -1,4 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
+import {
+  HistoryProjectionKind,
+  projectConversationHistory,
+} from "../conversation-history";
+import { ConversationHistoryItem } from "../types";
 
 /**
  * Prompt模板服务
@@ -14,7 +19,7 @@ export class PromptTemplateService {
   getResultSynthesisPrompt(
     userMessage: string,
     agentEvidence: string,
-    conversationHistory?: string,
+    turns?: ConversationHistoryItem[],
   ): { system: string; user: string } {
     return {
       system: `# 电影领域回答汇总
@@ -49,7 +54,7 @@ export class PromptTemplateService {
       user: `## 用户问题
 ${userMessage}
 
-${conversationHistory ? `## 对话历史\n${conversationHistory}\n` : ""}## 检索结果
+${this.renderHistorySection(turns, "synthesis")}## 检索结果
 ${agentEvidence}
 `,
     };
@@ -60,7 +65,7 @@ ${agentEvidence}
    */
   getIntentClassificationPrompt(
     userMessage: string,
-    conversationHistory?: string,
+    turns?: ConversationHistoryItem[],
   ): { system: string; user: string } {
     return {
       system: `# 意图识别
@@ -112,11 +117,7 @@ ${agentEvidence}
 ${userMessage}
 \`\`\`
 
-${
-  conversationHistory
-    ? `## 对话历史\n\`\`\`\n${conversationHistory}\n\`\`\``
-    : ""
-}`,
+${this.renderHistorySection(turns, "intent", true)}`,
     };
   }
 
@@ -126,7 +127,7 @@ ${
   getTaskPlanningPrompt(
     userMessage: string,
     intentType: string,
-    conversationHistory?: string,
+    turns?: ConversationHistoryItem[],
   ): { system: string; user: string } {
     return {
       system: `# 电影任务规划
@@ -153,7 +154,7 @@ ${intentType}
 ## 用户消息
 ${userMessage}
 
-${conversationHistory ? `## 对话历史\n${conversationHistory}` : ""}
+${this.renderHistorySection(turns, "planning")}
 `,
     };
   }
@@ -164,7 +165,7 @@ ${conversationHistory ? `## 对话历史\n${conversationHistory}` : ""}
   getSearchToolPlanningPrompt(
     userMessage: string,
     toolSchemas: Array<{ name: string; description: string; schema: Record<string, any> }>,
-    conversationHistory?: string,
+    turns?: ConversationHistoryItem[],
   ): { system: string; user: string } {
     return {
       system: `# 电影搜索工具规划
@@ -197,8 +198,20 @@ ${JSON.stringify(toolSchemas, null, 2)}
       user: `## 用户查询
 ${userMessage}
 
-${conversationHistory ? `## 对话历史\n${conversationHistory}` : ""}
+${this.renderHistorySection(turns, "search")}
 `,
     };
+  }
+
+  private renderHistorySection(
+    turns: ConversationHistoryItem[] | undefined,
+    kind: HistoryProjectionKind,
+    fenced = false,
+  ): string {
+    const history = projectConversationHistory(turns, kind);
+    if (!history) return "";
+    return fenced
+      ? `## 对话历史\n\`\`\`\n${history}\n\`\`\`\n`
+      : `## 对话历史\n${history}\n`;
   }
 }

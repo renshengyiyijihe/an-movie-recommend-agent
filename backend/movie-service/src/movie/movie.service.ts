@@ -5,7 +5,9 @@ import {
   MessageGrpcClient,
 } from "./message.grpc";
 import { OrchestratorAgent } from "./agents/orchestrator.agent";
-import { getStringValue, normalizeText, tryParseJson } from "./helpers";
+import { WorkflowContext } from "./agents/workflow-context";
+import { toConversationTurns } from "./conversation-history";
+import { getStringValue, tryParseJson } from "./helpers";
 import {
   ConversationHistoryItem,
   MessageRole,
@@ -47,11 +49,7 @@ export class MovieService {
       ? await this.validateAuthorization(authorization)
       : { ok: false, error: "no_authorization_header" };
     const conversationId = await this.ensureConversation(payload, authResult);
-    const conversationHistory = await this.loadConversationHistory(
-      conversationId,
-      payload.message,
-      authResult,
-    );
+    const turns = await this.loadConversationHistory(conversationId);
 
     await this.appendConversationMessage(
       conversationId,
@@ -63,10 +61,13 @@ export class MovieService {
 
     try {
       const model = this.modelProvider.getModel();
+      const ctx = new WorkflowContext({
+        query: payload.message,
+        turns,
+      });
       const orchestratorResult = await this.orchestratorAgent.orchestrate(
         model,
-        payload.message,
-        this._buildConversationHistory(conversationHistory),
+        ctx,
       );
 
       this.logger.log(
@@ -169,23 +170,19 @@ export class MovieService {
 
   private async loadConversationHistory(
     conversationId: string,
-    userMessage: string,
-    _authResult: AuthResult,
-  ): Promise<ConversationHistoryItem[] | undefined> {
-    if (!conversationId) return undefined;
+  ): Promise<ConversationHistoryItem[]> {
+    if (!conversationId) return [];
 
     try {
-      const response = await this.messageGrpcClient.searchSimilarContext({
-        user_input: userMessage,
+      const response = await this.messageGrpcClient.getConversation({
         conversation_id: conversationId,
-        limit: 5,
       });
-      return response.context_items?.length ? response.context_items : undefined;
+      return toConversationTurns(response?.messages);
     } catch (error) {
       this.logger.warn(
         `Failed to load conversation history: ${(error as Error).message}`,
       );
-      return undefined;
+      return [];
     }
   }
 
@@ -260,26 +257,6 @@ export class MovieService {
       this.logger.error("validateAuthorization exception", error as Error);
       return { ok: false, error: "grpc_error" };
     }
-  }
-
-  private _buildConversationHistory(
-    history?: ConversationHistoryItem[],
-  ): string {
-    if (!history?.length) return "";
-
-    const validItems = history.filter((item) => !!item?.content);
-    const pastUser = validItems.filter((item) => item.role === "user");
-    const pastAssistant = validItems.find(
-      (item) => item.role === "assistant" && item.stage === "final",
-    );
-
-    return [...pastUser, pastAssistant]
-      .filter((item): item is ConversationHistoryItem => Boolean(item))
-      .map(
-        (item) =>
-          `${item.role === "user" ? "用户" : "AI"}: ${normalizeText(item.content)}`,
-      )
-      .join("\n");
   }
 
   private buildErrorResponse(

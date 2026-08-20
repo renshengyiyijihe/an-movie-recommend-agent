@@ -2,7 +2,8 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ToolsRegistry } from "./tools/tools.registry";
 import { PromptTemplateService } from "../services/prompt-template.service";
 import { executeWithRetry, tryParseJson } from "../helpers";
-import { CompatibleModel, SearchAgentResult } from "../types";
+import { CompatibleModel, SearchAgentResult, ConversationHistoryItem } from "../types";
+import { AgentRuntime, SearchPrivateState } from "./workflow-context";
 import { z } from "zod";
 
 interface PlannedToolCall {
@@ -43,15 +44,34 @@ export class SearchAgent {
   ) {}
 
   /**
-   * 执行搜索任务
-   * @param model LLM模型
-   * @param query 用户查询
-   * @param conversationHistory 对话历史
+   * Orchestrator 入口：读写自己的 local，并把可共享摘要 publish 到 shared。
    */
   async execute(
     model: CompatibleModel,
+    runtime: AgentRuntime<SearchPrivateState>,
+  ): Promise<void> {
+    const result = await this.run(
+      model,
+      runtime.shared.query,
+      runtime.shared.turns,
+    );
+    runtime.local.toolCalls = result.tool_calls;
+    runtime.local.reasoning = result.reasoning;
+    runtime.local.error = result.error;
+    runtime.publish({
+      success: result.success,
+      result: result.result,
+    });
+  }
+
+  /**
+   * 纯搜索执行，不碰 WorkflowContext。
+   * Relation 等调用方需要检索能力、但不能污染 Search 的 shared/local 时使用。
+   */
+  async run(
+    model: CompatibleModel,
     query: string,
-    conversationHistory?: string,
+    turns?: ConversationHistoryItem[],
   ): Promise<SearchAgentResult> {
     this.logger.log(`[SearchAgent] Executing search: query=${query}`);
 
@@ -61,7 +81,7 @@ export class SearchAgent {
       const prompt = this.promptTemplateService.getSearchToolPlanningPrompt(
         query,
         this.toolsRegistry.getToolSchemas(),
-        conversationHistory,
+        turns,
       );
 
       // 模型可能返回非 JSON、未知工具或错误参数。

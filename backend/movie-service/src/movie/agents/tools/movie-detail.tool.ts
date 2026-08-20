@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ITool, ToolResult } from "./tool.interface";
 import { TmdbProvider } from "../../../model/tmdb.provider";
+import { commonToolSchema } from "./common";
 
 
 /**
@@ -168,11 +169,7 @@ export class MovieDetailTool implements ITool {
         type: "integer",
         description: "TMDB 电影 ID，例如《星际穿越》的 ID 为 157336",
       },
-      language: {
-        type: "string",
-        description:
-          "返回内容的语言。遵循 IETF language tag 格式，通常为 ISO 639-1 两位语言代码 + ISO 3166-1 alpha-2 两位地区代码，例如 'zh-CN'、'zh-TW'、'en-US'、'en-GB'、'ja-JP'、'ko-KR'。默认使用 'en-US'。",
-      },
+      language: commonToolSchema.language,
       append_to_response: {
         type: "string",
         description: `

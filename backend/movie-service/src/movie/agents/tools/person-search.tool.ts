@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ITool, ToolResult } from "./tool.interface";
 import { TmdbProvider } from "../../../model/tmdb.provider";
+import { commonToolSchema } from "./common";
 
 /**
  * TMDB GET /search/person 搜索演职人员接口完整响应类型
@@ -98,19 +99,9 @@ export class PersonSearchTool implements ITool {
         description:
           "演职人员（演员/导演等）的姓名，支持中文和英文，例如 '克里斯托弗·诺兰' 或 'Leonardo DiCaprio'",
       },
-      include_adult: {
-        type: "boolean",
-        description: "是否包含成人内容选项，默认为 false",
-      },
-      language: {
-        type: "string",
-        description:
-          "返回内容的语言。遵循 IETF language tag 格式，通常为 ISO 639-1 两位语言代码 + ISO 3166-1 alpha-2 两位地区代码，例如 'zh-CN'、'zh-TW'、'en-US'、'en-GB'、'ja-JP'、'ko-KR'。默认使用 'en-US'。",
-      },
-      page: {
-        type: "integer",
-        description: "指定获取的搜索结果页码，默认为 1",
-      },
+      include_adult: commonToolSchema.include_adult,
+      language: commonToolSchema.language,
+      page: commonToolSchema.page,
     },
     required: ["query"],
   };

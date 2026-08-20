@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ITool, ToolResult } from "./tool.interface";
 import { TmdbProvider } from "../../../model/tmdb.provider";
+import { commonToolSchema } from "./common";
 
 /**
  * TMDB GET /search/movie 搜索电影接口完整响应类型
@@ -74,26 +75,17 @@ export class MovieSearchTool implements ITool {
         description:
           "需要搜索的电影片名或关键字，例如 '星际穿越' 或 'Inception'",
       },
-      include_adult: {
-        type: "boolean",
-        description: "是否包含成人内容选项，默认为 false",
-      },
-      language: {
-        type: "string",
-        description:
-          "返回内容的语言。遵循 IETF language tag 格式，通常为 ISO 639-1 两位语言代码 + ISO 3166-1 alpha-2 两位地区代码，例如 'zh-CN'、'zh-TW'、'en-US'、'en-GB'、'ja-JP'、'ko-KR'。默认使用 'en-US'。",
-      },
+      include_adult: commonToolSchema.include_adult,
+      language: commonToolSchema.language,
+      page: commonToolSchema.page,
       primary_release_year: {
         type: "string",
         description: "可选。筛选主要上映年份（四位数字格式 YYYY，如 '2014'）",
       },
-      page: {
-        type: "integer",
-        description: "指定获取的搜索结果页码，默认为 1",
-      },
       region: {
         type: "string",
-        description: "可选。指定电影上映地区, 指定地区代码（ISO 3166-1 alpha-2），如 'US'、'CN'",
+        description:
+          "可选。指定电影上映地区, 指定地区代码（ISO 3166-1 alpha-2），如 'US'、'CN'",
       },
       year: {
         type: "string",

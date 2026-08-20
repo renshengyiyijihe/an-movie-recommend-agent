@@ -28,6 +28,8 @@ jobs:
             backend/auth-service/pnpm-lock.yaml
             backend/movie-service/package.json
             backend/movie-service/pnpm-lock.yaml
+            backend/message-service/package.json
+            backend/message-service/pnpm-lock.yaml
             client/package.json
             client/pnpm-lock.yaml
 
@@ -45,6 +47,13 @@ jobs:
           path: backend/movie-service/node_modules
           key: movie-node-modules-${{ runner.os }}-${{ hashFiles('backend/movie-service/package.json', 'backend/movie-service/pnpm-lock.yaml') }}
 
+      - name: Cache message-service node_modules
+        uses: actions/cache@v4
+        id: message-node-modules
+        with:
+          path: backend/message-service/node_modules
+          key: message-node-modules-${{ runner.os }}-${{ hashFiles('backend/message-service/package.json', 'backend/message-service/pnpm-lock.yaml') }}
+
       - name: Cache client node_modules
         uses: actions/cache@v4
         id: client-node-modules
@@ -60,6 +69,11 @@ jobs:
       - name: Install movie-service dependencies
         if: steps.movie-node-modules.outputs.cache-hit != 'true'
         working-directory: backend/movie-service
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Install message-service dependencies
+        if: steps.message-node-modules.outputs.cache-hit != 'true'
+        working-directory: backend/message-service
         run: pnpm install --frozen-lockfile --prefer-offline
 
       - name: Install client dependencies

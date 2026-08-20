@@ -9,7 +9,7 @@ import { LoginDto } from './dto/login.dto';
 const JWT_SECRET = process.env.JWT_SECRET ?? 'dev_secret';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN ?? '7d';
 
-const pool = new Pool({ connectionString: process.env.POSTGRES_URL ?? 'postgresql://postgres:password@postgres:5432/noodledb' });
+const pool = new Pool({ connectionString: process.env.POSTGRES_URL ?? 'postgresql://postgres:password@postgres:5432/moviedb' });
 
 @Injectable()
 export class AuthService implements OnModuleInit {

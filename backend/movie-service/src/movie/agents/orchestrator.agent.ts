@@ -52,6 +52,11 @@ export class OrchestratorAgent {
 
     try {
       ctx.shared.intent = await this.classifyIntent(model, ctx);
+      await ctx.record({
+        kind: "intent",
+        actor: "orchestrator",
+        intent: ctx.shared.intent,
+      });
       this.logger.log(
         `[Orchestrator] Intent classification: ${ctx.shared.intent.type}`,
       );
@@ -68,6 +73,11 @@ export class OrchestratorAgent {
       }
 
       ctx.shared.plan = await this.planTask(model, ctx);
+      await ctx.record({
+        kind: "plan",
+        actor: "orchestrator",
+        agents: ctx.shared.plan,
+      });
       await this.executeAgentPlan(model, ctx);
       ctx.shared.finalResult = await this.synthesizeResults(model, ctx);
 
@@ -82,6 +92,11 @@ export class OrchestratorAgent {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`[Orchestrator] Error: ${message}`);
       ctx.shared.finalResult = `处理失败: ${message}`;
+      await ctx.record({
+        kind: "error",
+        actor: "orchestrator",
+        message,
+      });
       return {
         success: false,
         intent_type: "unknown",
@@ -215,15 +230,14 @@ export class OrchestratorAgent {
             success: false,
             result: `未注册的Agent: ${agentType}`,
           });
-          continue;
-        }
-
-        await executor(model, ctx);
-        if (!ctx.shared.agentOutputs[agentType]) {
-          ctx.publish(agentType, {
-            success: false,
-            result: `Agent ${agentType} 未发布公开结果`,
-          });
+        } else {
+          await executor(model, ctx);
+          if (!ctx.shared.agentOutputs[agentType]) {
+            ctx.publish(agentType, {
+              success: false,
+              result: `Agent ${agentType} 未发布公开结果`,
+            });
+          }
         }
       } catch (error) {
         ctx.publish(agentType, {
@@ -231,22 +245,28 @@ export class OrchestratorAgent {
           result: error instanceof Error ? error.message : String(error),
         });
       }
+
+      const output = ctx.shared.agentOutputs[agentType];
+      await ctx.record({
+        kind: "agent_result",
+        actor: agentType,
+        success: output?.success ?? false,
+        result: this.parseAgentResult(output?.result),
+      });
     }
   }
 
   /**
-   * 将各 Agent 的检索结果交给 LLM，整理成前端可解析的推荐 JSON。
+   * 将各 Agent 的检索结果交给 LLM，整理成 text + movies JSON。
    */
   private async synthesizeResults(
     model: CompatibleModel,
     ctx: WorkflowContext,
   ): Promise<string> {
-    const emptyResult = (message: string, fallbackReason: string) =>
+    const emptyResult = (text: string) =>
       JSON.stringify({
-        recommendations: [],
-        explanation: "",
-        message,
-        fallback_reason: fallbackReason,
+        text,
+        movies: [],
       });
 
     const agentResults = ctx.getPublicResults();
@@ -255,7 +275,6 @@ export class OrchestratorAgent {
       return emptyResult(
         agentResults.map((result) => result.result).join("\n") ||
           "无法处理这个查询",
-        "所有Agent均未成功返回可用结果",
       );
     }
 
@@ -277,7 +296,11 @@ export class OrchestratorAgent {
             ? response.content
             : JSON.stringify(response.content),
         );
-        if (!parsed || !Array.isArray(parsed.recommendations)) {
+        if (!parsed) {
+          throw new Error("模型返回的推荐结果不是有效JSON");
+        }
+        const movies = parsed.movies ?? parsed.recommendations;
+        if (!Array.isArray(movies)) {
           throw new Error("模型返回的推荐结果不是有效JSON");
         }
         return JSON.stringify(parsed);
@@ -285,7 +308,7 @@ export class OrchestratorAgent {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(`[Orchestrator] Result synthesis failed: ${message}`);
-      return emptyResult("无法根据检索结果生成推荐。", message);
+      return emptyResult("无法根据检索结果生成推荐。");
     }
   }
 
@@ -320,5 +343,10 @@ export class OrchestratorAgent {
       );
     }
     return value;
+  }
+
+  private parseAgentResult(result: string | undefined): unknown {
+    if (!result) return "";
+    return tryParseJson(result) ?? result;
   }
 }

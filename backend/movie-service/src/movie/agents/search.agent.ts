@@ -58,6 +58,7 @@ export class SearchAgent {
     runtime.local.toolCalls = result.tool_calls;
     runtime.local.reasoning = result.reasoning;
     runtime.local.error = result.error;
+    await this.recordToolCalls(runtime, result.tool_calls);
     runtime.publish({
       success: result.success,
       result: result.result,
@@ -137,6 +138,21 @@ export class SearchAgent {
         tool_calls: [],
         error: error instanceof Error ? error.message : String(error),
       };
+    }
+  }
+
+  async recordToolCalls(
+    runtime: Pick<AgentRuntime<unknown>, "record">,
+    toolCalls: SearchAgentResult["tool_calls"],
+  ): Promise<void> {
+    for (const call of toolCalls) {
+      await runtime.record({
+        kind: "tool_call",
+        actor: "search",
+        tool_name: call.tool_name,
+        input: call.input,
+        output: call.output,
+      });
     }
   }
 

@@ -61,21 +61,9 @@ export interface RelationAgentResult {
 }
 
 export type MessageRole = "user" | "assistant";
-export type MessageType = "user_query" | "agent_execution" | "final_response";
-export type MessageStage =
-	| "start"
-	| "intent_classification"
-	| "workflow_complete"
-	| "final"
-	| "search_start"
-	| "search_completed"
-	| "supervisor_start"
-	| "supervisor_completed";
 
+/** LLM 历史里的一轮可见对话，只含投影用文本。 */
 export interface ConversationHistoryItem {
 	role: MessageRole;
 	content: string;
-	message_type: MessageType;
-	stage: MessageStage;
 }
-

@@ -5,12 +5,9 @@ import {
   summarizeText,
   tryParseJson,
 } from "./helpers";
-import {
-  ConversationHistoryItem,
-  MessageRole,
-  MessageStage,
-  MessageType,
-} from "./types";
+import { ConversationChatItem } from "./message.grpc";
+import { moviesFromParsed } from "./transcript";
+import { ConversationHistoryItem, MessageRole } from "./types";
 
 export type HistoryProjectionKind =
   | "intent"
@@ -25,29 +22,17 @@ const MAX_TURNS: Record<HistoryProjectionKind, number> = {
   synthesis: HISTORY_PROJECTION.synthesisMaxTurns,
 };
 
-interface RawHistoryMessage {
-  role?: string;
-  content?: string | null;
-  message_type?: string;
-  stage?: string;
-}
-
 export function toConversationTurns(
-  messages: RawHistoryMessage[] | undefined,
+  messages: ConversationChatItem[] | undefined,
 ): ConversationHistoryItem[] {
   if (!messages?.length) return [];
 
   const turns: ConversationHistoryItem[] = [];
   for (const message of messages) {
     const role = toMessageRole(message.role);
-    const content = message.content?.trim();
+    const content = transcriptText(role, message.payload_json);
     if (!role || !content) continue;
-    turns.push({
-      role,
-      content,
-      message_type: toMessageType(message.message_type, role),
-      stage: toMessageStage(message.stage, role),
-    });
+    turns.push({ role, content });
   }
 
   return turns.slice(-WORKFLOW_CONSTANTS.MAX_SHARED_HISTORY_TURNS);
@@ -88,19 +73,17 @@ function compactAssistantContent(content: string): string {
     );
   }
 
-  const titles = Array.isArray(parsed.recommendations)
-    ? parsed.recommendations
-        .map((item) => formatRecommendation(item))
-        .filter(Boolean)
-    : [];
-  const explanation =
+  const titles = moviesFromParsed(parsed)
+    .map((item) => formatRecommendation(item))
+    .filter(Boolean);
+  const text =
+    getStringValue(parsed.text) ||
     getStringValue(parsed.explanation) ||
-    getStringValue(parsed.message) ||
-    getStringValue(parsed.summary);
+    getStringValue(parsed.message);
 
   const parts: string[] = [];
   if (titles.length) parts.push(`推荐过: ${titles.join("、")}`);
-  if (explanation) parts.push(normalizeText(explanation));
+  if (text) parts.push(normalizeText(text));
 
   return summarizeText(
     parts.join("。") || content,
@@ -122,29 +105,21 @@ function toMessageRole(value?: string): MessageRole | undefined {
   return undefined;
 }
 
-function toMessageType(value: string | undefined, role: MessageRole): MessageType {
-  if (
-    value === "user_query" ||
-    value === "agent_execution" ||
-    value === "final_response"
-  ) {
-    return value;
-  }
-  return role === "user" ? "user_query" : "final_response";
-}
+function transcriptText(
+  role: MessageRole | undefined,
+  payloadJson?: string,
+): string {
+  if (!role) return "";
+  const payload = payloadJson
+    ? tryParseJson<Record<string, unknown>>(payloadJson)
+    : null;
+  if (!payload) return "";
 
-function toMessageStage(value: string | undefined, role: MessageRole): MessageStage {
-  if (
-    value === "start" ||
-    value === "intent_classification" ||
-    value === "workflow_complete" ||
-    value === "final" ||
-    value === "search_start" ||
-    value === "search_completed" ||
-    value === "supervisor_start" ||
-    value === "supervisor_completed"
-  ) {
-    return value;
+  if (role === "user") {
+    return getStringValue(payload.text);
   }
-  return role === "user" ? "start" : "final";
+  if (payload.kind === "recommendation") {
+    return JSON.stringify(payload);
+  }
+  return getStringValue(payload.message);
 }

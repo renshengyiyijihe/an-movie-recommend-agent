@@ -4,8 +4,11 @@ package message;
 
 service Message {
   rpc CreateConversation(CreateConversationRequest) returns (CreateConversationResponse);
-  rpc AppendMessage(AppendMessageRequest) returns (AppendMessageResponse);
+  rpc StartTurn(StartTurnRequest) returns (StartTurnResponse);
+  rpc AppendTurnEvent(AppendTurnEventRequest) returns (AppendTurnEventResponse);
+  rpc CompleteTurn(CompleteTurnRequest) returns (CompleteTurnResponse);
   rpc GetConversation(GetConversationRequest) returns (GetConversationResponse);
+  rpc GetTurn(GetTurnRequest) returns (GetTurnResponse);
   rpc SearchSimilarContext(SearchSimilarContextRequest) returns (SearchSimilarContextResponse);
 }
 
@@ -18,20 +21,43 @@ message CreateConversationResponse {
   string conversation_id = 1;
 }
 
-message AppendMessageRequest {
+message StartTurnRequest {
   string conversation_id = 1;
-  string role = 2;
-  string message_type = 3;
-  string stage = 4;
-  optional string content = 5;
-  optional string summary = 6;
-  repeated string topics = 7;
-  repeated string entities = 8;
-  optional string user_message_id = 9;
+  string user_content_json = 2;
 }
 
-message AppendMessageResponse {
-  bool ok = 1;
+message StartTurnResponse {
+  string turn_id = 1;
+  string user_message_id = 2;
+}
+
+message AppendTurnEventRequest {
+  string turn_id = 1;
+  string body_json = 2;
+}
+
+message AppendTurnEventResponse {
+  string event_id = 1;
+  int32 seq = 2;
+}
+
+message CompleteTurnRequest {
+  string turn_id = 1;
+  string status = 2;
+  string assistant_payload_json = 3;
+}
+
+message CompleteTurnResponse {
+  string assistant_message_id = 1;
+}
+
+message ChatItem {
+  string id = 1;
+  string turn_id = 2;
+  string role = 3;
+  string kind = 4;
+  string payload_json = 5;
+  string created_at = 6;
 }
 
 message GetConversationRequest {
@@ -42,23 +68,31 @@ message GetConversationResponse {
   string conversation_id = 1;
   string user_id = 2;
   string title = 3;
-  repeated MessageRecord messages = 4;
+  repeated ChatItem messages = 4;
 }
 
-message MessageRecord {
+message TurnEventRecord {
   string id = 1;
-  string role = 2;
-  string message_type = 3;
-  string stage = 4;
-  string content = 5;
-  string created_at = 6;
+  int32 seq = 2;
+  string body_json = 3;
+  string created_at = 4;
+}
+
+message GetTurnRequest {
+  string turn_id = 1;
+}
+
+message GetTurnResponse {
+  string turn_id = 1;
+  string conversation_id = 2;
+  string status = 3;
+  repeated ChatItem messages = 4;
+  repeated TurnEventRecord events = 5;
 }
 
 message RelatedContextItem {
   string role = 1;
   string content = 2;
-  string message_type = 3;
-  string stage = 4;
 }
 
 message SearchSimilarContextRequest {

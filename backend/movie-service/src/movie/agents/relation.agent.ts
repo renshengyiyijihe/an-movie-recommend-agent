@@ -57,6 +57,7 @@ export class RelationAgent {
         analysis.relationship,
       );
       runtime.local.gatheredData = searchResults.result;
+      await this.searchAgent.recordToolCalls(runtime, searchResults.tool_calls);
 
       if (!searchResults.success) {
         runtime.local.error = searchResults.error;
@@ -156,6 +157,7 @@ export class RelationAgent {
     );
 
     const allSearchResults = [];
+    const toolCalls: SearchAgentResult["tool_calls"] = [];
 
     for (const entity of entities) {
       let searchQuery = "";
@@ -171,6 +173,7 @@ export class RelationAgent {
       }
 
       const result = await this.searchAgent.run(model, searchQuery);
+      toolCalls.push(...result.tool_calls);
       allSearchResults.push({
         entity,
         result,
@@ -180,7 +183,7 @@ export class RelationAgent {
     return {
       success: true,
       result: JSON.stringify(allSearchResults),
-      tool_calls: [],
+      tool_calls: toolCalls,
     };
   }
 

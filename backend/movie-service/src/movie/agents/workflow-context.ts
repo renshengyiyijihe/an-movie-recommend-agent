@@ -6,6 +6,7 @@ import {
   RelationshipType,
   SearchAgentResult,
 } from "../types";
+import { noopTurnEventSink, TurnEventBody, TurnEventSink } from "../turn-events";
 
 export interface AgentPublicOutput {
   success: boolean;
@@ -19,7 +20,7 @@ export interface AgentPublicOutput {
  */
 export interface SharedWorkflowState {
   readonly query: string;
-  /** Postgres 会话里的 user_query / final_response，按时间序。 */
+  /** 已完成轮次的可见问答，按时间序。 */
   readonly turns: ConversationHistoryItem[];
   intent?: IntentClassification;
   plan: AgentType[];
@@ -53,6 +54,7 @@ export interface AgentRuntime<TLocal> {
   readonly shared: SharedWorkflowState;
   readonly local: TLocal;
   publish(output: AgentPublicOutput): void;
+  record(body: TurnEventBody): Promise<void>;
 }
 
 /**
@@ -61,8 +63,13 @@ export interface AgentRuntime<TLocal> {
 export class WorkflowContext {
   readonly shared: SharedWorkflowState;
   private readonly locals: AgentLocalMap;
+  private readonly events: TurnEventSink;
 
-  constructor(init: { query: string; turns?: ConversationHistoryItem[] }) {
+  constructor(init: {
+    query: string;
+    turns?: ConversationHistoryItem[];
+    events?: TurnEventSink;
+  }) {
     this.shared = {
       query: init.query,
       turns: init.turns ?? [],
@@ -76,6 +83,7 @@ export class WorkflowContext {
         relationship: "unknown",
       },
     };
+    this.events = init.events ?? noopTurnEventSink;
   }
 
   forAgent<K extends AgentType>(agent: K): AgentRuntime<AgentLocalMap[K]> {
@@ -83,11 +91,16 @@ export class WorkflowContext {
       shared: this.shared,
       local: this.locals[agent],
       publish: (output) => this.publish(agent, output),
+      record: (body) => this.record(body),
     };
   }
 
   publish(agent: AgentType, output: AgentPublicOutput): void {
     this.shared.agentOutputs[agent] = output;
+  }
+
+  record(body: TurnEventBody): Promise<void> {
+    return this.events.record(body);
   }
 
   getPublicResults(): AgentExecutionResult[] {

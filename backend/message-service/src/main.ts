@@ -7,6 +7,7 @@ import { Logger, ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module";
 import { MicroserviceOptions, Transport } from "@nestjs/microservices";
+import { dropLegacyMessageSchema } from "./message/drop-legacy-schema";
 
 const logger = new Logger("MessageServiceBootstrap");
 const envPath = path.resolve(process.cwd(), ".env");
@@ -21,6 +22,11 @@ if (fs.existsSync(envPath)) {
 
 async function bootstrap() {
   logger.log("Bootstrapping message service");
+  const postgresUrl =
+    process.env.POSTGRES_URL ??
+    "postgresql://postgres:password@postgres:5432/anmovie_db";
+  await dropLegacyMessageSchema(postgresUrl);
+
   const app = await NestFactory.create(AppModule);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.enableCors();

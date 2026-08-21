@@ -25,11 +25,42 @@ export interface RecommendationItem {
   jd?: string;
 }
 
-export interface ChatMessage {
-  role: 'user' | 'assistant' | 'assistant-error';
+export type UserMessagePayload = {
+  kind: 'user_query';
   text: string;
-  type?: 'recommendation' | 'explanation' | 'fallback' | 'error' | 'loading';
-  imagePreview?: string;
+};
+
+export type RecommendationPayload = {
+  kind: 'recommendation';
+  text: string;
+  movies: RecommendationItem[];
+};
+
+export type RejectPayload = {
+  kind: 'reject';
+  message: string;
+};
+
+export type ErrorPayload = {
+  kind: 'error';
+  message: string;
+};
+
+export type AssistantPayload =
+  | RecommendationPayload
+  | RejectPayload
+  | ErrorPayload;
+
+export type ChatMessage =
+  | { role: 'user'; kind: 'user_query'; payload: UserMessagePayload }
+  | { role: 'assistant'; kind: 'recommendation'; payload: RecommendationPayload }
+  | { role: 'assistant'; kind: 'reject'; payload: RejectPayload }
+  | { role: 'assistant'; kind: 'error'; payload: ErrorPayload };
+
+export interface RecommendResponse {
+  conversationId?: string;
+  type: 'success' | 'reject' | 'error';
+  data: AssistantPayload;
 }
 
 export interface ConversationSummary {
@@ -38,12 +69,12 @@ export interface ConversationSummary {
   created_at: string;
 }
 
-export interface ConversationDetailMessage {
+export interface ConversationChatItem {
   id: string;
+  turn_id: string;
   role: string;
-  message_type: string;
-  stage: string;
-  content: string;
+  kind: string;
+  payload: Record<string, unknown>;
   created_at: string;
 }
 
@@ -51,5 +82,5 @@ export interface ConversationDetail {
   conversation_id: string;
   user_id?: string | null;
   title?: string | null;
-  messages: ConversationDetailMessage[];
+  messages: ConversationChatItem[];
 }

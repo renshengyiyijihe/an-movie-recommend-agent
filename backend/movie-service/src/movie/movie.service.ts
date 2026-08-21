@@ -1,25 +1,27 @@
 ﻿import { Injectable, Logger } from "@nestjs/common";
 import { ModelProvider } from "../model/model.provider";
 import { AuthGrpcClient } from "./auth.grpc";
-import {
-  MessageGrpcClient,
-} from "./message.grpc";
+import { MessageGrpcClient } from "./message.grpc";
 import { OrchestratorAgent } from "./agents/orchestrator.agent";
 import { WorkflowContext } from "./agents/workflow-context";
 import { toConversationTurns } from "./conversation-history";
-import { getStringValue, tryParseJson } from "./helpers";
+import { tryParseJson } from "./helpers";
+import { MESSAGE_CONSTANTS } from "./constants";
 import {
-  ConversationHistoryItem,
-  MessageRole,
-  MessageStage,
-  MessageType,
-} from "./types";
+  AssistantPayload,
+  ErrorPayload,
+  RecommendationPayload,
+  RejectPayload,
+  TurnStatus,
+  recommendationFromParsed,
+} from "./transcript";
+import { noopTurnEventSink, TurnEventSink } from "./turn-events";
+import { ConversationHistoryItem } from "./types";
 
 interface RecommendPayload {
   message: string;
   imageUrl?: string;
   imageData?: string;
-  history?: ConversationHistoryItem[];
   conversationId?: string;
 }
 
@@ -50,20 +52,14 @@ export class MovieService {
       : { ok: false, error: "no_authorization_header" };
     const conversationId = await this.ensureConversation(payload, authResult);
     const turns = await this.loadConversationHistory(conversationId);
-
-    await this.appendConversationMessage(
-      conversationId,
-      "user",
-      "user_query",
-      "start",
-      payload.message,
-    );
+    const turnId = await this.startTurn(conversationId, payload.message);
 
     try {
       const model = this.modelProvider.getModel();
       const ctx = new WorkflowContext({
         query: payload.message,
         turns,
+        events: this.createEventSink(turnId),
       });
       const orchestratorResult = await this.orchestratorAgent.orchestrate(
         model,
@@ -74,58 +70,36 @@ export class MovieService {
         `[Orchestrator] intentType=${orchestratorResult.intent_type}, success=${orchestratorResult.success}`,
       );
 
-      if (
-        !orchestratorResult.success ||
-        orchestratorResult.intent_type === "out_of_scope"
-      ) {
-        await this.appendConversationMessage(
-          conversationId,
-          "assistant",
-          "agent_execution",
-          "final",
-          orchestratorResult.result,
-        );
+      if (orchestratorResult.intent_type === "out_of_scope") {
+        const rejectPayload: RejectPayload = {
+          kind: "reject",
+          message:
+            orchestratorResult.result ||
+            MESSAGE_CONSTANTS.DEFAULT_OUT_OF_SCOPE_MESSAGE,
+        };
+        await this.completeTurn(turnId, "reject", rejectPayload);
         return {
+          conversationId,
           type: "reject",
-          data: {
-            message:
-              orchestratorResult.result ||
-              "我主要负责电影推荐或介绍。如果你想问电影类型、演员、风格、时长或推荐电影，我可以继续帮你。",
-            summary: "",
-            topics: [],
-            entities: [],
-          },
+          data: rejectPayload,
         };
       }
 
-      await this.appendConversationMessage(
-        conversationId,
-        "assistant",
-        "agent_execution",
-        "workflow_complete",
-        `使用的Agent: ${orchestratorResult.agents_used.join(", ")}`,
-      );
-      await this.appendConversationMessage(
-        conversationId,
-        "assistant",
-        "agent_execution",
-        "intent_classification",
-        "in_scope",
-      );
+      if (!orchestratorResult.success) {
+        const errorPayload: ErrorPayload = {
+          kind: "error",
+          message: orchestratorResult.result || "Agent 工作流执行失败",
+        };
+        await this.completeTurn(turnId, "error", errorPayload);
+        return {
+          conversationId,
+          type: "error",
+          data: errorPayload,
+        };
+      }
 
       const parsed = this.parseRecommendation(orchestratorResult.result);
-      await this.appendConversationMessage(
-        conversationId,
-        "assistant",
-        "final_response",
-        "final",
-        JSON.stringify(parsed),
-        parsed.summary,
-        parsed.topics,
-        parsed.entities,
-        await this.getLatestUserMessageId(conversationId),
-      );
-
+      await this.completeTurn(turnId, "success", parsed);
       return {
         conversationId,
         type: "success",
@@ -140,11 +114,16 @@ export class MovieService {
         `Orchestrator workflow failed: stage=${workflowError.stage ?? "unknown"} message=${workflowError.message}`,
         workflowError,
       );
-      return this.buildErrorResponse(payload, {
-        stage: workflowError.stage ?? "orchestrator",
+      const errorPayload: ErrorPayload = {
+        kind: "error",
         message: workflowError.message ?? "Agent 工作流执行失败",
-        details: workflowError.details ?? "请查看服务日志获取完整上下文",
-      });
+      };
+      await this.completeTurn(turnId, "error", errorPayload);
+      return {
+        conversationId,
+        type: "error",
+        data: errorPayload,
+      };
     }
   }
 
@@ -174,9 +153,7 @@ export class MovieService {
     if (!conversationId) return [];
 
     try {
-      const response = await this.messageGrpcClient.getConversation({
-        conversation_id: conversationId,
-      });
+      const response = await this.messageGrpcClient.getConversation(conversationId);
       return toConversationTurns(response?.messages);
     } catch (error) {
       this.logger.warn(
@@ -186,55 +163,58 @@ export class MovieService {
     }
   }
 
-  private async appendConversationMessage(
+  private async startTurn(
     conversationId: string,
-    role: MessageRole,
-    messageType: MessageType,
-    stage: MessageStage,
-    content?: string,
-    summary?: string,
-    topics?: string[],
-    entities?: string[],
-    userMessageId?: string,
-  ): Promise<void> {
-    if (!conversationId) return;
+    text: string,
+  ): Promise<string> {
+    if (!conversationId) return "";
 
     try {
-      await this.messageGrpcClient.appendMessage({
-        conversation_id: conversationId,
-        role,
-        message_type: messageType,
-        stage,
-        content,
-        summary,
-        topics,
-        entities,
-        user_message_id: userMessageId,
+      const response = await this.messageGrpcClient.startTurn(conversationId, {
+        kind: "user_query",
+        text,
       });
+      return response.turn_id;
     } catch (error) {
-      this.logger.warn("Failed to append conversation message", error as Error);
+      this.logger.warn(
+        `Failed to start turn: ${(error as Error).message}`,
+      );
+      return "";
     }
   }
 
-  private async getLatestUserMessageId(
-    conversationId: string,
-  ): Promise<string | undefined> {
-    if (!conversationId) return undefined;
+  private async completeTurn(
+    turnId: string,
+    status: TurnStatus,
+    payload: AssistantPayload,
+  ): Promise<void> {
+    if (!turnId) return;
 
     try {
-      const conversation = await this.messageGrpcClient.getConversation({
-        conversation_id: conversationId,
-      });
-      const messages = conversation?.messages ?? [];
-      for (let index = messages.length - 1; index >= 0; index -= 1) {
-        if (messages[index]?.role === "user") return messages[index].id;
-      }
+      await this.messageGrpcClient.completeTurn(turnId, status, payload);
     } catch (error) {
       this.logger.warn(
-        `Failed to resolve latest user message id: ${(error as Error).message}`,
+        `Failed to complete turn status=${status}: ${(error as Error).message}`,
+        error as Error,
       );
     }
-    return undefined;
+  }
+
+  private createEventSink(turnId: string): TurnEventSink {
+    if (!turnId) return noopTurnEventSink;
+
+    return {
+      record: async (body) => {
+        try {
+          await this.messageGrpcClient.appendTurnEvent(turnId, body);
+        } catch (error) {
+          this.logger.warn(
+            `Failed to append turn event kind=${body.kind}`,
+            error as Error,
+          );
+        }
+      },
+    };
   }
 
   private async validateAuthorization(authorization: string): Promise<AuthResult> {
@@ -259,57 +239,7 @@ export class MovieService {
     }
   }
 
-  private buildErrorResponse(
-    payload: RecommendPayload,
-    error: { stage: string; message: string; details?: string },
-  ) {
-    return {
-      type: "error",
-      data: {
-        message: `推荐流程执行失败：${error.message}`,
-        fallback_reason: error.message,
-        summary: "",
-        topics: [],
-        entities: [],
-        error: {
-          stage: error.stage,
-          message: error.message,
-          details: error.details ?? "无额外详情",
-          requestMessage: payload.message,
-        },
-      },
-    };
-  }
-
-  private parseRecommendation(text: string) {
-    const parsed = tryParseJson<Record<string, unknown>>(text);
-    if (!parsed) {
-      return {
-        recommendations: [],
-        message: "解析失败，无法生成推荐。",
-        fallback_reason: "无法解析模型输出。",
-        explanation: "",
-        summary: "",
-        topics: [],
-        entities: [],
-      };
-    }
-
-    const stringArray = (value: unknown): string[] =>
-      Array.isArray(value)
-        ? value.map((item) => getStringValue(item)).filter(Boolean)
-        : [];
-
-    return {
-      recommendations: Array.isArray(parsed.recommendations)
-        ? parsed.recommendations
-        : [],
-      explanation: getStringValue(parsed.explanation),
-      message: getStringValue(parsed.message),
-      fallback_reason: getStringValue(parsed.fallback_reason),
-      summary: getStringValue(parsed.summary),
-      topics: stringArray(parsed.topics),
-      entities: stringArray(parsed.entities),
-    };
+  private parseRecommendation(text: string): RecommendationPayload {
+    return recommendationFromParsed(tryParseJson<Record<string, unknown>>(text));
   }
 }

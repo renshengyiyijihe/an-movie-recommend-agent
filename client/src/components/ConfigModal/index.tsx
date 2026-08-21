@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Modal } from "@mui/material";
 import type { ConversationDetail } from "@/types";
+import { chatItemPreviewText } from "@/utils/chatUtils";
 import styles from "./index.module.less";
 
 interface Props {
@@ -161,13 +162,9 @@ export default function ConfigModal({
                     <p>会话 ID：{selectedConversation.conversation_id}</p>
                   </div>
                   <div className={styles.historyMessages}>
-                    {selectedConversation.messages
-                      .filter(
-                        (item) =>
-                          item.role === "user" ||
-                          item.message_type === "final_response",
-                      )
-                      .map((item) => (
+                    {selectedConversation.messages.map((item) => {
+                      const preview = chatItemPreviewText(item);
+                      return (
                         <div
                           key={item.id}
                           className={`${styles.message} ${item.role === "user" ? styles.userMessage : styles.assistantMessage}`}
@@ -175,18 +172,19 @@ export default function ConfigModal({
                           <div className={styles.messageRole}>
                             {item.role === "user" ? "你" : "智能体"}
                           </div>
-                          {item.content && (
+                          {preview ? (
                             <div className={styles.messageText}>
-                              {item.content
+                              {preview
                                 .split("\n")
                                 .filter((line) => line.trim() !== "")
                                 .map((line, idx) => (
                                   <p key={`${item.id}-${idx}`}>{line}</p>
                                 ))}
                             </div>
-                          )}
+                          ) : null}
                         </div>
-                      ))}
+                      );
+                    })}
                   </div>
                 </>
               ) : (

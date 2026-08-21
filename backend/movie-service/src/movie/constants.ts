@@ -158,11 +158,3 @@ export const INTENT_CLASSIFICATION_KEYWORDS = {
     "追剧",
   ],
 } as const;
-
-// ========== 消息阶段 ==========
-export const MESSAGE_STAGES = {
-  START: "start",
-  INTENT_CLASSIFICATION: "intent_classification",
-  WORKFLOW_COMPLETE: "workflow_complete",
-  FINAL: "final",
-} as const;

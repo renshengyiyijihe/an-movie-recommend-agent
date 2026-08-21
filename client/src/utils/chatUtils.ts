@@ -1,4 +1,9 @@
-import { RecommendationItem, ChatMessage } from '@/types';
+import {
+  RecommendationItem,
+  ChatMessage,
+  ConversationChatItem,
+  RecommendationPayload,
+} from '@/types';
 
 const TMDB_GENRE_MAP: Record<number, string> = {
   28: '动作',
@@ -36,57 +41,162 @@ export function renderMessageText(text: string) {
   return text.split('\n').filter((line) => line.trim() !== '');
 }
 
-export function convertConversationToMessages(messages: Array<{ id: string; role: string; message_type: string; stage: string; content: string; created_at: string; }>): ChatMessage[] {
-  return messages.map((item) => ({
-    role: item.role === 'user' ? 'user' : 'assistant',
-    text: item.content,
-    type: item.message_type === 'final_response' ? 'recommendation' : item.role === 'user' ? undefined : 'explanation',
-  }));
+export function convertConversationToMessages(
+  messages: ConversationChatItem[],
+): ChatMessage[] {
+  return messages.map(toChatMessage);
 }
 
-export function convertResultToMessages(result: any): ChatMessage[] {
+export function chatItemPreviewText(item: ConversationChatItem): string {
+  const message = toChatMessage(item);
+  const text = chatMessageText(message);
+  if (text) return text;
+  return message.kind === 'recommendation' ? '推荐结果' : '';
+}
+
+export function chatMessageText(item: ChatMessage): string {
+  if (item.kind === 'user_query' || item.kind === 'recommendation') {
+    return item.payload.text;
+  }
+  return item.payload.message;
+}
+
+export function chatMessageMovies(item: ChatMessage): RecommendationItem[] {
+  return item.kind === 'recommendation' ? item.payload.movies : [];
+}
+
+export function toChatMessage(item: ConversationChatItem): ChatMessage {
+  const payload = asRecord(item.payload);
+  const kind =
+    typeof payload.kind === 'string'
+      ? payload.kind
+      : item.kind || (item.role === 'user' ? 'user_query' : 'recommendation');
+
+  if (item.role === 'user' || kind === 'user_query') {
+    return {
+      role: 'user',
+      kind: 'user_query',
+      payload: {
+        kind: 'user_query',
+        text: readString(payload, 'text'),
+      },
+    };
+  }
+
+  if (kind === 'reject') {
+    return {
+      role: 'assistant',
+      kind: 'reject',
+      payload: {
+        kind: 'reject',
+        message: readString(payload, 'message') || readString(payload, 'text'),
+      },
+    };
+  }
+
+  if (kind === 'error') {
+    return {
+      role: 'assistant',
+      kind: 'error',
+      payload: {
+        kind: 'error',
+        message: readString(payload, 'message') || readString(payload, 'text'),
+      },
+    };
+  }
+
+  return {
+    role: 'assistant',
+    kind: 'recommendation',
+    payload: recommendationPayloadFromRecord(payload),
+  };
+}
+
+export function toAssistantMessage(result: {
+  type?: string;
+  data?: unknown;
+} | null | undefined): ChatMessage {
+  const data = asRecord(result?.data);
+  const kind = typeof data.kind === 'string' ? data.kind : result?.type;
+
   if (!result?.data) {
-    return [{ role: 'assistant-error', text: '未收到有效响应，请重试。', type: 'error' }];
-  }
-
-  const { data } = result;
-  const sections: ChatMessage[] = [];
-
-  if (data.recommendations && Array.isArray(data.recommendations) && data.recommendations.length > 0) {
-    sections.push({
+    return {
       role: 'assistant',
-      text: JSON.stringify(data.recommendations),
-      type: 'recommendation',
-    });
+      kind: 'error',
+      payload: { kind: 'error', message: '未收到有效响应，请重试。' },
+    };
   }
 
-  if (data.explanation) {
-    sections.push({
+  if (kind === 'reject') {
+    return {
       role: 'assistant',
-      text: `推荐说明：\n${data.explanation}`,
-      type: 'explanation',
-    });
+      kind: 'reject',
+      payload: {
+        kind: 'reject',
+        message: readString(data, 'message') || '这个查询与电影或演员无关',
+      },
+    };
   }
 
-  if ((!data.recommendations || data.recommendations.length === 0) && (data.message || data.fallback_reason)) {
-    sections.push({
-      role: 'assistant-error',
-      text: data.message ? `${data.message}` : `兜底说明：\n${data.fallback_reason}`,
-      type: 'fallback',
-    });
-  } else {
-    if (data.message) {
-      sections.push({
-        role: 'assistant',
-        text: `${data.message}`,
-        type: 'explanation',
-      });
-    }
+  if (kind === 'error') {
+    return {
+      role: 'assistant',
+      kind: 'error',
+      payload: {
+        kind: 'error',
+        message: readString(data, 'message') || '推荐流程执行失败',
+      },
+    };
   }
 
-  if (sections.length === 0) {
-    return [{ role: 'assistant-error', text: '无法生成推荐内容，请稍后重试。', type: 'error' }];
-  }
+  const payload = recommendationPayloadFromRecord(data);
+  return {
+    role: 'assistant',
+    kind: 'recommendation',
+    payload: {
+      ...payload,
+      text:
+        payload.text ||
+        (payload.movies.length === 0 ? '无法生成推荐内容，请稍后重试。' : ''),
+    },
+  };
+}
 
-  return sections;
+function recommendationPayloadFromRecord(
+  payload: Record<string, unknown>,
+): RecommendationPayload {
+  return {
+    kind: 'recommendation',
+    text:
+      readString(payload, 'text') ||
+      readString(payload, 'explanation') ||
+      readString(payload, 'message') ||
+      readString(payload, 'fallback_reason'),
+    movies: readMovies(payload),
+  };
+}
+
+function readMovies(payload: Record<string, unknown>): RecommendationItem[] {
+  const raw = Array.isArray(payload.movies)
+    ? payload.movies
+    : Array.isArray(payload.recommendations)
+      ? payload.recommendations
+      : [];
+
+  return raw.filter(
+    (item): item is RecommendationItem =>
+      Boolean(item) && typeof item === 'object' && !Array.isArray(item),
+  );
+}
+
+function readString(payload: Record<string, unknown>, key: string): string {
+  const value = payload[key];
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
 }

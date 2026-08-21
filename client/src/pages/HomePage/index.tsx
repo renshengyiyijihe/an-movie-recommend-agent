@@ -9,9 +9,11 @@ import TopBar from "@/components/TopBar";
 import styles from "./index.module.less";
 import {
   convertConversationToMessages,
-  convertResultToMessages,
+  chatMessageMovies,
+  chatMessageText,
   getRecommendationGenres,
   renderMessageText,
+  toAssistantMessage,
 } from "@/utils/chatUtils";
 import { getTmdbImage } from "@/utils/tmdb";
 import type {
@@ -19,6 +21,7 @@ import type {
   ConversationDetail,
   ConversationSummary,
   RecommendationItem,
+  RecommendResponse,
 } from "@/types";
 
 const quickPrompts = [
@@ -131,15 +134,9 @@ export default function HomePage() {
 
     const userMessage: ChatMessage = {
       role: "user",
-      text: trimmedMessage,
-      imagePreview: imagePreview || undefined,
+      kind: "user_query",
+      payload: { kind: "user_query", text: trimmedMessage },
     };
-    const history = messages
-      .filter((item) => item.role === "user" || item.role === "assistant")
-      .map((item) => ({
-        role: item.role === "user" ? "user" : "assistant",
-        content: item.text.trim(),
-      }));
 
     setMessages((prev) => [...prev, userMessage]);
     setMessage("");
@@ -147,21 +144,25 @@ export default function HomePage() {
     setLoading(true);
 
     try {
-      const result = await request<any>({
+      const result = await request<RecommendResponse>({
         method: "POST",
         url: "/api/movie/recommend",
-        data: { message: userMessage.text, imageData, history, conversationId },
+        data: {
+          message: trimmedMessage,
+          imageData,
+          conversationId,
+        },
       });
-      setMessages((prev) => [...prev, ...convertResultToMessages(result)]);
+      setMessages((prev) => [...prev, toAssistantMessage(result)]);
       if (result?.conversationId) setConversationId(result.conversationId);
     } catch {
       setError("请求后端失败，请检查服务是否启动");
       setMessages((prev) => [
         ...prev,
         {
-          role: "assistant-error",
-          text: "请求失败，请稍后再试。",
-          type: "error",
+          role: "assistant",
+          kind: "error",
+          payload: { kind: "error", message: "请求失败，请稍后再试。" },
         },
       ]);
     } finally {
@@ -171,12 +172,12 @@ export default function HomePage() {
   }
 
   function renderRecommendationCard(item: RecommendationItem, index: number) {
-    const title = item.name|| item.title  || item.original_title || "未知电影";
+    const title = item.name || item.title || item.original_title || "未知电影";
     const subtitle =
       item.original_title && item.original_title !== title
         ? item.original_title
         : "";
-    const reason = item.summary || item.overview || "暂无说明";
+    const reason = item.reason || item.summary || item.overview || "暂无说明";
     const releaseDate = item.release_date ? item.release_date : "未知日期";
     const rating =
       typeof item.vote_average === "number"
@@ -270,17 +271,31 @@ export default function HomePage() {
     return cardInner;
   }
 
-  function renderRecommendationContent(item: ChatMessage) {
-    try {
-      const parsed = JSON.parse(item.text) as RecommendationItem[];
-      return Array.isArray(parsed)
-        ? parsed.map((recommendation, index) =>
-            renderRecommendationCard(recommendation, index),
-          )
-        : null;
-    } catch {
-      return <p>推荐内容暂时无法展示，请稍后再试。</p>;
+  function renderAssistantContent(item: ChatMessage) {
+    const text = chatMessageText(item);
+    const movies = chatMessageMovies(item);
+    const paragraphs = text
+      ? renderMessageText(text).map((line, lineIndex) => (
+          <p key={`${item.kind}-${lineIndex}`}>{line}</p>
+        ))
+      : null;
+
+    if (item.kind !== "recommendation") {
+      return paragraphs;
     }
+
+    return (
+      <div className={styles.assistantBody}>
+        {paragraphs}
+        {movies.length > 0 ? (
+          <div className={styles.recommendationList}>
+            {movies.map((movie, movieIndex) =>
+              renderRecommendationCard(movie, movieIndex),
+            )}
+          </div>
+        ) : null}
+      </div>
+    );
   }
 
   return (
@@ -352,44 +367,41 @@ export default function HomePage() {
             </div>
           ) : (
             <>
-              {messages.map((item, index) => (
-                <div
-                  key={`${item.role}-${index}`}
-                  className={`${styles.message} ${
-                    item.role === "user"
-                      ? styles.userMessage
-                      : item.role === "assistant-error"
-                        ? styles.assistantErrorMessage
-                        : styles.assistantMessage
-                  }`}
-                >
-                  <div className={styles.messageRole}>
-                    {item.role === "user"
-                      ? "你"
-                      : item.role === "assistant-error"
-                        ? "智能体（异常）"
-                        : "智能体"}
+              {messages.map((item, index) => {
+                const failed =
+                  item.kind === "error" || item.kind === "reject";
+                return (
+                  <div
+                    key={`${item.role}-${item.kind}-${index}`}
+                    className={`${styles.message} ${
+                      item.role === "user"
+                        ? styles.userMessage
+                        : failed
+                          ? styles.assistantErrorMessage
+                          : styles.assistantMessage
+                    }`}
+                  >
+                    <div className={styles.messageRole}>
+                      {item.role === "user"
+                        ? "你"
+                        : failed
+                          ? "智能体（异常）"
+                          : "智能体"}
+                    </div>
+                    <div className={styles.messageText}>
+                      {item.role === "user"
+                        ? renderMessageText(chatMessageText(item)).map(
+                            (line, lineIndex) => (
+                              <p key={`${item.kind}-${index}-${lineIndex}`}>
+                                {line}
+                              </p>
+                            ),
+                          )
+                        : renderAssistantContent(item)}
+                    </div>
                   </div>
-                  <div className={styles.messageText}>
-                    {item.type === "recommendation" ? (
-                      <div className={styles.recommendationList}>
-                        {renderRecommendationContent(item)}
-                      </div>
-                    ) : (
-                      renderMessageText(item.text).map((line, lineIndex) => (
-                        <p key={`${item.role}-${index}-${lineIndex}`}>{line}</p>
-                      ))
-                    )}
-                  </div>
-                  {item.imagePreview ? (
-                    <img
-                      src={item.imagePreview}
-                      alt="uploaded preview"
-                      className={styles.messageImage}
-                    />
-                  ) : null}
-                </div>
-              ))}
+                );
+              })}
               {loading ? (
                 <div className={`${styles.message} ${styles.assistantMessage}`}>
                   <div className={styles.messageRole}>智能体</div>

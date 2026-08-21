@@ -58,10 +58,11 @@ auth-service    ──► Postgres
 1. 前端 `HomePage` `POST /api/movie/recommend`，带 `message`、可选 `imageData`、`conversationId`，Header `Authorization: Bearer <jwt>`。
 2. `MovieController` → `MovieService.recommend()`：
    - 可选 gRPC 验票；无 token 仍可继续，但会话 `user_id` 为空。
-   - `ensureConversation` / `loadConversationHistory`（gRPC `GetConversation`，读 Postgres 里该会话的 `user_query` + `final_response`，按时间序）/ 追加 user 消息。
-   - 调用 `OrchestratorAgent.orchestrate(model, ctx)`；`ctx.shared.turns` 为结构化历史，prompt 按阶段投影，不要提前拼成一段字符串。
+   - `ensureConversation` / `loadConversationHistory`（gRPC `GetConversation`，只读已完成轮次的可见消息）/ `StartTurn` 写入本轮用户问题。
+   - 调用 `OrchestratorAgent.orchestrate(model, ctx)`；`ctx.shared.turns` 为结构化历史，prompt 按阶段投影，不要提前拼成一段字符串。工作流过程通过 `ctx.record()` 写入 `turn_events`。
+   - 结束时 `CompleteTurn` 写入一条 assistant JSONB（`recommendation` / `reject` / `error`）。
 3. Orchestrator：意图分类 → 任务规划 → 按 plan 执行 Agent → `synthesizeResults` 再调 LLM，把工具结果整理成推荐 JSON。
-4. 域外（`out_of_scope`）返回 `{ type: "reject" }`；成功则 `parseRecommendation()` 解析 JSON 后 `{ type: "success", data, conversationId }`。
+4. 域外（`out_of_scope`）返回 `{ type: "reject", data: RejectPayload }`；成功则 `parseRecommendation()` 解析 JSON 后 `{ type: "success", data: RecommendationPayload, conversationId }`。HTTP `data` 与写入 `CompleteTurn` 的 payload 同一份。
 
 检索参数由 SearchAgent 按 tool schema 填写，不再单独做偏好提取。`MovieService.parseRecommendation()` 只解析，不负责生成。Relation 能力仍未完成。
 
@@ -102,10 +103,12 @@ LLM：优先 `SILICONFLOW_API_KEY`，否则 `OPENAI_API_KEY`。默认 `SILICONFL
 ### message-service
 
 - REST（需 JWT）：`POST /message/conversations`、`GET /message/conversations`、`GET /message/conversations/:id`。
-- gRPC：`CreateConversation`、`AppendMessage`、`GetConversation`、`SearchSimilarContext`。
-- TypeORM `synchronize: true`，表 `conversations` / `messages`。
-- `GetConversation` 只返回 `message_type IN ('user_query', 'final_response')`。
-- 有 `summary` 时异步写入 Milvus collection `message_summary_embeddings`（维度 1024，embedding 默认 `BAAI/bge-m3`）。Milvus 失败不阻断主流程。
+- gRPC：`CreateConversation`、`StartTurn`、`AppendTurnEvent`、`CompleteTurn`、`GetConversation`、`GetTurn`、`SearchSimilarContext`。
+- TypeORM `synchronize: true`，表 `conversations` / `turns` / `messages` / `turn_events`。
+- `turns` 只管一轮的 `running | success | reject | error`，不存问答正文。
+- `messages.content` 是可见气泡的 JSONB（`user_query` / `recommendation` / `reject` / `error`）。`GetConversation` 只返回已完成轮次，扁平 `ChatItem` 给前端直接展示。
+- `turn_events.body` 是 Agent 内部时间线 JSONB；message-service 不解析 `kind`。`seq` 由服务端按轮次递增。
+- 推荐成功且 payload 含 `summary` 时异步写入 Milvus collection `message_summary_embeddings`（维度 1024，embedding 默认 `BAAI/bge-m3`）。Milvus 失败不阻断主流程。
 - 启动会轮询等待 Milvus healthy。
 
 ## Agent 系统
@@ -115,7 +118,7 @@ OrchestratorAgent
   ├─ classifyIntent     → in_scope | out_of_scope | unknown
   ├─ planTask           → AgentType[]  目前仅 "search" | "relation"
   ├─ executeAgentPlan   → 按注册表顺序执行
-  └─ synthesizeResults  → LLM 整理成 recommendations JSON
+  └─ synthesizeResults  → LLM 整理成 { text, movies } JSON
         ├─ SearchAgent  → LLM 规划 tool_calls（1–4 个）→ ToolsRegistry.execute
         └─ RelationAgent → 分析实体/关系 → 调 SearchAgent → 关系运算（未完成）
 ```
@@ -137,7 +140,7 @@ Prompt 入口（改提示词只动这个文件）：
 - `getTaskPlanningPrompt`
 - `getSearchToolPlanningPrompt`（会注入实时 tool schema）
 
-对话历史以 `ConversationHistoryItem[]` 传入，由 `projectConversationHistory` 按阶段裁剪/压缩后再写入 prompt。
+对话历史以 `ConversationHistoryItem[]` 传入，由 `projectConversationHistory` 按阶段裁剪/压缩后再写入 prompt。可见消息类型在 `transcript.ts`，工作流事件类型在 `turn-events.ts`。
 
 `SearchAgent` 用 Zod 校验计划，再按各 tool 的 JSON Schema 校验参数；失败走 `executeWithRetry`（`MAX_RETRIES=3`）。
 
@@ -150,7 +153,8 @@ Prompt 入口（改提示词只动这个文件）：
 - HTTP：`api.ts` 的 `request()` 自动带 Bearer；`baseURL: '/'`。Docker 下由 nginx 反代；本地 `vite` 默认 **没有** 把 `/api` 转到后端。
 - 组件：`TopBar`、`AuthModal`、`ConfigModal`（会话列表）、`RecommendationPoster`。样式用 Less CSS Modules。
 - 同时依赖 Mantine 7 与 MUI 9，新增 UI 优先复用现有组件，不要再引入第三套库。
-- 发送推荐前必须登录。图片以 Data URL 传 `imageData`，**后端 Orchestrator 当前未使用图片**。
+- 发送推荐前必须登录。图片以 Data URL 传 `imageData`，**后端 Orchestrator 当前未使用图片**；上传预览只留在输入区，不进聊天消息。
+- 聊天列表与后端 `ChatItem` 对齐：`role` 只有 `user` | `assistant`，`kind` 为 `user_query` | `recommendation` | `reject` | `error`，一条助手消息一个气泡（`text` 下方可选 `movies` 卡片）。
 - nginx 对 movie/message 代理超时 300s，与 axios timeout 5min 对齐。
 
 ## 环境变量（不要提交 .env）
@@ -180,12 +184,14 @@ Prompt 入口（改提示词只动这个文件）：
 
 - 语言：TypeScript。后端 NestJS injectable；前端函数组件。
 - 新增 **Agent**：扩展 `AGENT_TYPES`，在 `OrchestratorAgent` 的 `agentExecutors` 注册，不要改执行循环本身。
+- 新增 **工作流事件**：扩展 `TurnEventBody`，在 Agent 里 `runtime.record()` / `ctx.record()`。message-service 只存 JSONB，不要在那边 switch kind。
+- 可见聊天消息只走 `StartTurn` / `CompleteTurn`，payload 类型在 `transcript.ts`。
 - 新增 **Tool**：实现 `ITool`，在 `ToolsRegistry.registerTools()` 注册。SearchAgent 会自动拿到 schema，不要在 Agent 里再写一份参数定义。
 - 新增 / 修改 **Prompt**：只改 `PromptTemplateService`。对话历史在 prompt 内按阶段投影，不要在 service 里先拼成字符串。
 - 通用文本、JSON、重试：用 `helpers.ts`，不要在 service 里再实现一遍。
 - 会话历史投影：用 `conversation-history.ts`。
 - 类型、genre/language 映射：用 `types.ts` / `constants.ts`。
-- LLM 结构化输出必须可被 `tryParseJson` 解析；对外响应保持 `recommendations` + `explanation`。
+- LLM 结构化输出必须可被 `tryParseJson` 解析；成功回复的可见字段是 `text` + `movies`，拒绝/失败是 `message`。旧字段 `recommendations` / `explanation` 只在读取历史时兼容。
 - 跨服务契约先改 `backend/proto/*.proto`，再改 client/server 实现。
 - 日志用 `Logger`，关键路径已有 `query` / `intent` / `tool` 日志，保持同风格。
 - 不要提交 `.env`、密钥、`node_modules`、`dist`。
@@ -198,6 +204,8 @@ Prompt 入口（改提示词只动这个文件）：
 | 推荐入口与会话 | `backend/movie-service/src/movie/movie.service.ts` |
 | 工作流上下文 | `backend/movie-service/src/movie/agents/workflow-context.ts` |
 | 历史投影 | `backend/movie-service/src/movie/conversation-history.ts` |
+| 可见消息 / 事件类型 | `backend/movie-service/src/movie/transcript.ts`、`turn-events.ts` |
+| 会话 gRPC | `backend/movie-service/src/movie/message.grpc.ts`、`backend/proto/message.proto` |
 | 意图与调度 | `backend/movie-service/src/movie/agents/orchestrator.agent.ts` |
 | 工具规划与执行 | `backend/movie-service/src/movie/agents/search.agent.ts` |
 | 注册工具 | `backend/movie-service/src/movie/agents/tools/tools.registry.ts` |

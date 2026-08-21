@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ITool, ToolResult } from "./tool.interface";
 import { TmdbProvider } from "../../../model/tmdb.provider";
+import { TMDB_CONSTANTS } from "../../constants";
 import { commonToolSchema } from "./common";
 
 /**
@@ -119,7 +120,7 @@ export class PersonSearchTool implements ITool {
         };
       }
 
-      const language = input.language || "en-US";
+      const language = input.language || TMDB_CONSTANTS.DEFAULT_LANGUAGE;
       const includeAdult = input.include_adult ?? false;
       const page = input.page && input.page > 0 ? input.page : 1;
 
@@ -154,17 +155,19 @@ export class PersonSearchTool implements ITool {
         total_pages: searchResult.total_pages,
         total_results: searchResult.total_results,
 
-        results: searchResult.results.map((person) => ({
-          person_id: person.id,
-          name: person.name,
-          original_name: person.original_name,
-          gender: person.gender,
-          known_for: person.known_for.map((work) => ({
-            id: work.id,
-            title: work.title || work.name || "",
-            release_date: work.release_date || work.first_air_date || "",
+        results: searchResult.results
+          .slice(0, TMDB_CONSTANTS.DEFAULT_MAX_RESULTS)
+          .map((person) => ({
+            person_id: person.id,
+            name: person.name,
+            original_name: person.original_name,
+            gender: person.gender,
+            known_for: person.known_for.map((work) => ({
+              id: work.id,
+              title: work.title || work.name || "",
+              release_date: work.release_date || work.first_air_date || "",
+            })),
           })),
-        })),
       };
 
       return {

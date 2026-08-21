@@ -53,6 +53,7 @@ export default function HomePage() {
   const [error, setError] = useState("");
 
   const token = useAuth((s) => s.token);
+  const logout = useAuth((s) => s.logout);
 
   async function fetchConversations() {
     if (!token) return;
@@ -155,8 +156,15 @@ export default function HomePage() {
       });
       setMessages((prev) => [...prev, toAssistantMessage(result)]);
       if (result?.conversationId) setConversationId(result.conversationId);
-    } catch {
-      setError("请求后端失败，请检查服务是否启动");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.includes("未授权") || msg.includes("请先登录")) {
+        logout();
+        setShowLoginModal(true);
+        setError("请先登录后再推荐");
+      } else {
+        setError("请求后端失败，请检查服务是否启动");
+      }
       setMessages((prev) => [
         ...prev,
         {

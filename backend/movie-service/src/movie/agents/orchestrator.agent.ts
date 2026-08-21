@@ -72,6 +72,18 @@ export class OrchestratorAgent {
         };
       }
 
+      // 意图无法识别时立即短路，不再浪费后续规划/检索/汇总的调用。
+      if (ctx.shared.intent.type === "unknown") {
+        ctx.shared.finalResult =
+          ctx.shared.intent.reason || "无法识别本次查询的意图，请换个说法再试";
+        return {
+          success: false,
+          intent_type: "unknown",
+          result: ctx.shared.finalResult,
+          agents_used: [],
+        };
+      }
+
       ctx.shared.plan = await this.planTask(model, ctx);
       await ctx.record({
         kind: "plan",
@@ -82,8 +94,8 @@ export class OrchestratorAgent {
       ctx.shared.finalResult = await this.synthesizeResults(model, ctx);
 
       return {
-        success: ctx.shared.intent.type === "in_scope",
-        intent_type: ctx.shared.intent.type,
+        success: true,
+        intent_type: "in_scope",
         result: ctx.shared.finalResult,
         agents_used: ctx.shared.plan,
         agent_results: ctx.getPublicResults(),

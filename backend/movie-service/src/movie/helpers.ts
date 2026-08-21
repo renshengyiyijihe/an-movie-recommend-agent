@@ -43,19 +43,6 @@ export function summarizeText(text: string, maxLength: number = 140): string {
 }
 
 /**
- * 清理图片数据
- * @param imageData Base64编码的图片数据
- * @returns 清理后的数据，或undefined
- */
-export function sanitizeImageData(imageData?: string): string | undefined {
-  if (!imageData) return undefined;
-  if (imageData.length > WORKFLOW_CONSTANTS.MAX_IMAGE_DATA_LENGTH) {
-    return imageData.slice(0, WORKFLOW_CONSTANTS.MAX_IMAGE_DATA_LENGTH);
-  }
-  return imageData;
-}
-
-/**
  * 尝试从JSON字符串提取有效的JSON对象
  * @param value JSON字符串
  * @param stage 阶段名称（用于日志）
@@ -97,66 +84,6 @@ function _extractJsonCandidate(value: string): string | null {
 }
 
 /**
- * 清理JSON类似的文本
- * 移除控制字符、修复不完整的JSON等
- * @param value 输入文本
- * @returns 清理后的文本
- */
-export function sanitizeJsonLikeText(value: string): string {
-  let text = value.trim();
-
-  // 移除markdown代码块标记
-  text = text.replace(/^```(?:json)?/i, "").replace(/```$/i, "");
-
-  // 移除控制字符
-  text = text.replace(/[\u0000-\u001f]/g, (char) => {
-    if (char === "\n" || char === "\r" || char === "\t") return char;
-    return "";
-  });
-
-  // 提取花括号范围
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start >= 0 && end > start) return text.slice(start, end + 1);
-
-  let result = "";
-  let inString = false;
-  let escaped = false;
-
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    const next = text[i + 1];
-
-    if (escaped) {
-      result += char;
-      escaped = false;
-      continue;
-    }
-
-    if (char === "\\") {
-      result += char;
-      escaped = true;
-      continue;
-    }
-
-    if (char === '"') {
-      inString = !inString;
-      result += char;
-      continue;
-    }
-
-    if (!inString && char === "'") {
-      result += '"';
-      continue;
-    }
-
-    result += char;
-  }
-
-  return result;
-}
-
-/**
  * 获取字符串值
  * @param value 任意值
  * @returns 字符串表示，或空字符串
@@ -193,12 +120,4 @@ export async function executeWithRetry<T>(
   }
 
   throw lastError || new Error("Operation failed after retries");
-}
-
-/**
- * 睡眠函数
- * @param ms 毫秒数
- */
-export function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

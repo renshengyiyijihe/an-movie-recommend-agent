@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ITool, ToolResult } from "./tool.interface";
 import { TmdbProvider } from "../../../model/tmdb.provider";
+import { TMDB_CONSTANTS } from "../../constants";
 import { commonToolSchema } from "./common";
 
 
@@ -209,7 +210,7 @@ export class MovieDetailTool implements ITool {
         };
       }
 
-      const language = input.language || "en-US";
+      const language = input.language || TMDB_CONSTANTS.DEFAULT_LANGUAGE;
       const appendToResponse = input.append_to_response?.trim();
 
       this.logger.log(

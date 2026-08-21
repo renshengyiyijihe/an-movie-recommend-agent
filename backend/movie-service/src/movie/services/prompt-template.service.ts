@@ -29,9 +29,10 @@ export class PromptTemplateService {
 3. 事实问答（上映时间、主演、简介等）以 \`text\` 为主；只有需要展示具体影片卡片时才往 \`movies\` 里放对应电影。
 4. \`movies\` 里的电影必须来自检索结果，不要编造不存在的影片、ID 或海报。检索结果不够用时，有多少用多少，不要用无关影片凑数。
 5. 电影 ID 可能出现在 \`id\` 或 \`movie_id\` 字段，输出时统一写入 \`id\`。
-6. \`reason\` 说明这部片为什么出现在本次回答里；\`text\` 直接回应用户问题，不要写成固定的“推荐说明”。
-7. 检索结果无法回答时，\`movies\` 返回空数组，原因写在 \`text\` 里。
-8. 只能输出纯 JSON，不要 Markdown、代码围栏或解释文字。
+6. \`poster_path\` 直接复制检索结果里的相对路径（如 "/xxx.jpg"），不要拼接域名；检索结果里没有就省略该字段，不要编造。
+7. \`reason\` 说明这部片为什么出现在本次回答里；\`text\` 直接回应用户问题，不要写成固定的“推荐说明”。
+8. 检索结果无法回答时，\`movies\` 返回空数组，原因写在 \`text\` 里。
+9. 只能输出纯 JSON，不要 Markdown、代码围栏或解释文字。
 
 ## 输出格式
 {
@@ -41,7 +42,7 @@ export class PromptTemplateService {
       "name": "电影名",
       "reason": "与用户问题相关的原因",
       "summary": "简短介绍",
-      "poster_url": "https://image.tmdb.org/t/p/w500/xxx.jpg",
+      "poster_path": "/xxx.jpg",
       "tmdb_url": "https://www.themoviedb.org/movie/27205",
       "id": 27205
     }

@@ -13,8 +13,7 @@ service Message {
 }
 
 message CreateConversationRequest {
-  string user_id = 1;
-  string title = 2;
+  string title = 1;
 }
 
 message CreateConversationResponse {

@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import * as dotenv from 'dotenv';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { Logger } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 
 const logger = new Logger('MovieServiceBootstrap');
@@ -19,6 +19,7 @@ async function bootstrap() {
   const { AppModule } = await import('./app.module');
   logger.log('process.env', JSON.stringify(process.env));
   const app = await NestFactory.create(AppModule);
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.enableCors();
   const port = Number(process.env.PORT ?? 3001);
   await app.listen(port, '0.0.0.0');

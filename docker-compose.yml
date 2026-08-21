@@ -22,7 +22,6 @@ services:
     environment:
       AUTH_HTTP_PORT: 3002
       POSTGRES_URL: postgresql://postgres:password@postgres:5432/anmovie_db
-      JWT_SECRET: ${JWT_SECRET:-changeme123}
       JWT_EXPIRES_IN: 7d
       AUTH_GRPC_BIND: 0.0.0.0:50051
     depends_on:

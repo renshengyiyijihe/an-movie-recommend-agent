@@ -1,7 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { ChatOpenAI } from "@langchain/openai";
-import { sleep } from "../movie/helpers";
 import type { ChatMessage, CompatibleModel } from "../movie/types";
 
 export class ModelConfigurationError extends Error {
@@ -83,6 +82,10 @@ export class ModelProvider {
       model: modelName,
       temperature,
       maxTokens: 16384,
+      // 单次请求超时与 SDK 层重试（覆盖网络错误 / 429 / 5xx）。
+      // 业务层 executeWithRetry 只负责输出格式错误的重试。
+      timeout: 60_000,
+      maxRetries: 2,
       configuration: {
         baseURL,
       },
@@ -90,8 +93,6 @@ export class ModelProvider {
 
     this.model = {
       async invoke(messages: ChatMessage[]) {
-        await sleep(1000);
-
         try {
           Logger.log(`Model invocation start: model=${modelName}`);
           const response = await client.invoke(toLangChainMessages(messages));

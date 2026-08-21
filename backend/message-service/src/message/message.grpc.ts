@@ -1,10 +1,10 @@
-import { Controller, Logger } from "@nestjs/common";
+import { Controller, Logger, UseGuards } from "@nestjs/common";
 import { GrpcMethod } from "@nestjs/microservices";
+import { GrpcUserGuard } from "../auth/grpc-user.guard";
 import { ChatItem } from "./chat-item";
 import { MessageService } from "./message.service";
 
 interface CreateConversationRequest {
-  user_id?: string;
   title?: string;
 }
 
@@ -54,6 +54,7 @@ function toProtoChatItem(item: ChatItem) {
   };
 }
 
+@UseGuards(GrpcUserGuard)
 @Controller()
 export class MessageGrpcService {
   private readonly logger = new Logger(MessageGrpcService.name);
@@ -66,7 +67,6 @@ export class MessageGrpcService {
       `gRPC CreateConversation request ->> ${JSON.stringify(request)}`,
     );
     const conversation = await this.messageService.createConversation(
-      request.user_id,
       request.title,
     );
     this.logger.log(

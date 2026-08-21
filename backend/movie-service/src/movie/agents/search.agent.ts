@@ -157,13 +157,6 @@ export class SearchAgent {
   }
 
   /**
-   * 获取可用的Tools
-   */
-  getTools(): any[] {
-    return this.toolsRegistry.getToolSchemas();
-  }
-
-  /**
    * 用 Zod 校验模型生成的工具计划，并按注册工具的 schema 校验参数。
    */
   private validateToolPlan(value: ToolPlan): ToolPlan {

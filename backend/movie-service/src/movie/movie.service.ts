@@ -1,6 +1,5 @@
 ﻿import { Injectable, Logger } from "@nestjs/common";
 import { ModelProvider } from "../model/model.provider";
-import { AuthGrpcClient } from "./auth.grpc";
 import { MessageGrpcClient } from "./message.grpc";
 import { OrchestratorAgent } from "./agents/orchestrator.agent";
 import { WorkflowContext } from "./agents/workflow-context";
@@ -25,32 +24,22 @@ interface RecommendPayload {
   conversationId?: string;
 }
 
-interface AuthResult {
-  ok: boolean;
-  user?: { id: string; email: string };
-  error?: string;
-}
-
 @Injectable()
 export class MovieService {
   private readonly logger = new Logger(MovieService.name);
 
   constructor(
     private readonly modelProvider: ModelProvider,
-    private readonly authGrpcClient: AuthGrpcClient,
     private readonly messageGrpcClient: MessageGrpcClient,
     private readonly orchestratorAgent: OrchestratorAgent,
   ) {}
 
-  async recommend(payload: RecommendPayload, authorization?: string) {
+  async recommend(payload: RecommendPayload) {
     this.logger.log(
-      `recommend request received: messageLength=${payload.message?.length ?? 0}, hasImage=${Boolean(payload.imageUrl || payload.imageData)}, authHeader=${authorization ? "present" : "absent"}`,
+      `recommend request received: messageLength=${payload.message?.length ?? 0}, hasImage=${Boolean(payload.imageUrl || payload.imageData)}`,
     );
 
-    const authResult = authorization
-      ? await this.validateAuthorization(authorization)
-      : { ok: false, error: "no_authorization_header" };
-    const conversationId = await this.ensureConversation(payload, authResult);
+    const conversationId = await this.ensureConversation(payload);
     const turns = await this.loadConversationHistory(conversationId);
     const turnId = await this.startTurn(conversationId, payload.message);
 
@@ -127,24 +116,13 @@ export class MovieService {
     }
   }
 
-  private async ensureConversation(
-    payload: RecommendPayload,
-    authResult: AuthResult,
-  ): Promise<string> {
+  private async ensureConversation(payload: RecommendPayload): Promise<string> {
     if (payload.conversationId) return payload.conversationId;
 
-    try {
-      const response = await this.messageGrpcClient.createConversation({
-        user_id: authResult.ok ? authResult.user?.id : undefined,
-        title: payload.message,
-      });
-      return response.conversation_id;
-    } catch (error) {
-      this.logger.warn(
-        `Failed to create conversation: ${(error as Error)?.message ?? String(error)}`,
-      );
-      return "";
-    }
+    const response = await this.messageGrpcClient.createConversation({
+      title: payload.message,
+    });
+    return response.conversation_id;
   }
 
   private async loadConversationHistory(
@@ -152,15 +130,9 @@ export class MovieService {
   ): Promise<ConversationHistoryItem[]> {
     if (!conversationId) return [];
 
-    try {
-      const response = await this.messageGrpcClient.getConversation(conversationId);
-      return toConversationTurns(response?.messages);
-    } catch (error) {
-      this.logger.warn(
-        `Failed to load conversation history: ${(error as Error).message}`,
-      );
-      return [];
-    }
+    const response =
+      await this.messageGrpcClient.getConversation(conversationId);
+    return toConversationTurns(response?.messages);
   }
 
   private async startTurn(
@@ -169,18 +141,11 @@ export class MovieService {
   ): Promise<string> {
     if (!conversationId) return "";
 
-    try {
-      const response = await this.messageGrpcClient.startTurn(conversationId, {
-        kind: "user_query",
-        text,
-      });
-      return response.turn_id;
-    } catch (error) {
-      this.logger.warn(
-        `Failed to start turn: ${(error as Error).message}`,
-      );
-      return "";
-    }
+    const response = await this.messageGrpcClient.startTurn(conversationId, {
+      kind: "user_query",
+      text,
+    });
+    return response.turn_id;
   }
 
   private async completeTurn(
@@ -215,28 +180,6 @@ export class MovieService {
         }
       },
     };
-  }
-
-  private async validateAuthorization(authorization: string): Promise<AuthResult> {
-    const token = authorization.replace(/^Bearer\s+/i, "").trim();
-    if (!token) return { ok: false, error: "no_token" };
-
-    try {
-      const response = await this.authGrpcClient.validateToken(token);
-      if (!response.ok) {
-        return { ok: false, error: response.error ?? "invalid_token" };
-      }
-      return {
-        ok: true,
-        user: {
-          id: response.user?.id ?? "",
-          email: response.user?.email ?? "",
-        },
-      };
-    } catch (error) {
-      this.logger.error("validateAuthorization exception", error as Error);
-      return { ok: false, error: "grpc_error" };
-    }
   }
 
   private parseRecommendation(text: string): RecommendationPayload {

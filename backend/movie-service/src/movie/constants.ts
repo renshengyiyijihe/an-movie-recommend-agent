@@ -6,12 +6,8 @@
 export const WORKFLOW_CONSTANTS = {
   /** 单个prompt最大文本长度 */
   MAX_PROMPT_TEXT_LENGTH: 2500,
-  /** 搜索结果最大长度 */
-  MAX_SEARCH_RESULT_LENGTH: 4000,
   /** 汇总给 LLM 的检索证据最大长度 */
   MAX_SYNTHESIS_EVIDENCE_LENGTH: 8000,
-  /** 图片数据最大长度 */
-  MAX_IMAGE_DATA_LENGTH: 1200,
   /** 写入共享态的历史消息上限（Postgres 按时间序截取最近 N 条） */
   MAX_SHARED_HISTORY_TURNS: 20,
   /** 用户历史单条截断 */
@@ -33,14 +29,10 @@ export const HISTORY_PROJECTION = {
 
 // ========== TMDB 配置 ==========
 export const TMDB_CONSTANTS = {
-  /** TMDB图片基础URL */
-  IMAGE_BASE_URL: "https://image.tmdb.org/t/p/w500",
-  /** 默认结果数量 */
-  DEFAULT_MAX_RESULTS: 4,
+  /** 列表类工具单次返回的最大条数（控制进入汇总 prompt 的 token） */
+  DEFAULT_MAX_RESULTS: 3,
   /** 默认语言 */
   DEFAULT_LANGUAGE: "zh-CN",
-  /** 默认分页 */
-  DEFAULT_PAGE: 1,
 } as const;
 
 // ========== 消息相关常量 ==========
@@ -48,8 +40,6 @@ export const MESSAGE_CONSTANTS = {
   /** 默认拒绝消息 */
   DEFAULT_OUT_OF_SCOPE_MESSAGE:
     "我主要负责电影推荐或介绍。如果你想问电影类型、演员、风格、时长或推荐电影，我可以继续帮你。",
-  /** 模型未配置错误消息 */
-  MODEL_NOT_CONFIGURED_MESSAGE: "模型未配置，无法执行推荐",
 } as const;
 
 // ========== 类型映射 ==========
@@ -100,61 +90,4 @@ export const GENRE_TO_TMDB_ID: Record<string, number> = {
   "惊悚": 53,
   "战争": 10752,
   "西部": 37
-} as const;
-
-
-/**
- * 语言名称到TMDB语言代码的映射
- */
-export const LANGUAGE_TO_TMDB_CODE: Record<string, string> = {
-  "中文": "zh",
-  "中英双语": "zh",
-  "英文": "en",
-  "english": "en",
-  "英语": "en",
-  "日文": "ja",
-  "日语": "ja",
-  "韩文": "ko",
-  "韩语": "ko",
-  "法文": "fr",
-  "法语": "fr",
-  "德文": "de",
-  "德语": "de",
-  "西班牙文": "es",
-  "spanish": "es",
-  "西班牙语": "es",
-  "俄文": "ru",
-  "俄语": "ru",
-  "葡萄牙文": "pt",
-  "葡萄牙语": "pt",
-} as const;
-
-export const genreToTmdbGenreIdMap = GENRE_TO_TMDB_ID;
-export const languageToTmdbLanguageMap = LANGUAGE_TO_TMDB_CODE;
-
-// ========== 意图识别关键词 ==========
-export const INTENT_CLASSIFICATION_KEYWORDS = {
-  /** 电影相关关键词 */
-  movieKeywords: [
-    "电影",
-    "movie",
-    "film",
-    "推荐",
-    "recommend",
-    "suggest",
-    "演员",
-    "actor",
-    "actress",
-    "导演",
-    "director",
-    "上映",
-    "release",
-    "评分",
-    "rating",
-    "票房",
-    "观看",
-    "watch",
-    "看过",
-    "追剧",
-  ],
 } as const;

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ITool, ToolResult } from "./tool.interface";
 import { TmdbProvider } from "../../../model/tmdb.provider";
+import { TMDB_CONSTANTS } from "../../constants";
 import { commonToolSchema } from "./common";
 
 /**
@@ -108,7 +109,7 @@ export class MovieSearchTool implements ITool {
         };
       }
 
-      const language = input.language || "en-US";
+      const language = input.language || TMDB_CONSTANTS.DEFAULT_LANGUAGE;
       const includeAdult = input.include_adult ?? false;
       const page = input.page && input.page > 0 ? input.page : 1;
 
@@ -155,12 +156,15 @@ export class MovieSearchTool implements ITool {
         total_pages: searchResult.total_pages,
         total_results: searchResult.total_results,
 
-        results: searchResult.results.map((movie) => ({
-          movie_id: movie.id,
-          title: movie.title,
-          release_date: movie.release_date,
-          overview: movie.overview,
-        })),
+        results: searchResult.results
+          .slice(0, TMDB_CONSTANTS.DEFAULT_MAX_RESULTS)
+          .map((movie) => ({
+            movie_id: movie.id,
+            title: movie.title,
+            release_date: movie.release_date,
+            overview: movie.overview,
+            poster_path: movie.poster_path,
+          })),
       };
 
       return {

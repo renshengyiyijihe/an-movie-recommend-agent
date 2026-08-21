@@ -1,8 +1,14 @@
-import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnApplicationBootstrap,
+  OnModuleDestroy,
+} from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { LessThan, Repository } from "typeorm";
 import { randomUUID } from "crypto";
-import { AuthGrpcClient } from "../auth/auth.grpc";
+import { UserContext } from "../auth/user-context";
 import { MilvusProvider } from "../milvus/milvus.provider";
 import {
   ConversationEntity,
@@ -13,16 +19,21 @@ import {
   TurnStatus,
 } from "./entities";
 import {
-  ChatItem,
   parseJsonObject,
   payloadText,
   toChatItem,
 } from "./chat-item";
 import { RelatedContextItem } from "./message.grpc";
 
+/** 轮次停留在 running 超过该时长视为僵死（正常请求受 nginx 300s 超时约束）。 */
+const STALE_TURN_TIMEOUT_MS = 10 * 60 * 1000;
+/** 清扫僵死轮次的间隔。 */
+const STALE_TURN_SWEEP_INTERVAL_MS = 60 * 1000;
+
 @Injectable()
-export class MessageService {
+export class MessageService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(MessageService.name);
+  private staleTurnSweepTimer?: NodeJS.Timeout;
 
   constructor(
     @InjectRepository(ConversationEntity)
@@ -33,26 +44,75 @@ export class MessageService {
     private readonly messageRepository: Repository<MessageEntity>,
     @InjectRepository(TurnEventEntity)
     private readonly turnEventRepository: Repository<TurnEventEntity>,
-    private readonly authGrpcClient: AuthGrpcClient,
     private readonly milvusProvider: MilvusProvider,
   ) {}
 
-  async createConversation(userId?: string, title?: string) {
+  onApplicationBootstrap() {
+    // 启动时先清一次（回收进程崩溃前遗留的 running 轮次），之后周期执行。
+    void this.sweepStaleTurns();
+    this.staleTurnSweepTimer = setInterval(
+      () => void this.sweepStaleTurns(),
+      STALE_TURN_SWEEP_INTERVAL_MS,
+    );
+  }
+
+  onModuleDestroy() {
+    if (this.staleTurnSweepTimer) {
+      clearInterval(this.staleTurnSweepTimer);
+    }
+  }
+
+  /**
+   * 把停留在 running 超时的轮次按正常完成路径收尾成 error：
+   * 复用 completeTurn，写入一条 assistant error 消息并更新轮次状态，
+   * 使该轮的用户提问和失败原因在会话里正常可见。
+   */
+  private async sweepStaleTurns(): Promise<void> {
+    try {
+      const cutoff = new Date(Date.now() - STALE_TURN_TIMEOUT_MS);
+      const staleTurns = await this.turnRepository.find({
+        where: { status: "running", created_at: LessThan(cutoff) },
+        take: 100,
+      });
+
+      for (const turn of staleTurns) {
+        try {
+          await this.finishTurn(
+            turn.turn_id,
+            "error",
+            JSON.stringify({
+              kind: "error",
+              message: "处理超时中断，请重新发送这条消息。",
+            }),
+          );
+          this.logger.warn(
+            `Stale running turn marked as error: turn_id=${turn.turn_id}`,
+          );
+        } catch (error) {
+          this.logger.warn(
+            `Failed to sweep stale turn ${turn.turn_id}: ${(error as Error).message}`,
+          );
+        }
+      }
+    } catch (error) {
+      this.logger.error(
+        `sweepStaleTurns failed: ${(error as Error).message}`,
+        error as Error,
+      );
+    }
+  }
+
+  async createConversation(title?: string) {
     const conversation = this.conversationRepository.create({
       conversation_id: randomUUID(),
-      user_id: userId ?? null,
+      user_id: UserContext.current().id,
       title: title ?? null,
     });
     return this.conversationRepository.save(conversation);
   }
 
   async startTurn(conversationId: string, userContentJson: string) {
-    const conversation = await this.conversationRepository.findOne({
-      where: { conversation_id: conversationId },
-    });
-    if (!conversation) {
-      throw new NotFoundException(`Conversation not found: ${conversationId}`);
-    }
+    await this.requireConversation(conversationId);
 
     const userContent = parseJsonObject(userContentJson, "user_content_json");
     const turnId = randomUUID();
@@ -77,20 +137,18 @@ export class MessageService {
           content: { ...userContent, kind: "user_query" },
         }),
       );
-      conversation.updated_at = new Date();
-      await manager.save(conversation);
+      await manager.update(
+        ConversationEntity,
+        { conversation_id: conversationId },
+        { updated_at: new Date() },
+      );
     });
 
     return { turn_id: turnId, user_message_id: userMessageId };
   }
 
   async appendTurnEvent(turnId: string, bodyJson: string) {
-    const turn = await this.turnRepository.findOne({
-      where: { turn_id: turnId },
-    });
-    if (!turn) {
-      throw new NotFoundException(`Turn not found: ${turnId}`);
-    }
+    await this.requireTurn(turnId);
 
     const body = parseJsonObject(bodyJson, "body_json");
     const seq = await this.nextEventSeq(turnId);
@@ -108,6 +166,15 @@ export class MessageService {
   }
 
   async completeTurn(
+    turnId: string,
+    status: string,
+    assistantPayloadJson: string,
+  ) {
+    await this.requireTurn(turnId);
+    return this.finishTurn(turnId, status, assistantPayloadJson);
+  }
+
+  private async finishTurn(
     turnId: string,
     status: string,
     assistantPayloadJson: string,
@@ -163,36 +230,25 @@ export class MessageService {
     return { assistant_message_id: assistantMessageId };
   }
 
-  async listConversations(userId: string) {
+  async listConversations() {
     const conversations = await this.conversationRepository.find({
-      where: { user_id: userId },
+      where: { user_id: UserContext.current().id },
       order: { created_at: "DESC" },
       take: 100,
     });
     return { conversations };
   }
 
-  async getConversation(conversationId: string, userId?: string) {
-    const qb = this.conversationRepository
-      .createQueryBuilder("conversation")
-      .where("conversation.conversation_id = :conversationId", {
-        conversationId,
-      });
+  async getConversation(conversationId: string) {
+    const conversation = await this.requireConversation(conversationId);
 
-    if (userId) {
-      qb.andWhere("conversation.user_id = :userId", { userId });
-    }
-
-    const conversation = await qb.getOne();
-    if (!conversation) {
-      return { conversation_id: conversationId, messages: [] as ChatItem[] };
-    }
-
+    // 已完成轮次返回全部气泡；running 轮次只返回用户消息，
+    // 让用户刷新后仍能看到自己刚发的问题（assistant 消息本来只在轮次完成时写入）。
     const messages = await this.messageRepository
       .createQueryBuilder("message")
       .innerJoin("message.turn", "turn")
       .where("message.conversation_id = :conversationId", { conversationId })
-      .andWhere("turn.status IN (:...statuses)", {
+      .andWhere("(turn.status IN (:...statuses) OR message.role = 'user')", {
         statuses: FINISHED_TURN_STATUSES,
       })
       .orderBy("message.created_at", "ASC")
@@ -207,12 +263,7 @@ export class MessageService {
   }
 
   async getTurn(turnId: string) {
-    const turn = await this.turnRepository.findOne({
-      where: { turn_id: turnId },
-    });
-    if (!turn) {
-      throw new NotFoundException(`Turn not found: ${turnId}`);
-    }
+    const turn = await this.requireTurn(turnId);
 
     const [messages, events] = await Promise.all([
       this.messageRepository.find({
@@ -239,30 +290,12 @@ export class MessageService {
     };
   }
 
-  async validateAuthorization(authorization?: string) {
-    if (!authorization) {
-      return { ok: false, error: "no_authorization_header" };
-    }
-
-    const token = authorization.replace(/^Bearer\s+/i, "").trim();
-    if (!token) {
-      return { ok: false, error: "no_token" };
-    }
-
-    try {
-      const response = await this.authGrpcClient.validateToken(token);
-      return response;
-    } catch (error) {
-      this.logger.error("validateAuthorization error", error as Error);
-      return { ok: false, error: "invalid_token" };
-    }
-  }
-
   async searchSimilarContext(
     userInput: string,
     conversationId: string,
     limit: number = 5,
   ) {
+    await this.requireConversation(conversationId);
     this.logger.log(
       `searchSimilarContext start: userInput=${this.truncateText(userInput, 100)} conversationId=${conversationId} limit=${limit}`,
     );
@@ -320,6 +353,42 @@ export class MessageService {
       );
       return { context_items: [] };
     }
+  }
+
+  private currentUserId(): string {
+    return UserContext.current().id;
+  }
+
+  /**
+   * 会话访问规则：当前请求用户必须与会话主人一致。
+   * 无主会话、非本人一律拒绝。
+   */
+  private canAccessConversation(conversation: ConversationEntity): boolean {
+    const userId = this.currentUserId();
+    return Boolean(conversation.user_id && conversation.user_id === userId);
+  }
+
+  private async requireConversation(
+    conversationId: string,
+  ): Promise<ConversationEntity> {
+    const conversation = await this.conversationRepository.findOne({
+      where: { conversation_id: conversationId },
+    });
+    if (!conversation || !this.canAccessConversation(conversation)) {
+      throw new NotFoundException(`Conversation not found: ${conversationId}`);
+    }
+    return conversation;
+  }
+
+  private async requireTurn(turnId: string): Promise<TurnEntity> {
+    const turn = await this.turnRepository.findOne({
+      where: { turn_id: turnId },
+    });
+    if (!turn) {
+      throw new NotFoundException(`Turn not found: ${turnId}`);
+    }
+    await this.requireConversation(turn.conversation_id);
+    return turn;
   }
 
   private async nextEventSeq(turnId: string): Promise<number> {

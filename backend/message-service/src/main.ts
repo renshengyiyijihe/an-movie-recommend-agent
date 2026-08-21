@@ -24,7 +24,7 @@ async function bootstrap() {
   logger.log("Bootstrapping message service");
   const postgresUrl =
     process.env.POSTGRES_URL ??
-    "postgresql://postgres:password@postgres:5432/anmovie_db";
+    "postgresql://postgres:password@localhost:5432/anmovie_db";
   await dropLegacyMessageSchema(postgresUrl);
 
   const app = await NestFactory.create(AppModule);

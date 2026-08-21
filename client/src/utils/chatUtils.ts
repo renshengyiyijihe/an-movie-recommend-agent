@@ -89,7 +89,7 @@ export function toChatMessage(item: ConversationChatItem): ChatMessage {
       kind: 'reject',
       payload: {
         kind: 'reject',
-        message: readString(payload, 'message') || readString(payload, 'text'),
+        message: readString(payload, 'message') || '这个查询与电影或演员无关',
       },
     };
   }
@@ -100,7 +100,7 @@ export function toChatMessage(item: ConversationChatItem): ChatMessage {
       kind: 'error',
       payload: {
         kind: 'error',
-        message: readString(payload, 'message') || readString(payload, 'text'),
+        message: readString(payload, 'message') || '推荐流程执行失败',
       },
     };
   }
@@ -167,21 +167,13 @@ function recommendationPayloadFromRecord(
 ): RecommendationPayload {
   return {
     kind: 'recommendation',
-    text:
-      readString(payload, 'text') ||
-      readString(payload, 'explanation') ||
-      readString(payload, 'message') ||
-      readString(payload, 'fallback_reason'),
+    text: readString(payload, 'text'),
     movies: readMovies(payload),
   };
 }
 
 function readMovies(payload: Record<string, unknown>): RecommendationItem[] {
-  const raw = Array.isArray(payload.movies)
-    ? payload.movies
-    : Array.isArray(payload.recommendations)
-      ? payload.recommendations
-      : [];
+  const raw = Array.isArray(payload.movies) ? payload.movies : [];
 
   return raw.filter(
     (item): item is RecommendationItem =>

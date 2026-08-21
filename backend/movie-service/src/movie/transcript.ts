@@ -32,6 +32,12 @@ export type AssistantPayload =
 
 export type TurnStatus = "success" | "reject" | "error";
 
+/**
+ * LLM 汇总 JSON → 写入 CompleteTurn / 返回 HTTP 的推荐 payload。
+ * 解析失败仍返回 kind=recommendation，避免前端少一种分支。
+ * @param parsed tryParseJson 的结果，解析失败为 null
+ * @returns 可直接写入 messages.content 的推荐 payload
+ */
 export function recommendationFromParsed(
   parsed: Record<string, unknown> | null,
 ): RecommendationPayload {
@@ -45,17 +51,16 @@ export function recommendationFromParsed(
 
   return {
     kind: "recommendation",
-    text:
-      getStringValue(parsed.text) ||
-      getStringValue(parsed.explanation) ||
-      getStringValue(parsed.message) ||
-      getStringValue(parsed.fallback_reason),
+    text: getStringValue(parsed.text),
     movies: moviesFromParsed(parsed),
   };
 }
 
+/**
+ * 从解析后的对象取出片单数组。
+ * @param parsed 推荐 JSON 对象
+ * @returns movies；没有或不是数组则返回空数组
+ */
 export function moviesFromParsed(parsed: Record<string, unknown>): unknown[] {
-  if (Array.isArray(parsed.movies)) return parsed.movies;
-  if (Array.isArray(parsed.recommendations)) return parsed.recommendations;
-  return [];
+  return Array.isArray(parsed.movies) ? parsed.movies : [];
 }

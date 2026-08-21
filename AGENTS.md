@@ -191,7 +191,7 @@ Prompt 入口（改提示词只动这个文件）：
 - 通用文本、JSON、重试：用 `helpers.ts`，不要在 service 里再实现一遍。
 - 会话历史投影：用 `conversation-history.ts`。
 - 类型、genre/language 映射：用 `types.ts` / `constants.ts`。
-- LLM 结构化输出必须可被 `tryParseJson` 解析；成功回复的可见字段是 `text` + `movies`，拒绝/失败是 `message`。旧字段 `recommendations` / `explanation` 只在读取历史时兼容。
+- LLM 结构化输出必须可被 `tryParseJson` 解析；成功回复的可见字段是 `text` + `movies`，拒绝/失败是 `message`。
 - 跨服务契约先改 `backend/proto/*.proto`，再改 client/server 实现。
 - 日志用 `Logger`，关键路径已有 `query` / `intent` / `tool` 日志，保持同风格。
 - 不要提交 `.env`、密钥、`node_modules`、`dist`。

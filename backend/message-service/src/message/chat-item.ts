@@ -1,3 +1,8 @@
+/**
+ * 会话对外形状：一条 messages 行 → 一个 ChatItem。
+ * REST 直接返回；gRPC 再把 payload 序列化成 payload_json。
+ * 本文件不解析业务 kind，缺字段时只给默认值。
+ */
 import { MessageEntity } from "./entities";
 
 export interface ChatItem {
@@ -16,6 +21,12 @@ function asObject(value: unknown): Record<string, unknown> {
   return {};
 }
 
+/**
+ * 实体 → 前端/gRPC 用的扁平气泡。
+ * content 缺 kind 时：user → user_query，assistant → recommendation。
+ * @param message messages 表一行
+ * @returns 可直接展示的 ChatItem
+ */
 export function toChatItem(message: MessageEntity): ChatItem {
   const payload = asObject(message.content);
   const kind =
@@ -35,6 +46,13 @@ export function toChatItem(message: MessageEntity): ChatItem {
   };
 }
 
+/**
+ * gRPC 入参 JSON 字符串 → 对象。
+ * 必须是 object；解析失败或数组都抛错，label 方便定位是哪个字段。
+ * @param raw JSON 字符串
+ * @param label 字段名，用于报错
+ * @returns 解析后的对象
+ */
 export function parseJsonObject(raw: string, label: string): Record<string, unknown> {
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -50,6 +68,11 @@ export function parseJsonObject(raw: string, label: string): Record<string, unkn
   }
 }
 
+/**
+ * 从气泡 payload 取出可读正文。用户用 text，拒绝/失败用 message。
+ * @param payload messages.content
+ * @returns 正文；两个字段都没有则返回空串
+ */
 export function payloadText(payload: Record<string, unknown>): string {
   if (typeof payload.text === "string") return payload.text;
   if (typeof payload.message === "string") return payload.message;

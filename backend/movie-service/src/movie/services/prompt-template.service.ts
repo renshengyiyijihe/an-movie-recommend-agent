@@ -1,9 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
-import {
-  HistoryProjectionKind,
-  projectConversationHistory,
-} from "../conversation-history";
-import { ConversationHistoryItem } from "../types";
+import { projectConversationHistory } from "../conversation-history";
+import { ConversationHistoryItem, HistoryProjectionKind } from "../types";
 
 /**
  * Prompt模板服务

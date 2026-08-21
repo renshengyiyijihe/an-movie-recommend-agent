@@ -299,7 +299,7 @@ export class OrchestratorAgent {
         if (!parsed) {
           throw new Error("模型返回的推荐结果不是有效JSON");
         }
-        const movies = parsed.movies ?? parsed.recommendations;
+        const movies = parsed.movies;
         if (!Array.isArray(movies)) {
           throw new Error("模型返回的推荐结果不是有效JSON");
         }

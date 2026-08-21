@@ -36,10 +36,16 @@ export type TurnEventBody =
       message: string;
     };
 
+/**
+ * 工作流写 turn_events 的出口。movie.service 接到 gRPC，无 turnId 时用 noop。
+ */
 export interface TurnEventSink {
   record(body: TurnEventBody): Promise<void>;
 }
 
+/**
+ * StartTurn 失败、没有 turnId 时用，工作流照跑，不写库。
+ */
 export const noopTurnEventSink: TurnEventSink = {
   async record() {},
 };

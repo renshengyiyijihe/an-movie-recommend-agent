@@ -62,7 +62,18 @@ export interface RelationAgentResult {
 
 export type MessageRole = "user" | "assistant";
 
-/** LLM 历史里的一轮可见对话，只含投影用文本。 */
+/**
+ * 对话历史写入 prompt 的阶段。各阶段条数上限见 HISTORY_PROJECTION。
+ */
+export type HistoryProjectionKind =
+	| "intent"
+	| "planning"
+	| "search"
+	| "synthesis";
+
+/**
+ * LLM 历史里的一轮可见对话，只含投影用文本。
+ */
 export interface ConversationHistoryItem {
 	role: MessageRole;
 	content: string;

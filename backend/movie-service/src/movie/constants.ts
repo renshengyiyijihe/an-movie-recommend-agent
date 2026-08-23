@@ -29,10 +29,42 @@ export const HISTORY_PROJECTION = {
 
 // ========== TMDB 配置 ==========
 export const TMDB_CONSTANTS = {
-  /** 列表类工具单次返回的最大条数（控制进入汇总 prompt 的 token） */
+  /** 列表类工具未指定 max_results 时的条数。进模型的数量由 VIEW_CONSTANTS 控制。 */
   DEFAULT_MAX_RESULTS: 3,
+  /** 列表类工具 max_results 硬上限 */
+  MAX_RESULTS_LIMIT: 20,
+  /** person_detail 写入工作副本的作品条数上限（cast / crew 各一份） */
+  MAX_PERSON_CREDITS: 80,
+  /** movie_detail 写入工作副本的主演条数上限 */
+  MAX_MOVIE_CAST: 40,
+  /** movie_detail 写入工作副本的职员条数上限 */
+  MAX_MOVIE_CREW: 40,
   /** 默认语言 */
   DEFAULT_LANGUAGE: "zh-CN",
+} as const;
+
+/**
+ * 给模型看的视图上限。工作副本可以更完整。
+ */
+export const VIEW_CONSTANTS = {
+  /** 汇总视图中的影片条数 */
+  MOVIE_LIMIT: 8,
+  /** 显式打开作品表时写入视图的条数 */
+  CREDIT_LIMIT: 8,
+  /** 视图中人物传记的最大字符数 */
+  BIOGRAPHY_MAX_LENGTH: 180,
+  /** 工作副本里保留的简介最大字符数 */
+  OVERVIEW_STORE_MAX_LENGTH: 200,
+} as const;
+
+/**
+ * Relation 执行器上限。超出则本轮失败并回退 Search。
+ */
+export const RELATION_CONSTANTS = {
+  /** 单次计划最多解析的实体数 */
+  MAX_ENTITIES: 3,
+  /** discover 策略向 TMDB 取的条数 */
+  DISCOVER_MAX_RESULTS: 20,
 } as const;
 
 // ========== 消息相关常量 ==========

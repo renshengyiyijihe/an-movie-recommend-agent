@@ -3,6 +3,7 @@ import { ITool, ToolResult } from "./tool.interface";
 import { TmdbProvider } from "../../../model/tmdb.provider";
 import { TMDB_CONSTANTS } from "../../constants";
 import { commonToolSchema } from "./common";
+import { TOOL_NAME } from "../../types";
 
 /**
  * TMDB GET /search/person 搜索演职人员接口完整响应类型
@@ -88,7 +89,7 @@ export interface PersonSearchInput {
 export class PersonSearchTool implements ITool {
   private readonly logger = new Logger(PersonSearchTool.name);
 
-  name = "person_search";
+  name = TOOL_NAME.PERSON_SEARCH;
   description =
     "按演员、导演等演职人员姓名搜索 TMDB，返回人物 ID、姓名及代表作品，用于后续人物详情查询。";
 

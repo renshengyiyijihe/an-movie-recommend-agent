@@ -13,15 +13,17 @@ import { ConversationChatItem } from "./message.grpc";
 import { moviesFromParsed } from "./transcript";
 import {
   ConversationHistoryItem,
+  HISTORY_PROJECTION_KIND,
   HistoryProjectionKind,
+  MESSAGE_ROLE,
   MessageRole,
 } from "./types";
 
 const MAX_TURNS: Record<HistoryProjectionKind, number> = {
-  intent: HISTORY_PROJECTION.intentMaxTurns,
-  planning: HISTORY_PROJECTION.planningMaxTurns,
-  search: HISTORY_PROJECTION.searchMaxTurns,
-  synthesis: HISTORY_PROJECTION.synthesisMaxTurns,
+  [HISTORY_PROJECTION_KIND.INTENT]: HISTORY_PROJECTION.intentMaxTurns,
+  [HISTORY_PROJECTION_KIND.PLANNING]: HISTORY_PROJECTION.planningMaxTurns,
+  [HISTORY_PROJECTION_KIND.SEARCH]: HISTORY_PROJECTION.searchMaxTurns,
+  [HISTORY_PROJECTION_KIND.SYNTHESIS]: HISTORY_PROJECTION.synthesisMaxTurns,
 };
 
 /**
@@ -62,7 +64,7 @@ export function projectConversationHistory(
   return turns
     .slice(-MAX_TURNS[kind])
     .map((turn) => {
-      const label = turn.role === "user" ? "用户" : "AI";
+      const label = turn.role === MESSAGE_ROLE.USER ? "用户" : "AI";
       return `${label}: ${projectTurnContent(turn)}`;
     })
     .filter((line) => !line.endsWith(": "))
@@ -75,7 +77,7 @@ export function projectConversationHistory(
  * @returns 截断后的正文
  */
 function projectTurnContent(turn: ConversationHistoryItem): string {
-  if (turn.role === "assistant") {
+  if (turn.role === MESSAGE_ROLE.ASSISTANT) {
     return compactAssistantContent(turn.content);
   }
   return summarizeText(
@@ -136,7 +138,7 @@ function formatRecommendation(value: unknown): string {
  * @returns 合法角色，否则 undefined
  */
 function toMessageRole(value?: string): MessageRole | undefined {
-  if (value === "user" || value === "assistant") return value;
+  if (value === MESSAGE_ROLE.USER || value === MESSAGE_ROLE.ASSISTANT) return value;
   return undefined;
 }
 
@@ -157,7 +159,7 @@ function transcriptText(
     : null;
   if (!payload) return "";
 
-  if (role === "user") {
+  if (role === MESSAGE_ROLE.USER) {
     return getStringValue(payload.text);
   }
   if (payload.kind === "recommendation") {

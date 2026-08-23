@@ -1,6 +1,17 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { projectConversationHistory } from "../conversation-history";
-import { ConversationHistoryItem, HistoryProjectionKind } from "../types";
+import {
+  AGENT_TYPE,
+  ConversationHistoryItem,
+  HISTORY_PROJECTION_KIND,
+  HistoryProjectionKind,
+  INTENT_TYPE,
+  RELATION_ENTITY_TYPE,
+  RELATION_OPERATION,
+  RELATION_ROLE,
+  RELATION_STRATEGY,
+  VIEW_ANSWER,
+} from "../types";
 
 /**
  * Prompt模板服务
@@ -32,7 +43,8 @@ export class PromptTemplateService {
 6. \`poster_path\` 直接复制检索结果里的相对路径（如 "/xxx.jpg"），不要拼接域名；检索结果里没有就省略该字段，不要编造。
 7. \`reason\` 说明这部片为什么出现在本次回答里；\`text\` 直接回应用户问题，不要写成固定的“推荐说明”。
 8. 检索结果无法回答时，\`movies\` 返回空数组，原因写在 \`text\` 里。
-9. 只能输出纯 JSON，不要 Markdown、代码围栏或解释文字。
+9. 检索结果是精简视图，可能含 \`answer\`: \`movies\` | \`people\` | \`fact\`。按 \`answer\` 回答：事实题以 \`text\` 为主；人物题不要把人物 id 写进 \`movies\`。
+10. 只能输出纯 JSON，不要 Markdown、代码围栏或解释文字。
 
 ## 输出格式
 {
@@ -52,7 +64,7 @@ export class PromptTemplateService {
       user: `## 用户问题
 ${userMessage}
 
-${this.renderHistorySection(turns, "synthesis")}## 检索结果
+${this.renderHistorySection(turns, HISTORY_PROJECTION_KIND.SYNTHESIS)}## 检索结果
 ${agentEvidence}
 `,
     };
@@ -73,7 +85,7 @@ ${agentEvidence}
 
 ## 输出要求
 返回一个 JSON 对象，包含：
-- \`type\` (string) - "in_scope" 或 "out_of_scope"
+- \`type\` (string) - "${INTENT_TYPE.IN_SCOPE}" 或 "${INTENT_TYPE.OUT_OF_SCOPE}"
 - \`confidence\` (number) - 置信度 0-1
 - \`reason\` (string，可选) - 不在范围内的原因
 
@@ -96,7 +108,7 @@ ${agentEvidence}
 在范围内：
 \`\`\`json
 {
-  "type": "in_scope",
+  "type": "${INTENT_TYPE.IN_SCOPE}",
   "confidence": 0.95
 }
 \`\`\`
@@ -104,7 +116,7 @@ ${agentEvidence}
 不在范围内：
 \`\`\`json
 {
-  "type": "out_of_scope",
+  "type": "${INTENT_TYPE.OUT_OF_SCOPE}",
   "confidence": 0.9,
   "reason": "这个查询与电影和演员无关"
 }
@@ -115,7 +127,7 @@ ${agentEvidence}
 ${userMessage}
 \`\`\`
 
-${this.renderHistorySection(turns, "intent", true)}`,
+${this.renderHistorySection(turns, HISTORY_PROJECTION_KIND.INTENT, true)}`,
     };
   }
 
@@ -127,24 +139,61 @@ ${this.renderHistorySection(turns, "intent", true)}`,
     intentType: string,
     turns?: ConversationHistoryItem[],
   ): { system: string; user: string } {
+    const search = AGENT_TYPE.SEARCH;
+    const relation = AGENT_TYPE.RELATION;
+    const discover = RELATION_STRATEGY.DISCOVER;
+    const compute = RELATION_STRATEGY.COMPUTE;
+    const unsupported = RELATION_STRATEGY.UNSUPPORTED;
+    const person = RELATION_ENTITY_TYPE.PERSON;
+    const movie = RELATION_ENTITY_TYPE.MOVIE;
+    const cast = RELATION_ROLE.CAST;
+    const crew = RELATION_ROLE.CREW;
+    const any = RELATION_ROLE.ANY;
+    const intersect = RELATION_OPERATION.INTERSECT;
+    const union = RELATION_OPERATION.UNION;
+    const difference = RELATION_OPERATION.DIFFERENCE;
+    const movies = VIEW_ANSWER.MOVIES;
+    const people = VIEW_ANSWER.PEOPLE;
+    const fact = VIEW_ANSWER.FACT;
+
     return {
       system: `# 电影任务规划
 
 ## 任务
-根据用户意图，为当前请求选择需要执行的Agent。
+为当前请求选择一个 Agent。关系计划必须在这一次输出里给全，不要指望后续再分析。
 
-## 可用Agent
-- search: 电影、演员、导演信息查询和普通电影推荐
-- relation: 演员合作、导演作品关系、跨实体关系分析
+## 可用 Agent
+- ${search}：单人、单片、普通推荐、条件筛选。
+- ${relation}：多个具名人物或影片，需要合作、共同作品、交/并/差，或「某人是否出演某片」。
 
-## 输出要求
-只返回纯JSON，不要包含Markdown或解释文字。格式必须为：
-{
-  "agents": ["search"]
-}
+## 输出
+只返回纯 JSON。普通题：
+{"agents":["${search}"]}
 
-只能返回 search、relation。普通查询选择 search，涉及合作、共同作品或实体关系时选择 relation。
+关系题：
+{"agents":["${relation}"],"relation":{...}}
 
+## relation 字段
+- strategy: ${discover} | ${compute} | ${unsupported}
+- ${discover}：人 + 类型/年份/评分，或「谁和谁合作过」（可用 with_cast / with_crew / with_people 一次筛出）。
+- ${compute}：两部片的共同演员、作品表交/并/差、「X 有没有演过 Y」。
+- ${unsupported}：计数、排名、再跳一层、公司/系列。此时仍写 agents:["${search}"]，或 strategy=${unsupported}（服务端会改走 ${search}）。
+- entities: 最多 3 个。{name, type: ${person}|${movie}, role?: ${cast}|${crew}|${any}}
+- role：主演用 ${cast}，导演用 ${crew}，不限职务用 ${any} 或省略。
+- operation: ${intersect} | ${union} | ${difference}。compute 默认 ${intersect}。
+- answer: ${movies} | ${people} | ${fact}
+- filters 可选：genres（中文类型名）、year、voteAverageGte、excludeMovieNames
+- view 可选：includeCredits、includeBiography。默认不要打开。
+
+## 例子
+小李子和诺兰合作过哪些：
+{"agents":["${relation}"],"relation":{"strategy":"${discover}","entities":[{"name":"小李子","type":"${person}","role":"${cast}"},{"name":"诺兰","type":"${person}","role":"${crew}"}],"answer":"${movies}"}}
+
+《盗梦空间》和《星际穿越》的共同主演：
+{"agents":["${relation}"],"relation":{"strategy":"${compute}","entities":[{"name":"盗梦空间","type":"${movie}","role":"${cast}"},{"name":"星际穿越","type":"${movie}","role":"${cast}"}],"operation":"${intersect}","answer":"${people}"}}
+
+演过李安电影最多的演员：
+{"agents":["${search}"]}
 `,
       user: `## 用户意图
 ${intentType}
@@ -152,7 +201,7 @@ ${intentType}
 ## 用户消息
 ${userMessage}
 
-${this.renderHistorySection(turns, "planning")}
+${this.renderHistorySection(turns, HISTORY_PROJECTION_KIND.PLANNING)}
 `,
     };
   }
@@ -196,7 +245,7 @@ ${JSON.stringify(toolSchemas, null, 2)}
       user: `## 用户查询
 ${userMessage}
 
-${this.renderHistorySection(turns, "search")}
+${this.renderHistorySection(turns, HISTORY_PROJECTION_KIND.SEARCH)}
 `,
     };
   }

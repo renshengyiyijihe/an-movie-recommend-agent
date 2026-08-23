@@ -3,9 +3,12 @@ import {
   AgentType,
   ConversationHistoryItem,
   IntentClassification,
-  RelationshipType,
+  RelationPlan,
+  ResolvedEntity,
   SearchAgentResult,
+  AGENT_TYPE,
 } from "../types";
+import { WorkingSet } from "../working-set";
 import { noopTurnEventSink, TurnEventBody, TurnEventSink } from "../turn-events";
 
 export interface AgentPublicOutput {
@@ -15,8 +18,9 @@ export interface AgentPublicOutput {
 
 /**
  * 所有 Agent 都能读的状态。
- * 写入约定：Orchestrator 写 intent / plan / finalResult；
+ * 写入约定：Orchestrator 写 intent / plan / relationPlan / finalResult；
  * 各 Agent 只通过 runtime.publish() 写自己的公开结果。
+ * 完整检索数据进 workspace，不进 agentOutputs。
  */
 export interface SharedWorkflowState {
   readonly query: string;
@@ -24,6 +28,7 @@ export interface SharedWorkflowState {
   readonly turns: ConversationHistoryItem[];
   intent?: IntentClassification;
   plan: AgentType[];
+  relationPlan?: RelationPlan;
   readonly agentOutputs: Partial<Record<AgentType, AgentPublicOutput>>;
   finalResult?: string;
 }
@@ -35,24 +40,23 @@ export interface SearchPrivateState {
 }
 
 export interface RelationPrivateState {
-  entities: string[];
-  relationship: RelationshipType;
-  gatheredData?: string;
+  resolved: ResolvedEntity[];
   error?: string;
 }
 
 export type AgentLocalMap = {
-  search: SearchPrivateState;
-  relation: RelationPrivateState;
+  [AGENT_TYPE.SEARCH]: SearchPrivateState;
+  [AGENT_TYPE.RELATION]: RelationPrivateState;
 };
 
 /**
  * Agent 运行时视图：能读全部 shared，但 local 只有自己那一份。
- * 类型上拿不到其他 Agent 的私有袋。
+ * workspace 是本轮共享工作副本，请求结束即释放。
  */
 export interface AgentRuntime<TLocal> {
   readonly shared: SharedWorkflowState;
   readonly local: TLocal;
+  readonly workspace: WorkingSet;
   publish(output: AgentPublicOutput): void;
   record(body: TurnEventBody): Promise<void>;
 }
@@ -62,6 +66,7 @@ export interface AgentRuntime<TLocal> {
  */
 export class WorkflowContext {
   readonly shared: SharedWorkflowState;
+  readonly workspace: WorkingSet;
   private readonly locals: AgentLocalMap;
   private readonly events: TurnEventSink;
 
@@ -76,12 +81,10 @@ export class WorkflowContext {
       plan: [],
       agentOutputs: {},
     };
+    this.workspace = new WorkingSet();
     this.locals = {
-      search: { toolCalls: [] },
-      relation: {
-        entities: [],
-        relationship: "unknown",
-      },
+      [AGENT_TYPE.SEARCH]: { toolCalls: [] },
+      [AGENT_TYPE.RELATION]: { resolved: [] },
     };
     this.events = init.events ?? noopTurnEventSink;
   }
@@ -90,6 +93,7 @@ export class WorkflowContext {
     return {
       shared: this.shared,
       local: this.locals[agent],
+      workspace: this.workspace,
       publish: (output) => this.publish(agent, output),
       record: (body) => this.record(body),
     };

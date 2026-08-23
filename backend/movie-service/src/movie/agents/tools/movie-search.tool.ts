@@ -3,6 +3,7 @@ import { ITool, ToolResult } from "./tool.interface";
 import { TmdbProvider } from "../../../model/tmdb.provider";
 import { TMDB_CONSTANTS } from "../../constants";
 import { commonToolSchema } from "./common";
+import { TOOL_NAME } from "../../types";
 
 /**
  * TMDB GET /search/movie 搜索电影接口完整响应类型
@@ -64,7 +65,7 @@ export interface MovieSearchInput {
 export class MovieSearchTool implements ITool {
   private readonly logger = new Logger(MovieSearchTool.name);
 
-  name = "movie_search";
+  name = TOOL_NAME.MOVIE_SEARCH;
   description =
     "按电影名称或关键词搜索 TMDB 电影，返回电影 ID、片名、上映日期和简介，用于后续详情查询。";
 

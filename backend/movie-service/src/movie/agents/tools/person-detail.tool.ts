@@ -2,7 +2,9 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ITool, ToolResult } from "./tool.interface";
 import { TmdbProvider } from "../../../model/tmdb.provider";
 import { TMDB_CONSTANTS } from "../../constants";
+import { takeFirst } from "../../helpers";
 import { commonToolSchema } from "./common";
+import { TOOL_NAME } from "../../types";
 
 /**
  * TMDB GET /person/{person_id} 人物详情接口完整响应类型
@@ -113,7 +115,7 @@ export interface PersonDetailInput {
 export class PersonDetailTool implements ITool {
   private readonly logger = new Logger(PersonDetailTool.name);
 
-  name = "person_detail";
+  name = TOOL_NAME.PERSON_DETAIL;
   description =
     "根据 TMDB 演职人员 ID 查询人物简介、出生信息、代表作品，并可追加电影作品、图片和外部账号。需要先通过其他工具获取 人物ID 后才能使用。";
 
@@ -189,20 +191,38 @@ export class PersonDetailTool implements ITool {
 
       const personDetails = (await response.json()) as TmdbPersonDetailsResponse;
 
+      const movieCredits = personDetails.movie_credits;
       const simplifiedResult = {
         person_id: personDetails.id,
         name: personDetails.name,
-        original_name: personDetails.also_known_as,
-        gender: personDetails.gender,
         birthday: personDetails.birthday,
         deathday: personDetails.deathday,
         place_of_birth: personDetails.place_of_birth,
+        known_for_department: personDetails.known_for_department,
         biography: personDetails.biography,
-        movie_credits: personDetails.movie_credits?.cast.map((work) => ({
-          id: work.id,
-          title: work.title,
-          release_date: work.release_date,
-        })),
+        movie_credits: movieCredits
+          ? {
+              cast: takeFirst(movieCredits.cast, TMDB_CONSTANTS.MAX_PERSON_CREDITS).map(
+                (work) => ({
+                  id: work.id,
+                  title: work.title,
+                  release_date: work.release_date,
+                  poster_path: work.poster_path,
+                  character: work.character,
+                }),
+              ),
+              crew: takeFirst(movieCredits.crew, TMDB_CONSTANTS.MAX_PERSON_CREDITS).map(
+                (work) => ({
+                  id: work.id,
+                  title: work.title,
+                  release_date: work.release_date,
+                  poster_path: work.poster_path,
+                  job: work.job,
+                  department: work.department,
+                }),
+              ),
+            }
+          : undefined,
       };
 
       return {

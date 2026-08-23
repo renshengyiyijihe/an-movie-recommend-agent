@@ -2,7 +2,8 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ToolsRegistry } from "./tools/tools.registry";
 import { PromptTemplateService } from "../services/prompt-template.service";
 import { executeWithRetry, tryParseJson } from "../helpers";
-import { CompatibleModel, SearchAgentResult, ConversationHistoryItem } from "../types";
+import { AGENT_TYPE, CompatibleModel, ConversationHistoryItem, SearchAgentResult, VIEW_ANSWER, ViewSpec } from "../types";
+import { buildEvidenceView, toToolEventOutput, WorkingSet } from "../working-set";
 import { AgentRuntime, SearchPrivateState } from "./workflow-context";
 import { z } from "zod";
 
@@ -58,16 +59,30 @@ export class SearchAgent {
     runtime.local.toolCalls = result.tool_calls;
     runtime.local.reasoning = result.reasoning;
     runtime.local.error = result.error;
+
+    for (const call of result.tool_calls) {
+      runtime.workspace.ingestToolData(call.tool_name, call.output?.data);
+    }
     await this.recordToolCalls(runtime, result.tool_calls);
+
+    if (!result.success) {
+      runtime.publish({
+        success: false,
+        result: result.result,
+      });
+      return;
+    }
+
     runtime.publish({
-      success: result.success,
-      result: result.result,
+      success: true,
+      result: JSON.stringify(
+        buildEvidenceView(runtime.workspace, inferSearchViewSpec(runtime.workspace)),
+      ),
     });
   }
 
   /**
-   * 纯搜索执行，不碰 WorkflowContext。
-   * Relation 等调用方需要检索能力、但不能污染 Search 的 shared/local 时使用。
+   * 规划并执行工具。不读写 WorkflowContext；摄入工作副本由 execute 负责。
    */
   async run(
     model: CompatibleModel,
@@ -148,10 +163,10 @@ export class SearchAgent {
     for (const call of toolCalls) {
       await runtime.record({
         kind: "tool_call",
-        actor: "search",
+        actor: AGENT_TYPE.SEARCH,
         tool_name: call.tool_name,
         input: call.input,
-        output: call.output,
+        output: toToolEventOutput(call.output ?? {}),
       });
     }
   }
@@ -165,10 +180,10 @@ export class SearchAgent {
       throw new Error(`模型返回的工具计划无效: ${parsedPlan.error.message}`);
     }
 
-    const availableTools = new Map(
+    const availableTools = new Map<string, Record<string, any>>(
       this.toolsRegistry
         .getToolSchemas()
-        .map((tool) => [tool.name, tool.schema] as const),
+        .map((tool) => [tool.name, tool.schema]),
     );
     const toolCalls = parsedPlan.data.tool_calls.map((toolCall) => {
       const schema = availableTools.get(toolCall.tool_name);
@@ -264,4 +279,16 @@ export class SearchAgent {
     }
     return JSON.stringify(content ?? "");
   }
+}
+
+/**
+ * Search 没有单独的视图规划：有片单或作品表则按 movies，否则按人物事实。
+ * @param workspace 本轮已摄入的工作副本
+ */
+function inferSearchViewSpec(workspace: WorkingSet): ViewSpec {
+  const hasMovies =
+    workspace.getMovieIds().length > 0 ||
+    workspace.listMovieIds().length > 0 ||
+    workspace.listPeople().some((person) => person.credits.length > 0);
+  return { answer: hasMovies ? VIEW_ANSWER.MOVIES : VIEW_ANSWER.FACT };
 }

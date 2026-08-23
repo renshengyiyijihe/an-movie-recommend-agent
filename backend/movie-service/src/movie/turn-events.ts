@@ -1,4 +1,4 @@
-import { AgentType, IntentClassification } from "./types";
+import { AgentType, IntentClassification, RelationPlan } from "./types";
 
 export type WorkflowActor = "orchestrator" | AgentType;
 
@@ -16,10 +16,11 @@ export type TurnEventBody =
       kind: "plan";
       actor: "orchestrator";
       agents: AgentType[];
+      relation?: RelationPlan;
     }
   | {
       kind: "tool_call";
-      actor: "search";
+      actor: AgentType;
       tool_name: string;
       input: Record<string, unknown>;
       output: unknown;

@@ -2,7 +2,9 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ITool, ToolResult } from "./tool.interface";
 import { TmdbProvider } from "../../../model/tmdb.provider";
 import { TMDB_CONSTANTS } from "../../constants";
+import { takeFirst } from "../../helpers";
 import { commonToolSchema } from "./common";
+import { TOOL_NAME } from "../../types";
 
 
 /**
@@ -159,7 +161,7 @@ export interface MovieDetailInput {
 export class MovieDetailTool implements ITool {
   private readonly logger = new Logger(MovieDetailTool.name);
 
-  name = "movie_detail";
+  name = TOOL_NAME.MOVIE_DETAIL;
   description =
     "根据 TMDB 电影 ID 查询电影详情，包括片名、上映日期、简介、海报，并可追加演职员、视频等资源；需要先通过其他工具获取 电影ID 后才能使用。";
 
@@ -237,6 +239,7 @@ export class MovieDetailTool implements ITool {
 
       const movieDetails = (await response.json()) as TmdbMovieDetailsResponse;
 
+      const credits = movieDetails.credits;
       const simplifiedResult = {
         movie_id: movieDetails.id,
         title: movieDetails.title,
@@ -244,7 +247,27 @@ export class MovieDetailTool implements ITool {
         release_date: movieDetails.release_date,
         overview: movieDetails.overview,
         poster_path: movieDetails.poster_path,
-      }
+        vote_average: movieDetails.vote_average,
+        credits: credits
+          ? {
+              cast: takeFirst(credits.cast, TMDB_CONSTANTS.MAX_MOVIE_CAST).map(
+                (person) => ({
+                  id: person.id,
+                  name: person.name,
+                  character: person.character,
+                }),
+              ),
+              crew: takeFirst(credits.crew, TMDB_CONSTANTS.MAX_MOVIE_CREW).map(
+                (person) => ({
+                  id: person.id,
+                  name: person.name,
+                  job: person.job,
+                  department: person.department,
+                }),
+              ),
+            }
+          : undefined,
+      };
 
       return {
         success: true,

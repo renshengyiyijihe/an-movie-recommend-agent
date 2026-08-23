@@ -1,6 +1,8 @@
 /**
  * Tool执行结果统一格式
  */
+import { ToolName } from "../../types";
+
 export interface ToolResult<T = any> {
   /** 执行是否成功 */
   success: boolean;
@@ -20,8 +22,8 @@ export interface ToolResult<T = any> {
  * Tool基础接口
  */
 export interface ITool {
-  /** Tool名称 */
-  name: string;
+  /** 已注册工具名，取值见 `TOOL_NAME` */
+  name: ToolName;
   /** Tool描述 */
   description: string;
   /** Tool的输入schema（用于LLM function calling） */

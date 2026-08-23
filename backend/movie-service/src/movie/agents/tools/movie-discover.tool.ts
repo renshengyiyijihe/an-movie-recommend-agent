@@ -2,7 +2,9 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ITool, ToolResult } from "./tool.interface";
 import { TmdbProvider } from "../../../model/tmdb.provider";
 import { GENRE_TO_TMDB_ID, TMDB_CONSTANTS } from "../../constants";
+import { clampMaxResults } from "../../helpers";
 import { commonToolSchema } from "./common";
+import { TOOL_NAME } from "../../types";
 
 /**
  * TMDB GET /discover/movie 按条件筛选电影接口完整响应类型
@@ -98,17 +100,23 @@ export type CurrentDiscoverMovieInput = Pick<
   | "with_genres"
   | "without_genres"
   | "primary_release_year"
+  | "vote_average_gte"
+  | "with_cast"
+  | "with_crew"
   | "with_people"
   | "with_original_language"
   | "with_runtime_gte"
   | "with_runtime_lte"
->;
+> & {
+  /** 返回条数上限，默认 3，硬上限见 TMDB_CONSTANTS.MAX_RESULTS_LIMIT */
+  max_results?: number;
+};
 
 @Injectable()
 export class MovieDiscoverTool implements ITool {
   private readonly logger = new Logger(MovieDiscoverTool.name);
 
-  name = "movie_discover";
+  name = TOOL_NAME.MOVIE_DISCOVER;
   description =
     "按类型、上映时间、评分、片长、原生语言、演职人员等条件筛选电影，并支持按热度、评分、票房、上映日期等方式排序。适用于电影推荐和条件筛选，例如“推荐高分科幻电影”“推荐诺兰参与且片长超过2小时的电影”。不适用于根据具体电影名称查询电影信息；已知或明确指定电影名称时，应使用 movie_search 工具。";
 
@@ -192,11 +200,26 @@ export class MovieDiscoverTool implements ITool {
         type: "integer",
         description: "筛选主要上映年份，例如 2023",
       },
+      with_cast: {
+        type: "string",
+        description:
+          "必须出现在主演中的 person_id。多个 ID 用英文逗号分隔，表示同时满足（AND）。",
+      },
+      with_crew: {
+        type: "string",
+        description:
+          "必须出现在职员中的 person_id（含导演）。多个 ID 用英文逗号分隔，表示同时满足（AND）。",
+      },
       with_people: {
         type: "string",
         description:
-          "包含的任意演职人员 person_id（演员或导演均可，多个 ID 用逗号分隔）",
+          "必须出现在演职员中的 person_id（不限职务）。多个 ID 用英文逗号分隔，表示同时满足（AND）。",
       },
+      vote_average_gte: {
+        type: "number",
+        description: "最低平均评分，范围 0–10，例如 7.5",
+      },
+      max_results: commonToolSchema.max_results,
       with_original_language: {
         type: "string",
         description: "电影原声语言代码 (ISO 639-1)，如 'en'、'zh'、'ja'、'ko'",
@@ -215,6 +238,11 @@ export class MovieDiscoverTool implements ITool {
       const page = input.page && input.page > 0 ? input.page : 1;
       const includeAdult = input.include_adult ?? false;
       const sortBy = `${input.sort_by || "popularity"}.${input.sort_order || "desc"}`;
+      const maxResults = clampMaxResults(
+        input.max_results,
+        TMDB_CONSTANTS.DEFAULT_MAX_RESULTS,
+        TMDB_CONSTANTS.MAX_RESULTS_LIMIT,
+      );
 
       this.logger.log(
         `[MovieDiscoverTool] Discovering movies: language=${language}, page=${page}, sort_by=${sortBy}, genres=${input.with_genres || "none"}`,
@@ -229,6 +257,8 @@ export class MovieDiscoverTool implements ITool {
 
       const directMappings: Array<[keyof CurrentDiscoverMovieInput, string]> = [
         ["primary_release_year", "primary_release_year"],
+        ["with_cast", "with_cast"],
+        ["with_crew", "with_crew"],
         ["with_people", "with_people"],
         ["with_original_language", "with_original_language"],
         ["with_runtime_gte", "with_runtime.gte"],
@@ -239,6 +269,10 @@ export class MovieDiscoverTool implements ITool {
         if (input[inputKey] !== undefined && input[inputKey] !== null) {
           params.set(apiKey, String(input[inputKey]).trim());
         }
+      }
+
+      if (input.vote_average_gte !== undefined && input.vote_average_gte !== null) {
+        params.set("vote_average.gte", String(input.vote_average_gte));
       }
 
       if (Array.isArray(input.with_genres) && input.with_genres.length > 0) {
@@ -284,15 +318,14 @@ export class MovieDiscoverTool implements ITool {
         page: searchResult.page,
         total_pages: searchResult.total_pages,
         total_results: searchResult.total_results,
-        results: searchResult.results
-          .slice(0, TMDB_CONSTANTS.DEFAULT_MAX_RESULTS)
-          .map((movie) => ({
-            movie_id: movie.id,
-            title: movie.title,
-            release_date: movie.release_date,
-            overview: movie.overview,
-            poster_path: movie.poster_path,
-          })),
+        results: searchResult.results.slice(0, maxResults).map((movie) => ({
+          movie_id: movie.id,
+          title: movie.title,
+          release_date: movie.release_date,
+          overview: movie.overview,
+          poster_path: movie.poster_path,
+          vote_average: movie.vote_average,
+        })),
       };
 
       return {

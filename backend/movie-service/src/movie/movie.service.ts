@@ -15,7 +15,7 @@ import {
   recommendationFromParsed,
 } from "./transcript";
 import { noopTurnEventSink, TurnEventSink } from "./turn-events";
-import { ConversationHistoryItem } from "./types";
+import { ConversationHistoryItem, INTENT_TYPE } from "./types";
 
 interface RecommendPayload {
   message: string;
@@ -59,7 +59,7 @@ export class MovieService {
         `[Orchestrator] intentType=${orchestratorResult.intent_type}, success=${orchestratorResult.success}`,
       );
 
-      if (orchestratorResult.intent_type === "out_of_scope") {
+      if (orchestratorResult.intent_type === INTENT_TYPE.OUT_OF_SCOPE) {
         const rejectPayload: RejectPayload = {
           kind: "reject",
           message:

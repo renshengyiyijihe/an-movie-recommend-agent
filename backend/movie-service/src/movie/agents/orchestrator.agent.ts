@@ -5,13 +5,16 @@ import { WORKFLOW_CONSTANTS } from "../constants";
 import { RelationAgent } from "./relation.agent";
 import { SearchAgent } from "./search.agent";
 import { WorkflowContext } from "./workflow-context";
+import { parseTaskPlan } from "../task-plan";
 import {
-  AGENT_TYPES,
+  AGENT_TYPE,
   AgentExecutionResult,
   AgentType,
   CompatibleModel,
+  INTENT_TYPE,
   IntentClassification,
   OrchestratorResult,
+  TaskPlan,
 } from "../types";
 
 type AgentExecutor = (
@@ -37,10 +40,10 @@ export class OrchestratorAgent {
     private readonly promptTemplateService: PromptTemplateService,
   ) {
     this.agentExecutors = {
-      search: (model, ctx) =>
-        this.searchAgent.execute(model, ctx.forAgent("search")),
-      relation: (model, ctx) =>
-        this.relationAgent.execute(model, ctx.forAgent("relation")),
+      [AGENT_TYPE.SEARCH]: (model, ctx) =>
+        this.searchAgent.execute(model, ctx.forAgent(AGENT_TYPE.SEARCH)),
+      [AGENT_TYPE.RELATION]: (model, ctx) =>
+        this.relationAgent.execute(model, ctx.forAgent(AGENT_TYPE.RELATION)),
     };
   }
 
@@ -61,41 +64,45 @@ export class OrchestratorAgent {
         `[Orchestrator] Intent classification: ${ctx.shared.intent.type}`,
       );
 
-      if (ctx.shared.intent.type === "out_of_scope") {
+      if (ctx.shared.intent.type === INTENT_TYPE.OUT_OF_SCOPE) {
         ctx.shared.finalResult =
           ctx.shared.intent.reason || "这个查询与电影或演员无关";
         return {
           success: false,
-          intent_type: "out_of_scope",
+          intent_type: INTENT_TYPE.OUT_OF_SCOPE,
           result: ctx.shared.finalResult,
           agents_used: [],
         };
       }
 
       // 意图无法识别时立即短路，不再浪费后续规划/检索/汇总的调用。
-      if (ctx.shared.intent.type === "unknown") {
+      if (ctx.shared.intent.type === INTENT_TYPE.UNKNOWN) {
         ctx.shared.finalResult =
           ctx.shared.intent.reason || "无法识别本次查询的意图，请换个说法再试";
         return {
           success: false,
-          intent_type: "unknown",
+          intent_type: INTENT_TYPE.UNKNOWN,
           result: ctx.shared.finalResult,
           agents_used: [],
         };
       }
 
-      ctx.shared.plan = await this.planTask(model, ctx);
+      const taskPlan = await this.planTask(model, ctx);
+      ctx.shared.plan = taskPlan.agents;
+      ctx.shared.relationPlan = taskPlan.relation;
       await ctx.record({
         kind: "plan",
         actor: "orchestrator",
         agents: ctx.shared.plan,
+        relation: ctx.shared.relationPlan,
       });
       await this.executeAgentPlan(model, ctx);
+      await this.fallbackSearchIfRelationFailed(model, ctx);
       ctx.shared.finalResult = await this.synthesizeResults(model, ctx);
 
       return {
         success: true,
-        intent_type: "in_scope",
+        intent_type: INTENT_TYPE.IN_SCOPE,
         result: ctx.shared.finalResult,
         agents_used: ctx.shared.plan,
         agent_results: ctx.getPublicResults(),
@@ -111,7 +118,7 @@ export class OrchestratorAgent {
       });
       return {
         success: false,
-        intent_type: "unknown",
+        intent_type: INTENT_TYPE.UNKNOWN,
         result: ctx.shared.finalResult,
         agents_used: ctx.shared.plan,
         error: message,
@@ -141,9 +148,13 @@ export class OrchestratorAgent {
           : JSON.stringify(response.content),
       );
 
-      if (!result || !["in_scope", "out_of_scope"].includes(result.type)) {
+      if (
+        !result ||
+        (result.type !== INTENT_TYPE.IN_SCOPE &&
+          result.type !== INTENT_TYPE.OUT_OF_SCOPE)
+      ) {
         return {
-          type: "unknown",
+          type: INTENT_TYPE.UNKNOWN,
           reason: "模型返回的意图分类结果无效",
           confidence: 0,
         };
@@ -156,7 +167,7 @@ export class OrchestratorAgent {
       };
     } catch (error) {
       return {
-        type: "unknown",
+        type: INTENT_TYPE.UNKNOWN,
         reason: error instanceof Error ? error.message : String(error),
         confidence: 0,
       };
@@ -164,24 +175,24 @@ export class OrchestratorAgent {
   }
 
   /**
-   * 任务规划 - 根据意图决定调用哪些agent
+   * 任务规划。relation 不可用时 parseTaskPlan 会收成 search。
    */
   private async planTask(
     model: CompatibleModel,
     ctx: WorkflowContext,
-  ): Promise<AgentType[]> {
+  ): Promise<TaskPlan> {
     try {
       const messages = this.promptTemplateService.getTaskPlanningPrompt(
         ctx.shared.query,
-        ctx.shared.intent?.type ?? "unknown",
+        ctx.shared.intent?.type ?? INTENT_TYPE.UNKNOWN,
         ctx.shared.turns,
       );
-      const parsed = await executeWithRetry(async () => {
+      return await executeWithRetry(async () => {
         const response = await model.invoke([
           ["system", messages.system],
           ["user", messages.user],
         ]);
-        const result = tryParseJson<{ agents?: unknown }>(
+        const result = tryParseJson(
           typeof response.content === "string"
             ? response.content
             : JSON.stringify(response.content),
@@ -189,13 +200,8 @@ export class OrchestratorAgent {
         if (!result) {
           throw new Error("模型返回的任务规划不是有效JSON");
         }
-        const agents = this.validateAgentPlan(result.agents);
-        if (agents.length === 0) {
-          throw new Error("模型返回了空的或无效的Agent计划");
-        }
-        return agents;
+        return parseTaskPlan(result);
       });
-      return parsed;
     } catch (error) {
       this.logger.warn(
         `Task planning failed after retries: ${error instanceof Error ? error.message : String(error)}`,
@@ -204,24 +210,42 @@ export class OrchestratorAgent {
     }
   }
 
-  private validateAgentPlan(value: unknown): AgentType[] {
-    if (!Array.isArray(value) || value.length === 0) {
-      return [];
+  /**
+   * Relation 失败且本轮还没跑过 Search 时，补一次 Search，不新开规划。
+   */
+  private async fallbackSearchIfRelationFailed(
+    model: CompatibleModel,
+    ctx: WorkflowContext,
+  ): Promise<void> {
+    if (!ctx.shared.plan.includes(AGENT_TYPE.RELATION)) return;
+    if (ctx.shared.agentOutputs[AGENT_TYPE.RELATION]?.success) return;
+    if (ctx.shared.agentOutputs[AGENT_TYPE.SEARCH]) return;
+
+    this.logger.warn("[Orchestrator] Relation failed, falling back to search");
+    ctx.shared.plan = [...ctx.shared.plan, AGENT_TYPE.SEARCH];
+    await this.agentExecutors[AGENT_TYPE.SEARCH](model, ctx);
+
+    const searchOutput = ctx
+      .getPublicResults()
+      .find((item) => item.agent === AGENT_TYPE.SEARCH);
+    if (!searchOutput) {
+      ctx.publish(AGENT_TYPE.SEARCH, {
+        success: false,
+        result: "Agent search 未发布公开结果",
+      });
     }
-
-    if (!value.every((agent) => this.isAgentType(agent))) {
-      this.logger.warn(`Invalid agent plan: ${JSON.stringify(value)}`);
-      return [];
-    }
-
-    return Array.from(new Set(value));
-  }
-
-  private isAgentType(value: unknown): value is AgentType {
-    return (
-      typeof value === "string" &&
-      (AGENT_TYPES as readonly string[]).includes(value)
-    );
+    const recorded =
+      ctx.getPublicResults().find((item) => item.agent === AGENT_TYPE.SEARCH) ?? {
+        agent: AGENT_TYPE.SEARCH,
+        success: false,
+        result: "",
+      };
+    await ctx.record({
+      kind: "agent_result",
+      actor: AGENT_TYPE.SEARCH,
+      success: recorded.success,
+      result: this.parseAgentResult(recorded.result),
+    });
   }
 
   /**

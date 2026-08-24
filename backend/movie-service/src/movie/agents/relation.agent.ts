@@ -1,6 +1,14 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { RELATION_CONSTANTS } from "../constants";
-import { asArray, asRecord, readFiniteNumber, uniqueIds } from "../helpers";
+import {
+  asArray,
+  asRecord,
+  getStringValue,
+  normalizeText,
+  readFiniteNumber,
+  uniqueIds,
+  yearFromReleaseDate,
+} from "../helpers";
 import {
   AGENT_TYPE,
   CompatibleModel,
@@ -63,7 +71,11 @@ export class RelationAgent {
     );
 
     try {
-      const resolved = await this.resolveEntities(plan.entities, runtime);
+      const resolved = await this.resolveEntities(
+        plan.entities,
+        runtime,
+        plan.filters?.year,
+      );
       runtime.local.resolved = resolved;
 
       if (plan.strategy === RELATION_STRATEGY.DISCOVER) {
@@ -101,6 +113,7 @@ export class RelationAgent {
   private async resolveEntities(
     entities: RelationPlan["entities"],
     runtime: AgentRuntime<RelationPrivateState>,
+    year?: number,
   ): Promise<ResolvedEntity[]> {
     const resolved: ResolvedEntity[] = [];
     for (const entity of entities.slice(0, RELATION_CONSTANTS.MAX_ENTITIES)) {
@@ -109,11 +122,11 @@ export class RelationAgent {
         const data = asRecord(
           await this.callTool(runtime, TOOL_NAME.PERSON_SEARCH, { query: entity.name }),
         );
-        const first = asRecord(asArray(data?.results)[0]);
-        const id = readFiniteNumber(first?.person_id ?? first?.id);
-        if (id === undefined || id <= 0) {
-          throw new Error(`无法解析人物: ${entity.name}`);
-        }
+        const id = pickResolvedId(
+          asArray(data?.results),
+          entity.name,
+          RELATION_ENTITY_TYPE.PERSON,
+        );
         resolved.push({
           mention: entity.name,
           type: RELATION_ENTITY_TYPE.PERSON,
@@ -124,13 +137,17 @@ export class RelationAgent {
       }
 
       const data = asRecord(
-        await this.callTool(runtime, TOOL_NAME.MOVIE_SEARCH, { query: entity.name }),
+        await this.callTool(runtime, TOOL_NAME.MOVIE_SEARCH, {
+          query: entity.name,
+          year: year !== undefined ? String(year) : undefined,
+        }),
       );
-      const first = asRecord(asArray(data?.results)[0]);
-      const id = readFiniteNumber(first?.movie_id ?? first?.id);
-      if (id === undefined || id <= 0) {
-        throw new Error(`无法解析影片: ${entity.name}`);
-      }
+      const id = pickResolvedId(
+        asArray(data?.results),
+        entity.name,
+        RELATION_ENTITY_TYPE.MOVIE,
+        year,
+      );
       resolved.push({
         mention: entity.name,
         type: RELATION_ENTITY_TYPE.MOVIE,
@@ -435,4 +452,89 @@ function idsForRole(people: ResolvedEntity[], role: RelationRole): number[] {
 
 function joinIds(ids: number[]): string | undefined {
   return ids.length ? ids.join(",") : undefined;
+}
+
+/**
+ * 从搜索结果里挑一个 TMDB id。精确名优先，其次年份，再比热度；无法唯一确定则失败。
+ * @param results person_search / movie_search 的 results
+ * @param mention 规划里的称呼
+ * @param kind person 或 movie
+ * @param year 影片可选上映年
+ * @returns 选中的 id
+ * @example
+ * `[{ movie_id: 27205, title: "盗梦空间", popularity: 80 }, { movie_id: 9, title: "盗梦空间：前传", popularity: 10 }]`
+ * + `"盗梦空间"` → `27205`
+ *
+ * `[{ person_id: 1, name: "张伟", popularity: 1.2 }, { person_id: 2, name: "张伟", popularity: 1.1 }]`
+ * + `"张伟"` → 抛「无法唯一解析人物: 张伟」
+ */
+function pickResolvedId(
+  results: unknown[],
+  mention: string,
+  kind:
+    | typeof RELATION_ENTITY_TYPE.PERSON
+    | typeof RELATION_ENTITY_TYPE.MOVIE,
+  year?: number,
+): number {
+  const label = kind === RELATION_ENTITY_TYPE.PERSON ? "人物" : "影片";
+  let rows = results
+    .map((item) => asRecord(item))
+    .filter((row): row is Record<string, unknown> => Boolean(row));
+
+  if (year !== undefined && kind === RELATION_ENTITY_TYPE.MOVIE) {
+    const yearRows = rows.filter(
+      (row) => yearFromReleaseDate(getStringValue(row.release_date)) === String(year),
+    );
+    if (yearRows.length === 1) return requireEntityId(yearRows[0], kind, mention);
+    if (yearRows.length > 1) rows = yearRows;
+  }
+
+  const needle = normalizeText(mention).toLowerCase();
+  const exact = rows.filter((row) => entityNames(row).includes(needle));
+  const pool = exact.length > 0 ? exact : rows;
+  if (pool.length === 0) {
+    throw new Error(`无法解析${label}: ${mention}`);
+  }
+  if (pool.length === 1) {
+    return requireEntityId(pool[0], kind, mention);
+  }
+
+  const ranked = [...pool].sort(
+    (left, right) => entityPopularity(right) - entityPopularity(left),
+  );
+  const top = entityPopularity(ranked[0]);
+  const second = entityPopularity(ranked[1]);
+  if (top > 0 && top >= second * 3) {
+    return requireEntityId(ranked[0], kind, mention);
+  }
+  throw new Error(`无法唯一解析${label}: ${mention}`);
+}
+
+function entityNames(row: Record<string, unknown>): string[] {
+  return [row.name, row.title, row.original_title, row.original_name]
+    .map((value) => normalizeText(getStringValue(value)).toLowerCase())
+    .filter(Boolean);
+}
+
+function entityPopularity(row: Record<string, unknown>): number {
+  return readFiniteNumber(row.popularity) ?? 0;
+}
+
+function requireEntityId(
+  row: Record<string, unknown>,
+  kind:
+    | typeof RELATION_ENTITY_TYPE.PERSON
+    | typeof RELATION_ENTITY_TYPE.MOVIE,
+  mention: string,
+): number {
+  const id = readFiniteNumber(
+    kind === RELATION_ENTITY_TYPE.PERSON
+      ? (row.person_id ?? row.id)
+      : (row.movie_id ?? row.id),
+  );
+  if (id === undefined || id <= 0) {
+    const label = kind === RELATION_ENTITY_TYPE.PERSON ? "人物" : "影片";
+    throw new Error(`无法解析${label}: ${mention}`);
+  }
+  return id;
 }

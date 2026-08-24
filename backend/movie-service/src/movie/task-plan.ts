@@ -13,7 +13,6 @@ import {
   AgentType,
   RELATION_ENTITY_TYPE,
   RELATION_ENTITY_TYPES,
-  RELATION_OPERATION,
   RELATION_OPERATIONS,
   RELATION_ROLES,
   RELATION_STRATEGIES,
@@ -126,21 +125,23 @@ export function parseTaskPlan(value: unknown): TaskPlan {
 export function isUsableRelationPlan(plan: RelationPlan): boolean {
   if (plan.strategy === RELATION_STRATEGY.UNSUPPORTED) return false;
   if (plan.entities.length === 0) return false;
+  const people = plan.entities.filter(
+    (entity) => entity.type === RELATION_ENTITY_TYPE.PERSON,
+  );
+  const movies = plan.entities.filter(
+    (entity) => entity.type === RELATION_ENTITY_TYPE.MOVIE,
+  );
+
   if (plan.strategy === RELATION_STRATEGY.DISCOVER) {
-    return plan.entities.some((entity) => entity.type === RELATION_ENTITY_TYPE.PERSON);
-  }
-  if (
-    plan.operation === RELATION_OPERATION.DIFFERENCE ||
-    plan.operation === RELATION_OPERATION.UNION
-  ) {
-    return plan.entities.length >= 2;
+    return people.length > 0;
   }
   if (plan.answer === VIEW_ANSWER.FACT) {
-    const people = plan.entities.filter((entity) => entity.type === RELATION_ENTITY_TYPE.PERSON);
-    const movies = plan.entities.filter((entity) => entity.type === RELATION_ENTITY_TYPE.MOVIE);
     return people.length === 1 && movies.length === 1;
   }
-  return plan.entities.length >= 2;
+  return (
+    (people.length >= 2 && movies.length === 0) ||
+    (people.length === 0 && movies.length >= 2)
+  );
 }
 
 /**

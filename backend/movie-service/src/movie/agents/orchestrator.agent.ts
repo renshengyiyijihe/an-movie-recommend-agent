@@ -1,6 +1,14 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PromptTemplateService } from "../services/prompt-template.service";
-import { executeWithRetry, tryParseJson, truncateText } from "../helpers";
+import { RetryableFormatError } from "../errors/retryable-format.error";
+import {
+  asRecord,
+  executeWithRetry,
+  getStringValue,
+  readFiniteNumber,
+  tryParseJson,
+  truncateText,
+} from "../helpers";
 import { WORKFLOW_CONSTANTS } from "../constants";
 import { RelationAgent } from "./relation.agent";
 import { SearchAgent } from "./search.agent";
@@ -98,6 +106,27 @@ export class OrchestratorAgent {
       });
       await this.executeAgentPlan(model, ctx);
       await this.fallbackSearchIfRelationFailed(model, ctx);
+
+      const successfulResults = ctx
+        .getPublicResults()
+        .filter((result) => result.success);
+      if (successfulResults.length === 0) {
+        const failureText =
+          ctx
+            .getPublicResults()
+            .map((result) => result.result)
+            .filter(Boolean)
+            .join("\n") || "检索失败，无法完成本次查询";
+        ctx.shared.finalResult = failureText;
+        return {
+          success: false,
+          intent_type: INTENT_TYPE.IN_SCOPE,
+          result: failureText,
+          agents_used: ctx.shared.plan,
+          agent_results: ctx.getPublicResults(),
+        };
+      }
+
       ctx.shared.finalResult = await this.synthesizeResults(model, ctx);
 
       return {
@@ -118,7 +147,7 @@ export class OrchestratorAgent {
       });
       return {
         success: false,
-        intent_type: INTENT_TYPE.UNKNOWN,
+        intent_type: ctx.shared.intent?.type ?? INTENT_TYPE.IN_SCOPE,
         result: ctx.shared.finalResult,
         agents_used: ctx.shared.plan,
         error: message,
@@ -134,43 +163,46 @@ export class OrchestratorAgent {
     ctx: WorkflowContext,
   ): Promise<IntentClassification> {
     try {
-      const messages = this.promptTemplateService.getIntentClassificationPrompt(
-        ctx.shared.query,
-        ctx.shared.turns,
-      );
-      const response = await model.invoke([
-        ["system", messages.system],
-        ["user", messages.user],
-      ]);
-      const result = tryParseJson<IntentClassification>(
-        typeof response.content === "string"
-          ? response.content
-          : JSON.stringify(response.content),
-      );
+      return await executeWithRetry(async () => {
+        const messages =
+          this.promptTemplateService.getIntentClassificationPrompt(
+            ctx.shared.query,
+            ctx.shared.turns,
+          );
+        const response = await model.invoke([
+          ["system", messages.system],
+          ["user", messages.user],
+        ]);
+        const result = tryParseJson<IntentClassification>(
+          typeof response.content === "string"
+            ? response.content
+            : JSON.stringify(response.content),
+          "intent",
+        );
 
-      if (
-        !result ||
-        (result.type !== INTENT_TYPE.IN_SCOPE &&
-          result.type !== INTENT_TYPE.OUT_OF_SCOPE)
-      ) {
+        if (
+          !result ||
+          (result.type !== INTENT_TYPE.IN_SCOPE &&
+            result.type !== INTENT_TYPE.OUT_OF_SCOPE)
+        ) {
+          throw new RetryableFormatError("模型返回的意图分类结果无效");
+        }
+
+        return {
+          type: result.type,
+          confidence: Math.max(0, Math.min(1, Number(result.confidence) || 0)),
+          reason: result.reason,
+        };
+      });
+    } catch (error) {
+      if (error instanceof RetryableFormatError) {
         return {
           type: INTENT_TYPE.UNKNOWN,
-          reason: "模型返回的意图分类结果无效",
+          reason: error.message,
           confidence: 0,
         };
       }
-
-      return {
-        type: result.type,
-        confidence: Math.max(0, Math.min(1, Number(result.confidence) || 0)),
-        reason: result.reason,
-      };
-    } catch (error) {
-      return {
-        type: INTENT_TYPE.UNKNOWN,
-        reason: error instanceof Error ? error.message : String(error),
-        confidence: 0,
-      };
+      throw error;
     }
   }
 
@@ -196,11 +228,20 @@ export class OrchestratorAgent {
           typeof response.content === "string"
             ? response.content
             : JSON.stringify(response.content),
+          "plan",
         );
         if (!result) {
-          throw new Error("模型返回的任务规划不是有效JSON");
+          throw new RetryableFormatError("模型返回的任务规划不是有效JSON");
         }
-        return parseTaskPlan(result);
+        try {
+          return parseTaskPlan(result);
+        } catch (parseError) {
+          throw new RetryableFormatError(
+            parseError instanceof Error
+              ? parseError.message
+              : String(parseError),
+          );
+        }
       });
     } catch (error) {
       this.logger.warn(
@@ -299,27 +340,15 @@ export class OrchestratorAgent {
     model: CompatibleModel,
     ctx: WorkflowContext,
   ): Promise<string> {
-    const emptyResult = (text: string) =>
-      JSON.stringify({
-        text,
-        movies: [],
-      });
-
     const agentResults = ctx.getPublicResults();
     const successfulResults = agentResults.filter((result) => result.success);
-    if (successfulResults.length === 0) {
-      return emptyResult(
-        agentResults.map((result) => result.result).join("\n") ||
-          "无法处理这个查询",
-      );
-    }
-
     const evidence = this.compactAgentEvidence(successfulResults);
     const messages = this.promptTemplateService.getResultSynthesisPrompt(
       ctx.shared.query,
       evidence,
       ctx.shared.turns,
     );
+    const allowedMovieIds = new Set(ctx.workspace.listMovieIds());
 
     try {
       return await executeWithRetry(async () => {
@@ -331,21 +360,56 @@ export class OrchestratorAgent {
           typeof response.content === "string"
             ? response.content
             : JSON.stringify(response.content),
+          "synthesis",
         );
         if (!parsed) {
-          throw new Error("模型返回的推荐结果不是有效JSON");
+          throw new RetryableFormatError("模型返回的推荐结果不是有效JSON");
         }
-        const movies = parsed.movies;
-        if (!Array.isArray(movies)) {
-          throw new Error("模型返回的推荐结果不是有效JSON");
+        const text = getStringValue(parsed.text);
+        if (!text) {
+          throw new RetryableFormatError("模型返回的推荐结果缺少 text");
         }
-        return JSON.stringify(parsed);
+        if (!Array.isArray(parsed.movies)) {
+          throw new RetryableFormatError("模型返回的推荐结果不是有效JSON");
+        }
+        const movies = this.filterMoviesByEvidence(
+          parsed.movies,
+          allowedMovieIds,
+        );
+        if (
+          parsed.movies.length > 0 &&
+          movies.length === 0 &&
+          allowedMovieIds.size > 0
+        ) {
+          throw new RetryableFormatError("模型返回的影片不在检索证据中");
+        }
+        return JSON.stringify({ ...parsed, text, movies });
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(`[Orchestrator] Result synthesis failed: ${message}`);
-      return emptyResult("无法根据检索结果生成推荐。");
+      throw error;
     }
+  }
+
+  /**
+   * 只保留工作副本里出现过的影片卡片，丢掉幻觉 id。
+   * @param movies 模型输出的 movies
+   * @param allowedIds 本轮 workspace 中的影片 id
+   * @returns 过滤后的卡片
+   * @example
+   * `[{ id: 27205, name: "盗梦空间" }, { id: 1, name: "编造" }]` + `{27205}`
+   * → `[{ id: 27205, name: "盗梦空间" }]`
+   */
+  private filterMoviesByEvidence(
+    movies: unknown[],
+    allowedIds: Set<number>,
+  ): unknown[] {
+    return movies.filter((item) => {
+      const row = asRecord(item);
+      const id = readFiniteNumber(row?.id ?? row?.movie_id);
+      return id !== undefined && allowedIds.has(id);
+    });
   }
 
   /**

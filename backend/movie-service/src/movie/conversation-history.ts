@@ -19,16 +19,16 @@ import {
   MessageRole,
 } from "./types";
 
-const MAX_TURNS: Record<HistoryProjectionKind, number> = {
-  [HISTORY_PROJECTION_KIND.INTENT]: HISTORY_PROJECTION.intentMaxTurns,
-  [HISTORY_PROJECTION_KIND.PLANNING]: HISTORY_PROJECTION.planningMaxTurns,
-  [HISTORY_PROJECTION_KIND.SEARCH]: HISTORY_PROJECTION.searchMaxTurns,
-  [HISTORY_PROJECTION_KIND.SYNTHESIS]: HISTORY_PROJECTION.synthesisMaxTurns,
+const MAX_MESSAGES: Record<HistoryProjectionKind, number> = {
+  [HISTORY_PROJECTION_KIND.INTENT]: HISTORY_PROJECTION.intentMaxMessages,
+  [HISTORY_PROJECTION_KIND.PLANNING]: HISTORY_PROJECTION.planningMaxMessages,
+  [HISTORY_PROJECTION_KIND.SEARCH]: HISTORY_PROJECTION.searchMaxMessages,
+  [HISTORY_PROJECTION_KIND.SYNTHESIS]: HISTORY_PROJECTION.synthesisMaxMessages,
 };
 
 /**
  * GetConversation 的扁平气泡 → WorkflowContext.shared.turns。
- * 跳过非法 role / 空正文，只留最近 MAX_SHARED_HISTORY_TURNS 条。
+ * 跳过非法 role / 空正文 / 拒绝失败气泡，只留最近 MAX_SHARED_HISTORY_MESSAGES 条。
  * @param messages GetConversation 返回的 ChatItem 列表
  * @returns 按时间序的 { role, content }，供各阶段再裁剪
  */
@@ -45,7 +45,7 @@ export function toConversationTurns(
     turns.push({ role, content });
   }
 
-  return turns.slice(-WORKFLOW_CONSTANTS.MAX_SHARED_HISTORY_TURNS);
+  return turns.slice(-WORKFLOW_CONSTANTS.MAX_SHARED_HISTORY_MESSAGES);
 }
 
 /**
@@ -62,7 +62,7 @@ export function projectConversationHistory(
   if (!turns?.length) return "";
 
   return turns
-    .slice(-MAX_TURNS[kind])
+    .slice(-MAX_MESSAGES[kind])
     .map((turn) => {
       const label = turn.role === MESSAGE_ROLE.USER ? "用户" : "AI";
       return `${label}: ${projectTurnContent(turn)}`;
@@ -144,7 +144,7 @@ function toMessageRole(value?: string): MessageRole | undefined {
 
 /**
  * 从 ChatItem.payload_json 抽出工作流要用的正文。
- * 用户用 text；推荐成功保留 JSON（后面 compact 再压）；拒绝/失败用 message。
+ * 用户用 text；推荐成功保留 JSON（后面 compact 再压）；拒绝/失败不进 prompt。
  * @param role 已校验的角色
  * @param payloadJson ChatItem 的 payload_json
  * @returns 工作流正文；解析失败或空字段返回空串
@@ -165,5 +165,5 @@ function transcriptText(
   if (payload.kind === "recommendation") {
     return JSON.stringify(payload);
   }
-  return getStringValue(payload.message);
+  return "";
 }

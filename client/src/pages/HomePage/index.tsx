@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { request } from "@/api";
 import useAuth from "@/store/auth";
 import AuthModal from "@/components/AuthModal";
@@ -53,39 +53,46 @@ export default function HomePage() {
   const [error, setError] = useState("");
 
   const token = useAuth((s) => s.token);
+  const userId = useAuth((s) => s.user?.id ?? null);
   const logout = useAuth((s) => s.logout);
+  const sendingRef = useRef(false);
+  const sessionGen = useRef(0);
 
   async function fetchConversations() {
     if (!token) return;
 
+    const requestGen = sessionGen.current;
     setHistoryLoading(true);
     try {
       const result = await request<{ conversations: ConversationSummary[] }>({
         method: "GET",
         url: "/api/message/conversations",
       });
+      if (requestGen !== sessionGen.current) return;
       setConversationList(result.conversations ?? []);
     } catch (err) {
       console.error(err);
     } finally {
-      setHistoryLoading(false);
+      if (requestGen === sessionGen.current) setHistoryLoading(false);
     }
   }
 
   async function fetchConversationDetail(conversationId: string) {
+    const requestGen = sessionGen.current;
     setDetailsLoading(true);
     try {
       const detail = await request<ConversationDetail>({
         method: "GET",
         url: `/api/message/conversations/${conversationId}`,
       });
+      if (requestGen !== sessionGen.current) return;
       setSelectedConversation(detail);
       setConversationId(detail.conversation_id);
       setMessages(convertConversationToMessages(detail.messages));
     } catch (err) {
       console.error(err);
     } finally {
-      setDetailsLoading(false);
+      if (requestGen === sessionGen.current) setDetailsLoading(false);
     }
   }
 
@@ -104,6 +111,23 @@ export default function HomePage() {
     setMessages([]);
     setSelectedConversation(null);
   }
+
+  useEffect(() => {
+    sessionGen.current += 1;
+    sendingRef.current = false;
+    setConversationId(undefined);
+    setMessages([]);
+    setSelectedConversation(null);
+    setConversationList([]);
+    setError("");
+    setMessage("");
+    setFile(null);
+    setImageData("");
+    setShowConfigModal(false);
+    setLoading(false);
+    setHistoryLoading(false);
+    setDetailsLoading(false);
+  }, [userId]);
 
   useEffect(() => {
     if (!file) {
@@ -125,12 +149,15 @@ export default function HomePage() {
 
   async function sendMessage() {
     const trimmedMessage = message.trim();
-    if (!trimmedMessage) return;
+    if (!trimmedMessage || sendingRef.current) return;
     if (!token) {
       setShowLoginModal(true);
       return;
     }
 
+    const requestGen = sessionGen.current;
+    sendingRef.current = true;
+    setLoading(true);
     setError("");
 
     const userMessage: ChatMessage = {
@@ -142,7 +169,6 @@ export default function HomePage() {
     setMessages((prev) => [...prev, userMessage]);
     setMessage("");
     setFile(null);
-    setLoading(true);
 
     try {
       const result = await request<RecommendResponse>({
@@ -154,17 +180,18 @@ export default function HomePage() {
           conversationId,
         },
       });
+      if (requestGen !== sessionGen.current) return;
       setMessages((prev) => [...prev, toAssistantMessage(result)]);
       if (result?.conversationId) setConversationId(result.conversationId);
     } catch (err) {
+      if (requestGen !== sessionGen.current) return;
       const msg = err instanceof Error ? err.message : "";
       if (msg.includes("未授权") || msg.includes("请先登录")) {
         logout();
         setShowLoginModal(true);
-        setError("请先登录后再推荐");
-      } else {
-        setError("请求后端失败，请检查服务是否启动");
+        return;
       }
+      setError("请求后端失败，请检查服务是否启动");
       setMessages((prev) => [
         ...prev,
         {
@@ -174,6 +201,8 @@ export default function HomePage() {
         },
       ]);
     } finally {
+      if (requestGen !== sessionGen.current) return;
+      sendingRef.current = false;
       setLoading(false);
       setImageData("");
     }
@@ -429,6 +458,7 @@ export default function HomePage() {
           <div className={styles.inputCard}>
             <textarea
               value={message}
+              disabled={loading}
               onChange={(event) => setMessage(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
@@ -444,6 +474,7 @@ export default function HomePage() {
                 <input
                   type="file"
                   accept="image/png,image/jpeg"
+                  disabled={loading}
                   onChange={(event) => setFile(event.target.files?.[0] ?? null)}
                 />
               </label>
@@ -452,6 +483,7 @@ export default function HomePage() {
                   type="button"
                   className={styles.btnNewConversation}
                   onClick={startNewConversation}
+                  disabled={loading}
                 >
                   新会话
                 </button>

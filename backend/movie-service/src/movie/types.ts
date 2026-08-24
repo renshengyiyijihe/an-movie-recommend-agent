@@ -1,12 +1,4 @@
 /**
- * movie-service 公共类型与封闭常量。
- *
- * 注释用 TSDoc（写法与 JSDoc 相同的 `/** * /`）：类型、常量对象、接口字段都要写。
- * 函数才用 `@param` / `@returns`；这里只描述「是什么、谁用」。
- * 取值一律引用本文件常量，不要在业务代码里写字符串字面量。
- */
-
-/**
  * Agent 名。编排注册表、规划收口、prompt 插值都用这里。
  */
 export const AGENT_TYPE = {
@@ -119,7 +111,7 @@ export interface OrchestratorResult {
  * SearchAgent 内部一次 `run` 的工具执行记录。不直接进汇总 prompt。
  */
 export interface SearchAgentResult {
-	/** 全部 tool_calls 是否都成功 */
+	/** 至少一个 tool 成功。execute 还会再看工作副本有没有证据 */
 	success: boolean;
 	/** 兼容旧字段；execute 现在改为 publish 视图 */
 	result: string;

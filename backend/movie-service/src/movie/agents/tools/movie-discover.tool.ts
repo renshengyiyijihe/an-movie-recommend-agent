@@ -237,7 +237,7 @@ export class MovieDiscoverTool implements ITool {
       const language = input.language || TMDB_CONSTANTS.DEFAULT_LANGUAGE;
       const page = input.page && input.page > 0 ? input.page : 1;
       const includeAdult = input.include_adult ?? false;
-      const sortBy = `${input.sort_by || "popularity"}.${input.sort_order || "desc"}`;
+      const sortBy = `${toTmdbSortField(input.sort_by)}.${input.sort_order || "desc"}`;
       const maxResults = clampMaxResults(
         input.max_results,
         TMDB_CONSTANTS.DEFAULT_MAX_RESULTS,
@@ -248,71 +248,38 @@ export class MovieDiscoverTool implements ITool {
         `[MovieDiscoverTool] Discovering movies: language=${language}, page=${page}, sort_by=${sortBy}, genres=${input.with_genres || "none"}`,
       );
 
-      const params = new URLSearchParams({
-        language,
-        page: String(page),
-        sort_by: sortBy,
-        include_adult: String(includeAdult),
-      });
+      const withGenres = Array.isArray(input.with_genres)
+        ? input.with_genres
+            .map((name) => GENRE_TO_TMDB_ID[name])
+            .filter((id): id is number => Boolean(id))
+        : [];
+      const withoutGenres = Array.isArray(input.without_genres)
+        ? input.without_genres
+            .map((name) => GENRE_TO_TMDB_ID[name])
+            .filter((id): id is number => Boolean(id))
+        : [];
 
-      const directMappings: Array<[keyof CurrentDiscoverMovieInput, string]> = [
-        ["primary_release_year", "primary_release_year"],
-        ["with_cast", "with_cast"],
-        ["with_crew", "with_crew"],
-        ["with_people", "with_people"],
-        ["with_original_language", "with_original_language"],
-        ["with_runtime_gte", "with_runtime.gte"],
-        ["with_runtime_lte", "with_runtime.lte"],
-      ];
-
-      for (const [inputKey, apiKey] of directMappings) {
-        if (input[inputKey] !== undefined && input[inputKey] !== null) {
-          params.set(apiKey, String(input[inputKey]).trim());
-        }
-      }
-
-      if (input.vote_average_gte !== undefined && input.vote_average_gte !== null) {
-        params.set("vote_average.gte", String(input.vote_average_gte));
-      }
-
-      if (Array.isArray(input.with_genres) && input.with_genres.length > 0) {
-        const genreIds = input.with_genres
-          .map((name) => GENRE_TO_TMDB_ID[name])
-          .filter((id): id is number => Boolean(id));
-
-        if (genreIds.length > 0) {
-          // 多个 ID 用英文逗号分隔，代表 AND 逻辑（同时满足）
-          params.set("with_genres", genreIds.join(","));
-        }
-      }
-
-      if (
-        Array.isArray(input.without_genres) &&
-        input.without_genres.length > 0
-      ) {
-        const genreIds = input.without_genres
-          .map((name) => GENRE_TO_TMDB_ID[name])
-          .filter((id): id is number => Boolean(id));
-
-        if (genreIds.length > 0) {
-          params.set("without_genres", genreIds.join(","));
-        }
-      }
-
-      const url = `${this.tmdbProvider.getApiUrl()}/3/discover/movie?${params.toString()}`;
-      const response = (await fetch(url, {
-        method: "GET",
-        headers: this.tmdbProvider.getRequestHeaders(),
-      })) as Response;
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(
-          `TMDB discover movie request failed with status ${response.status}: ${errorText}`,
-        );
-      }
-
-      const searchResult = (await response.json()) as TmdbDiscoverMovieResponse;
+      const searchResult = await this.tmdbProvider.get<TmdbDiscoverMovieResponse>(
+        "/3/discover/movie",
+        {
+          language,
+          page,
+          sort_by: sortBy,
+          include_adult: includeAdult,
+          primary_release_year: input.primary_release_year,
+          with_cast: input.with_cast,
+          with_crew: input.with_crew,
+          with_people: input.with_people,
+          with_original_language: input.with_original_language,
+          "with_runtime.gte": input.with_runtime_gte,
+          "with_runtime.lte": input.with_runtime_lte,
+          "vote_average.gte": input.vote_average_gte,
+          // TMDB：逗号 AND，竖线 OR。schema 约定多个类型为 OR。
+          with_genres: withGenres.length > 0 ? withGenres.join("|") : undefined,
+          without_genres:
+            withoutGenres.length > 0 ? withoutGenres.join(",") : undefined,
+        },
+      );
 
       const simplifiedResult = {
         page: searchResult.page,
@@ -354,5 +321,31 @@ export class MovieDiscoverTool implements ITool {
         error: error instanceof Error ? error.message : String(error),
       };
     }
+  }
+}
+
+/**
+ * 把给模型的友好排序名映射成 TMDB `/discover/movie` 的 sort_by 字段。
+ * @param sortBy schema 枚举：popularity / rating / revenue / release_date / title / vote_count
+ * @returns TMDB 字段名，缺省 popularity
+ * @example
+ * `"rating"` → `"vote_average"`
+ * `"title"` → `"original_title"`
+ * `undefined` → `"popularity"`
+ */
+function toTmdbSortField(sortBy?: string): string {
+  switch (sortBy) {
+    case "rating":
+      return "vote_average";
+    case "title":
+      return "original_title";
+    case "release_date":
+      return "primary_release_date";
+    case "revenue":
+      return "revenue";
+    case "vote_count":
+      return "vote_count";
+    default:
+      return "popularity";
   }
 }

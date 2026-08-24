@@ -59,9 +59,9 @@ auth-service    ──► Postgres
 2. `MovieController`（`JwtAuthGuard` + `@CurrentUser()`）→ `MovieService.recommend()`：
    - HTTP 强制登录：无 token / 验票失败一律 `401`，不进入 Agent。请求体经 `RecommendDto` + 全局 `ValidationPipe` 校验。
    - 当前用户放进 `UserContext`；movie → message 的 gRPC 在 metadata `user-id` 里带身份，**请求体不传 `user_id`**。
-   - `ensureConversation` / `loadConversationHistory`（gRPC `GetConversation`）/ `StartTurn` 写入本轮用户问题。message-service 从上下文取当前用户，只允许会话主人读写；无主会话、非本人一律按「不存在」处理。
+   - `ensureConversation` / `loadConversationHistory`（gRPC `GetConversation`）/ `StartTurn` 写入本轮用户问题。同一会话同时只能有一个 `running` 轮次，再开一轮返回失败。message-service 从上下文取当前用户，只允许会话主人读写；无主会话、非本人一律按「不存在」处理。
    - 调用 `OrchestratorAgent.orchestrate(model, ctx)`；`ctx.shared.turns` 为结构化历史，prompt 按阶段投影，不要提前拼成一段字符串。完整检索数据进 `ctx.workspace`（本轮内存工作副本），`publish` 只给精简视图。工作流过程通过 `ctx.record()` 写入 `turn_events`。
-   - 结束时 `CompleteTurn` 写入一条 assistant JSONB（`recommendation` / `reject` / `error`）。
+   - 结束时 `CompleteTurn` 写入一条 assistant JSONB（`recommendation` / `reject` / `error`）。HTTP `data` 与写入的 payload 同一份；写入失败不得返回 `success` / `reject`。
 3. Orchestrator：意图分类 → 任务规划（`TaskPlan`：`agents` + 可选 `relation`）→ 按 plan 执行 Agent → Relation 失败则补一次 Search → `synthesizeResults` 再调 LLM，把**视图**整理成推荐 JSON。意图为 `out_of_scope` 或 `unknown` 时立即短路，不进入后续阶段。
 4. 域外（`out_of_scope`）返回 `{ type: "reject", data: RejectPayload }`；成功则 `parseRecommendation()` 解析 JSON 后 `{ type: "success", data: RecommendationPayload, conversationId }`。HTTP `data` 与写入 `CompleteTurn` 的 payload 同一份。
 
@@ -93,12 +93,11 @@ auth-service    ──► Postgres
 | Tools | `movie/agents/tools/` | 封装 TMDB |
 | Prompt | `movie/services/prompt-template.service.ts` | 所有 LLM 提示词 |
 | 模型 | `model/model.provider.ts` | LangChain `ChatOpenAI` 兼容 SiliconFlow |
-| TMDB | `model/tmdb.provider.ts` | 只提供 base url 和鉴权头，各 Tool 自行拼 URL |
+| TMDB | `model/tmdb.provider.ts` | `get` / `post`：鉴权、fetch、非 2xx 抛错。Tool 只拼 path + query，自己解析 JSON |
+| 业务错误 | `movie/errors/` | 工作流错误类（如 `RetryableFormatError`），不要塞进 helpers |
 | 辅助 | `movie/helpers.ts`、`movie/constants.ts`、`movie/types.ts` | 重试、JSON 解析、类型/常量 |
 
-LLM：优先 `SILICONFLOW_API_KEY`，否则 `OPENAI_API_KEY`。默认 `SILICONFLOW_BASE_URL=https://api.siliconflow.cn/v1`，默认模型 `deepseek-ai/DeepSeek-V4-Flash`。客户端设 `timeout=60s`、SDK 层 `maxRetries=2`（覆盖网络/429/5xx）；业务层 `executeWithRetry` 只管输出格式错误。
-
-`LangSmithProvider` 存在，但当前 `ModelProvider` 未接入追踪。部署脚本仍写 `NVIDIA_API_KEY`，与代码读取的 SiliconFlow/OpenAI 变量不一致。
+LLM：只读 `LLM_API_KEY`（缺了就起不来）和可选 `LLM_BASE_URL`（默认 `https://api.siliconflow.cn/v1`）。模型名/温度仍是 `MODEL_NAME`、`MODEL_TEMPERATURE`，默认 `deepseek-ai/DeepSeek-V4-Flash`。不要用供应商当密钥名。客户端 `timeout=60s`、SDK `maxRetries=1`（网络/429/5xx）；业务层 `executeWithRetry` **只重试** `RetryableFormatError`。检索全失败不要走成功推荐；空交集仍是成功。
 
 关系逻辑只写在 `RelationAgent` 内部。不要再平行实现一套搜索或关系服务，也不要把交并差放到 message-service。
 
@@ -183,7 +182,7 @@ Prompt 入口（改提示词只动这个文件）：
 - 状态：Zustand `store/auth.ts`，token 存 `localStorage`。
 - HTTP：`api.ts` 的 `request()` 自动带 Bearer；`baseURL: '/'`。Docker 下由 nginx 反代；本地 `vite` 默认 **没有** 把 `/api` 转到后端。
 - 组件：`TopBar`、`AuthModal`、`ConfigModal`（会话列表）、`RecommendationPoster`。样式用 Less CSS Modules。
-- 同时依赖 Mantine 7 与 MUI 9，新增 UI 优先复用现有组件，不要再引入第三套库。
+- UI 只用 MUI 9，不要再引入另一套组件库。
 - 发送推荐前必须登录。后端 `/movie/recommend` 无 token 或验票失败返回 `401`，前端会弹出登录框。图片以 Data URL 传 `imageData`，**后端 Orchestrator 当前未使用图片**；上传预览只留在输入区，不进聊天消息。
 - 聊天列表与后端 `ChatItem` 对齐：`role` 只有 `user` | `assistant`，`kind` 为 `user_query` | `recommendation` | `reject` | `error`，一条助手消息一个气泡（`text` 下方可选 `movies` 卡片）。
 - nginx 对 movie/message 代理超时 300s，与 axios timeout 5min 对齐。
@@ -192,18 +191,17 @@ Prompt 入口（改提示词只动这个文件）：
 
 **auth-service / 共用 `backend/.env`**
 
-- `JWT_SECRET`、`JWT_EXPIRES_IN`
+- `JWT_SECRET`（必填，缺失则拒绝启动）、`JWT_EXPIRES_IN`
 - `POSTGRES_URL`
 - `AUTH_HTTP_PORT`（3002）、`AUTH_GRPC_BIND`（`0.0.0.0:50051`）
 
 **movie-service（`backend/movie-service/.env`）**
 
 - `PORT`（3001）
-- `SILICONFLOW_API_KEY` 或 `OPENAI_API_KEY`
-- `SILICONFLOW_BASE_URL`、`MODEL_NAME`、`MODEL_TEMPERATURE`
+- `LLM_API_KEY`（必填）
+- 可选 `LLM_BASE_URL`、`MODEL_NAME`、`MODEL_TEMPERATURE`
 - `TMDB_API_KEY`、`TMDB_API_URL`
 - `AUTH_GRPC_ADDRESS`、`MESSAGE_GRPC_ADDRESS`
-- 可选：`LANGSMITH_API_KEY`、`LANGSMITH_TRACING`、`LANGSMITH_PROJECT`
 
 **message-service**
 
@@ -214,17 +212,17 @@ Prompt 入口（改提示词只动这个文件）：
 ## 编码约定
 
 - 语言：TypeScript。后端 NestJS injectable；前端函数组件。
-- 第三方库：功能开发时可以引入，**加依赖前必须先问**（包名、加到哪个服务或前端、解决什么问题）。未同意不得自行 `pnpm add`。已有库能覆盖的不要再装功能重叠的包。前端 UI 仍只复用 Mantine / MUI，不要第三套组件库。
+- 第三方库：功能开发时可以引入，**加依赖前必须先问**（包名、加到哪个服务或前端、解决什么问题）。未同意不得自行 `pnpm add`。已有库能覆盖的不要再装功能重叠的包。前端 UI 只用 MUI，不要第三套组件库。
 - 通用集合/对象操作（截取、去重、钳制、判断普通对象等）不要在仓库里再写一套；movie-service 用 **lodash-es**（按函数 import）。解析 LLM JSON、周岁、带退避重试这类有业务语义的，留在 `helpers.ts`。`asRecord` / `asArray` / `takeFirst` / `clampMaxResults` / `uniqueIds` / `uniqueByLast` 仍从 `helpers.ts` 出口，内部走 lodash-es，各文件不要再复制一份 `uniqueIds` 或手写 `Map` 去重。
 - HTTP 鉴权用 `JwtAuthGuard`，当前用户用 `@CurrentUser()` / `UserContext`，不要在每个方法里读 `Authorization` 或传 `userId`。
 - movie → message 的身份走 gRPC metadata `user-id`，由客户端从 `UserContext` 注入。proto 请求不要带 `user_id`。会话表 / `GetConversation` 响应里的 `user_id` 是会话主人字段，不是调用身份。
 - 新增 **Agent**：扩展 `AGENT_TYPE` / `AGENT_TYPES`，在 `OrchestratorAgent` 的 `agentExecutors` 用 `AGENT_TYPE.*` 注册，不要改执行循环本身。
 - 新增 **工作流事件**：扩展 `TurnEventBody`，在 Agent 里 `runtime.record()` / `ctx.record()`。message-service 只存 JSONB，不要在那边 switch kind。
 - 可见聊天消息只走 `StartTurn` / `CompleteTurn`，payload 类型在 `transcript.ts`。
-- 新增 **Tool**：实现 `ITool`，在 `ToolsRegistry.registerTools()` 注册。SearchAgent 会自动拿到 schema，不要在 Agent 里再写一份参数定义。
+- 新增 **Tool**：实现 `ITool`，在 `ToolsRegistry.registerTools()` 注册。SearchAgent 会自动拿到 schema，不要在 Agent 里再写一份参数定义。调 TMDB 用 `TmdbProvider.get` / `post`，不要在 Tool 里 `fetch`。
 - 新增 / 修改 **Prompt**：只改 `PromptTemplateService`。对话历史在 prompt 内按阶段投影，不要在 service 里先拼成字符串。关系计划只改 `getTaskPlanningPrompt`，不要再加一层分析 prompt。
-- 通用文本、JSON、重试、对象收窄：用 `helpers.ts`，不要在 service / agent 里再实现一遍 `asRecord` / `tryParseJson` / `uniqueIds` / `uniqueByLast`。
-- 会话历史投影：用 `conversation-history.ts`。
+- 通用文本、JSON、重试、对象收窄：用 `helpers.ts`，不要在 service / agent 里再实现一遍 `asRecord` / `tryParseJson` / `uniqueIds` / `uniqueByLast`。业务错误类放 `movie/errors/`，不要写进 `helpers.ts`。
+- 会话历史投影：用 `conversation-history.ts`。`error` / `reject` 气泡不要进 prompt。用户正文用 `<user_query>` / `<conversation_history>` 包起来。
 - 工作副本读写：用 `WorkingSet` / `buildEvidenceView`，不要把 Tool `data` 整包 `JSON.stringify` 进汇总 prompt。人物/影片加**标量**字段：改 `PersonRecord` / `MovieRecord`，并只在 `readPersonRecord` / `readMovieRecord` 取值；不要再给 `upsert*` 手写一遍赋值。只有需要去重合并的数组才进 `PERSON_COLLECTIONS` / `MOVIE_COLLECTIONS`。
 - 类型：Agent / 规划 / 视图合同在 `types.ts`；工作副本记录类型在 `working-set.ts`。genre 映射在 `constants.ts`。不要在 agent 文件里再声明一份公用联合类型。公共类型用 **TSDoc**（即 JSDoc 的 `/** */`）：常量对象、联合类型、接口以及**每个字段**都要写清含义；函数写 `@param` / `@returns`。**工具函数**（把一种数据收成另一种）必须写 `@example`：**一条业务数据就够**，但要看得出从哪来、中间丢掉了什么、输出字段写全（不要 `{ id: 1 }` 或 `...`）。编排、Agent、HTTP 入口不必硬凑示例。
 - **禁止硬编码封闭取值。** `AGENT_TYPE`、`INTENT_TYPE`、`RELATION_STRATEGY`、`RELATION_ROLE`、`TOOL_NAME`、`VIEW_ANSWER`、`HISTORY_PROJECTION_KIND` 等已在 `types.ts` 定义的常量，业务代码、Zod、prompt 插值一律引用常量，不要写 `"search"` / `"relation"` 这种字面量。新增封闭集合时先在 `types.ts` 加常量对象，再导出 `as const` 数组给 Zod `z.enum`。TMDB 响应字段名（如 JSON 里的 `cast` 属性）和 HTTP 对外 JSON 字段（如汇总里的 `movies` 数组）属于外部契约，不在此列。
@@ -243,6 +241,7 @@ Prompt 入口（改提示词只动这个文件）：
 | 工作流上下文 | `backend/movie-service/src/movie/agents/workflow-context.ts` |
 | 工作副本 / 视图 | `backend/movie-service/src/movie/working-set.ts` |
 | 任务规划校验 | `backend/movie-service/src/movie/task-plan.ts` |
+| 业务错误 | `backend/movie-service/src/movie/errors/` |
 | 历史投影 | `backend/movie-service/src/movie/conversation-history.ts` |
 | 可见消息 / 事件类型 | `backend/movie-service/src/movie/transcript.ts`、`turn-events.ts` |
 | 会话 gRPC | `backend/movie-service/src/movie/message.grpc.ts`、`backend/proto/message.proto` |
@@ -260,10 +259,12 @@ Prompt 入口（改提示词只动这个文件）：
 ## 已知坑
 
 - 鉴权白名单邮箱写死在 `AuthService.validateToken`。
+- `JWT_SECRET` 必须显式配置，代码不再回退 `dev_secret`。
+- 部署需配置 GitHub secret `LLM_API_KEY`（以及可选 `LLM_BASE_URL`），不要再写供应商密钥名。
 - 内部 gRPC 信任 metadata 里的 `user-id`（依赖 Docker 网络隔离，message-service 不再二次验 JWT）。
 - 图片主链路仍未消费 `imageData`。
 - Relation 未做：计数/排名、多跳路径、公司/系列。规划应标 `unsupported` 或直接 `search`，不要假装能算。
 - 工作副本不跨请求保留；指代「刚才那批结果再筛」目前只能靠历史文本 + 重新取数。
 - Compose 的 movie-service `env_file` 是 `backend/movie-service/.env`，auth/message 用 `backend/.env`。
 - 前端 Dockerfile 激活的是 pnpm 9，`package.json` 声明 10.15.0。
-- auth-service 用原始 `pg` Pool，message-service 用 TypeORM，不要混用两套用户表假设。
+- auth-service 用原始 `pg` Pool，message-service 用 TypeORM。`users` 表只归 auth-service，message 不要碰。

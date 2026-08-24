@@ -1,8 +1,10 @@
 import { Controller, Logger, UseGuards } from "@nestjs/common";
-import { GrpcMethod } from "@nestjs/microservices";
+import { GrpcMethod, RpcException } from "@nestjs/microservices";
+import { status } from "@grpc/grpc-js";
 import { GrpcUserGuard } from "../auth/grpc-user.guard";
 import { ChatItem } from "./chat-item";
 import { MessageService } from "./message.service";
+import { TurnInProgressError } from "./turn-in-progress.error";
 
 interface CreateConversationRequest {
   title?: string;
@@ -80,10 +82,20 @@ export class MessageGrpcService {
     this.logger.log(
       `gRPC StartTurn conversation_id=${request.conversation_id}`,
     );
-    return this.messageService.startTurn(
-      request.conversation_id,
-      request.user_content_json,
-    );
+    try {
+      return await this.messageService.startTurn(
+        request.conversation_id,
+        request.user_content_json,
+      );
+    } catch (error) {
+      if (error instanceof TurnInProgressError) {
+        throw new RpcException({
+          code: status.FAILED_PRECONDITION,
+          message: error.message,
+        });
+      }
+      throw error;
+    }
   }
 
   @GrpcMethod("Message", "AppendTurnEvent")

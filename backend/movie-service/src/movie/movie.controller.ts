@@ -20,6 +20,7 @@ export class MovieController {
     this.logger.log(
       `recommend request: user=${user.id} messageLength=${payload.message?.length ?? 0}, hasImage=${Boolean(payload.imageUrl || payload.imageData)}`,
     );
+
     return this.movieService.recommend(payload);
   }
 }

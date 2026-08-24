@@ -2,8 +2,12 @@
  * 工具函数库
  * 集合/对象操作用 lodash-es；本文件只保留业务语义封装和领域函数。
  */
+import { Logger } from "@nestjs/common";
 import { clamp, isArray, isPlainObject, keyBy, take, uniq, values } from "lodash-es";
 import { WORKFLOW_CONSTANTS } from "./constants";
+import { RetryableFormatError } from "./errors/retryable-format.error";
+
+const jsonLogger = new Logger("tryParseJson");
 
 /**
  * 截断文本到指定长度，超长时追加截断标记。
@@ -61,14 +65,21 @@ export function summarizeText(text: string, maxLength: number = 140): string {
  */
 export function tryParseJson<T = any>(value: string, stage?: string): T | null {
   const trimmed = value.trim();
-  if (!trimmed) return null;
+  if (!trimmed) {
+    if (stage) jsonLogger.warn(`JSON extract failed at stage=${stage}`);
+    return null;
+  }
 
   const candidate = _extractJsonCandidate(trimmed);
-  if (!candidate) return null;
+  if (!candidate) {
+    if (stage) jsonLogger.warn(`JSON extract failed at stage=${stage}`);
+    return null;
+  }
 
   try {
     return JSON.parse(candidate);
   } catch {
+    if (stage) jsonLogger.warn(`JSON parse failed at stage=${stage}`);
     return null;
   }
 }
@@ -259,9 +270,10 @@ export function yearFromReleaseDate(
 }
 
 /**
- * 带重试的异步操作执行器
+ * 只重试 {@link RetryableFormatError}（JSON / Zod 格式）。
+ * 网络、超时直接抛出，避免和 SDK 重试相乘。
  * @param operation 要执行的异步操作
- * @param maxRetries 最大重试次数
+ * @param maxRetries 格式错误的最大尝试次数（含第一次）
  * @param backoffMs 重试间隔（毫秒）
  * @returns 操作结果
  */
@@ -277,9 +289,11 @@ export async function executeWithRetry<T>(
       return await operation();
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
-      if (attempt < maxRetries) {
-        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      const retryable = lastError instanceof RetryableFormatError;
+      if (!retryable || attempt >= maxRetries) {
+        throw lastError;
       }
+      await new Promise((resolve) => setTimeout(resolve, backoffMs));
     }
   }
 

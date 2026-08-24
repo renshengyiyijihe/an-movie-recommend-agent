@@ -1,12 +1,17 @@
 import 'reflect-metadata';
-import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
 import { Logger, ValidationPipe } from '@nestjs/common';
 
 const logger = new Logger('AuthServiceBootstrap');
 
 async function bootstrap() {
+  if (!process.env.JWT_SECRET) {
+    logger.error('JWT_SECRET is required');
+    process.exit(1);
+  }
+
   logger.log('Bootstrapping auth service');
+  const { NestFactory } = await import('@nestjs/core');
+  const { AppModule } = await import('./app.module');
   const app = await NestFactory.create(AppModule);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));
   const port = Number(process.env.AUTH_HTTP_PORT ?? 3002);

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ToolsRegistry } from "./tools/tools.registry";
 import { PromptTemplateService } from "../services/prompt-template.service";
+import { RetryableFormatError } from "../errors/retryable-format.error";
 import { executeWithRetry, tryParseJson } from "../helpers";
 import { AGENT_TYPE, CompatibleModel, ConversationHistoryItem, SearchAgentResult, VIEW_ANSWER, ViewSpec } from "../types";
 import { buildEvidenceView, toToolEventOutput, WorkingSet } from "../working-set";
@@ -65,10 +66,16 @@ export class SearchAgent {
     }
     await this.recordToolCalls(runtime, result.tool_calls);
 
-    if (!result.success) {
+    const anyToolOk = result.tool_calls.some(
+      (call) => call.output?.success !== false,
+    );
+    const hasEvidence =
+      runtime.workspace.listMovieIds().length > 0 ||
+      runtime.workspace.listPeople().length > 0;
+    if (!anyToolOk || !hasEvidence) {
       runtime.publish({
         success: false,
-        result: result.result,
+        result: result.result || "搜索未得到可用结果",
       });
       return;
     }
@@ -107,11 +114,20 @@ export class SearchAgent {
           ["system", prompt.system],
           ["user", prompt.user],
         ]);
-        const parsed = tryParseJson<ToolPlan>(this.toText(response.content));
+        const parsed = tryParseJson<ToolPlan>(
+          this.toText(response.content),
+          "search",
+        );
         if (!parsed) {
-          throw new Error("模型返回的工具计划不是有效JSON");
+          throw new RetryableFormatError("模型返回的工具计划不是有效JSON");
         }
-        return this.validateToolPlan(parsed);
+        try {
+          return this.validateToolPlan(parsed);
+        } catch (error) {
+          throw new RetryableFormatError(
+            error instanceof Error ? error.message : String(error),
+          );
+        }
       });
 
       // 第二步：由 Registry 统一执行工具，并记录完整调用信息。
@@ -130,7 +146,7 @@ export class SearchAgent {
       }
 
       return {
-        success: toolCalls.every((call) => call.output?.success !== false),
+        success: toolCalls.some((call) => call.output?.success !== false),
         result: JSON.stringify({
           query,
           results: toolCalls.map((call) => ({
@@ -228,9 +244,9 @@ export class SearchAgent {
       case "string":
         return z.string();
       case "number":
-        return z.number().finite();
+        return this.applyNumericBounds(z.number().finite(), schema);
       case "integer":
-        return z.number().int();
+        return this.applyNumericBounds(z.number().int(), schema);
       case "boolean":
         return z.boolean();
       case "array":
@@ -256,11 +272,28 @@ export class SearchAgent {
             return [name, required.has(name) ? property : property.optional()];
           }),
         );
-        return z.object(shape).passthrough();
+        return z.object(shape);
       }
       default:
         return z.unknown();
     }
+  }
+
+  /**
+   * 把 JSON Schema 的 minimum / maximum 接到 Zod 数字上。
+   */
+  private applyNumericBounds(
+    schema: z.ZodNumber,
+    source: Record<string, unknown>,
+  ): z.ZodNumber {
+    let bounded = schema;
+    if (typeof source.minimum === "number") {
+      bounded = bounded.min(source.minimum);
+    }
+    if (typeof source.maximum === "number") {
+      bounded = bounded.max(source.maximum);
+    }
+    return bounded;
   }
 
   /**

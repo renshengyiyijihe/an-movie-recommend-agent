@@ -171,25 +171,10 @@ export class PersonDetailTool implements ITool {
         `[PersonDetailTool] Fetching person details: person_id=${personId}, language=${language}, append_to_response=${appendToResponse || "none"}`,
       );
 
-      const params = new URLSearchParams({ language });
-      if (appendToResponse) {
-        params.set("append_to_response", appendToResponse);
-      }
-
-      const url = `${this.tmdbProvider.getApiUrl()}/3/person/${personId}?${params.toString()}`;
-      const response = (await fetch(url, {
-        method: "GET",
-        headers: this.tmdbProvider.getRequestHeaders(),
-      })) as Response;
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(
-          `TMDB person details request failed with status ${response.status}: ${errorText}`,
-        );
-      }
-
-      const personDetails = (await response.json()) as TmdbPersonDetailsResponse;
+      const personDetails = await this.tmdbProvider.get<TmdbPersonDetailsResponse>(
+        `/3/person/${personId}`,
+        { language, append_to_response: appendToResponse },
+      );
 
       const movieCredits = personDetails.movie_credits;
       const simplifiedResult = {

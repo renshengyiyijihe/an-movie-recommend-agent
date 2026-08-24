@@ -63,16 +63,14 @@ export class ModelProvider {
       return this.model;
     }
 
-    const apiKey = process.env.SILICONFLOW_API_KEY ?? process.env.OPENAI_API_KEY;
+    const apiKey = process.env.LLM_API_KEY;
     if (!apiKey) {
-      this.logger.error(
-        "SILICONFLOW_API_KEY or OPENAI_API_KEY is not set. Model provider unavailable.",
-      );
+      this.logger.error("LLM_API_KEY is not set. Model provider unavailable.");
       throw new ModelConfigurationError();
     }
 
     const baseURL =
-      process.env.SILICONFLOW_BASE_URL ?? "https://api.siliconflow.cn/v1";
+      process.env.LLM_BASE_URL ?? "https://api.siliconflow.cn/v1";
     const modelName = process.env.MODEL_NAME ?? "deepseek-ai/DeepSeek-V4-Flash";
     const temperature = Number(process.env.MODEL_TEMPERATURE ?? "0.3");
 
@@ -83,9 +81,9 @@ export class ModelProvider {
       temperature,
       maxTokens: 16384,
       // 单次请求超时与 SDK 层重试（覆盖网络错误 / 429 / 5xx）。
-      // 业务层 executeWithRetry 只负责输出格式错误的重试。
+      // 业务层 executeWithRetry 只重试 RetryableFormatError。
       timeout: 60_000,
-      maxRetries: 2,
+      maxRetries: 1,
       configuration: {
         baseURL,
       },
@@ -97,7 +95,7 @@ export class ModelProvider {
           Logger.log(`Model invocation start: model=${modelName}`);
           const response = await client.invoke(toLangChainMessages(messages));
           const text = extractContentText(response.content);
-          Logger.log(`Model invocation completed: ${JSON.stringify(text)}`);
+          Logger.log(`Model invocation completed: length=${text.length}`);
           return { content: text };
         } catch (error) {
           Logger.error("Error invoking LangChain model:", error);

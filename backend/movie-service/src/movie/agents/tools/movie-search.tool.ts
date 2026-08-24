@@ -118,39 +118,18 @@ export class MovieSearchTool implements ITool {
         `[MovieSearchTool] Searching movie: query=${query}, language=${language}, include_adult=${includeAdult}, page=${page}`,
       );
 
-      const params = new URLSearchParams({
-        query,
-        language,
-        include_adult: String(includeAdult),
-        page: String(page),
-      });
-
-      const directMappings: Array<[keyof MovieSearchInput, string]> = [
-        ["primary_release_year", "primary_release_year"],
-        ["region", "region"],
-        ["year", "year"],
-      ];
-
-      for (const [inputKey, apiKey] of directMappings) {
-        if (input[inputKey] !== undefined && input[inputKey] !== null) {
-          params.set(apiKey, String(input[inputKey]).trim());
-        }
-      }
-
-      const url = `${this.tmdbProvider.getApiUrl()}/3/search/movie?${params.toString()}`;
-      const response = (await fetch(url, {
-        method: "GET",
-        headers: this.tmdbProvider.getRequestHeaders(),
-      })) as Response;
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(
-          `TMDB search movie request failed with status ${response.status}: ${errorText}`,
-        );
-      }
-
-      const searchResult = (await response.json()) as TmdbMovieSearchResponse;
+      const searchResult = await this.tmdbProvider.get<TmdbMovieSearchResponse>(
+        "/3/search/movie",
+        {
+          query,
+          language,
+          include_adult: includeAdult,
+          page,
+          primary_release_year: input.primary_release_year,
+          region: input.region,
+          year: input.year,
+        },
+      );
 
       const simplifiedResult = {
         page: searchResult.page,
@@ -162,9 +141,11 @@ export class MovieSearchTool implements ITool {
           .map((movie) => ({
             movie_id: movie.id,
             title: movie.title,
+            original_title: movie.original_title,
             release_date: movie.release_date,
             overview: movie.overview,
             poster_path: movie.poster_path,
+            popularity: movie.popularity,
           })),
       };
 

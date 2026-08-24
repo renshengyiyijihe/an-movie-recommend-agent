@@ -24,6 +24,7 @@ import {
   toChatItem,
 } from "./chat-item";
 import { RelatedContextItem } from "./message.grpc";
+import { TurnInProgressError } from "./turn-in-progress.error";
 
 /** 轮次停留在 running 超过该时长视为僵死（正常请求受 nginx 300s 超时约束）。 */
 const STALE_TURN_TIMEOUT_MS = 10 * 60 * 1000;
@@ -111,14 +112,31 @@ export class MessageService implements OnApplicationBootstrap, OnModuleDestroy {
     return this.conversationRepository.save(conversation);
   }
 
+  /**
+   * 同一会话同时只允许一个 running 轮次。
+   * 事务里锁会话行，避免两个 StartTurn 同时插入。
+   */
   async startTurn(conversationId: string, userContentJson: string) {
-    await this.requireConversation(conversationId);
-
     const userContent = parseJsonObject(userContentJson, "user_content_json");
     const turnId = randomUUID();
     const userMessageId = randomUUID();
 
     await this.conversationRepository.manager.transaction(async (manager) => {
+      const conversation = await manager.findOne(ConversationEntity, {
+        where: { conversation_id: conversationId },
+        lock: { mode: "pessimistic_write" },
+      });
+      if (!conversation || !this.canAccessConversation(conversation)) {
+        throw new NotFoundException(`Conversation not found: ${conversationId}`);
+      }
+
+      const running = await manager.findOne(TurnEntity, {
+        where: { conversation_id: conversationId, status: "running" },
+      });
+      if (running) {
+        throw new TurnInProgressError();
+      }
+
       await manager.save(
         TurnEntity,
         manager.create(TurnEntity, {
@@ -137,11 +155,8 @@ export class MessageService implements OnApplicationBootstrap, OnModuleDestroy {
           content: { ...userContent, kind: "user_query" },
         }),
       );
-      await manager.update(
-        ConversationEntity,
-        { conversation_id: conversationId },
-        { updated_at: new Date() },
-      );
+      conversation.updated_at = new Date();
+      await manager.save(conversation);
     });
 
     return { turn_id: turnId, user_message_id: userMessageId };

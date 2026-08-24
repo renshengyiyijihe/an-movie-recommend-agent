@@ -21,8 +21,6 @@ export interface RecommendationItem {
   id?: number;
   adult?: boolean;
   video?: boolean;
-  taobao?: string;
-  jd?: string;
 }
 
 export type UserMessagePayload = {

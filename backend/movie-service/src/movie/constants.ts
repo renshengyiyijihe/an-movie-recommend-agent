@@ -8,23 +8,23 @@ export const WORKFLOW_CONSTANTS = {
   MAX_PROMPT_TEXT_LENGTH: 2500,
   /** 汇总给 LLM 的检索证据最大长度 */
   MAX_SYNTHESIS_EVIDENCE_LENGTH: 8000,
-  /** 写入共享态的历史消息上限（Postgres 按时间序截取最近 N 条） */
-  MAX_SHARED_HISTORY_TURNS: 20,
+  /** 写入共享态的历史消息上限（按气泡条数，不是轮次对） */
+  MAX_SHARED_HISTORY_MESSAGES: 20,
   /** 用户历史单条截断 */
   HISTORY_USER_MAX_LENGTH: 400,
   /** 助手历史单条截断（压缩片单 JSON 后） */
   HISTORY_ASSISTANT_MAX_LENGTH: 280,
-  /** 最大重试次数 */
+  /** 格式错误的最大尝试次数（含第一次）。网络错误不走这里。 */
   MAX_RETRIES: 3,
-  /** 重试退避时间（毫秒） */
+  /** 格式重试间隔（毫秒） */
   RETRY_BACKOFF_MS: 500,
 } as const;
 
 export const HISTORY_PROJECTION = {
-  intentMaxTurns: 4,
-  planningMaxTurns: 4,
-  searchMaxTurns: 8,
-  synthesisMaxTurns: 6,
+  intentMaxMessages: 4,
+  planningMaxMessages: 4,
+  searchMaxMessages: 8,
+  synthesisMaxMessages: 6,
 } as const;
 
 // ========== TMDB 配置 ==========
@@ -72,6 +72,12 @@ export const MESSAGE_CONSTANTS = {
   /** 默认拒绝消息 */
   DEFAULT_OUT_OF_SCOPE_MESSAGE:
     "我主要负责电影推荐或介绍。如果你想问电影类型、演员、风格、时长或推荐电影，我可以继续帮你。",
+  /** 同一会话已有 running 轮次 */
+  TURN_IN_PROGRESS: "上一轮还在处理，请稍后再发",
+  /** StartTurn 失败且不是「轮次冲突」 */
+  START_TURN_FAILED: "无法开始本轮对话，请稍后重试。",
+  /** 工作流已出结果，但 CompleteTurn 写入失败 */
+  COMPLETE_TURN_FAILED: "结果未能保存到会话，请稍后刷新或再试一次。",
 } as const;
 
 // ========== 类型映射 ==========

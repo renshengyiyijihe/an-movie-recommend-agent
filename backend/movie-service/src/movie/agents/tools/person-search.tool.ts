@@ -129,27 +129,15 @@ export class PersonSearchTool implements ITool {
         `[PersonSearchTool] Searching person: query=${query}, language=${language}, include_adult=${includeAdult}, page=${page}`,
       );
 
-      const params = new URLSearchParams({
-        query,
-        language,
-        include_adult: String(includeAdult),
-        page: String(page),
-      });
-
-      const url = `${this.tmdbProvider.getApiUrl()}/3/search/person?${params.toString()}`;
-      const response = (await fetch(url, {
-        method: "GET",
-        headers: this.tmdbProvider.getRequestHeaders(),
-      })) as Response;
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(
-          `TMDB search person request failed with status ${response.status}: ${errorText}`,
-        );
-      }
-
-      const searchResult = (await response.json()) as TmdbPersonSearchResponse;
+      const searchResult = await this.tmdbProvider.get<TmdbPersonSearchResponse>(
+        "/3/search/person",
+        {
+          query,
+          language,
+          include_adult: includeAdult,
+          page,
+        },
+      );
 
       const simplifiedResult = {
         page: searchResult.page,
@@ -163,6 +151,7 @@ export class PersonSearchTool implements ITool {
             name: person.name,
             original_name: person.original_name,
             gender: person.gender,
+            popularity: person.popularity,
             known_for: person.known_for.map((work) => ({
               id: work.id,
               title: work.title || work.name || "",

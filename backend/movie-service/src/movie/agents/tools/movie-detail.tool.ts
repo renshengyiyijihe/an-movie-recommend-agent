@@ -219,25 +219,10 @@ export class MovieDetailTool implements ITool {
         `[MovieDetailTool] Fetching movie details: movie_id=${movieId}, language=${language}, append_to_response=${appendToResponse || "none"}`,
       );
 
-      const params = new URLSearchParams({ language });
-      if (appendToResponse) {
-        params.set("append_to_response", appendToResponse);
-      }
-
-      const url = `${this.tmdbProvider.getApiUrl()}/3/movie/${movieId}?${params.toString()}`;
-      const response = (await fetch(url, {
-        method: "GET",
-        headers: this.tmdbProvider.getRequestHeaders(),
-      })) as Response;
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(
-          `TMDB movie details request failed with status ${response.status}: ${errorText}`,
-        );
-      }
-
-      const movieDetails = (await response.json()) as TmdbMovieDetailsResponse;
+      const movieDetails = await this.tmdbProvider.get<TmdbMovieDetailsResponse>(
+        `/3/movie/${movieId}`,
+        { language, append_to_response: appendToResponse },
+      );
 
       const credits = movieDetails.credits;
       const simplifiedResult = {

@@ -1,5 +1,7 @@
 import create from 'zustand';
 import { request } from '@/api';
+import { TEXT } from '@/constant';
+import { toast } from '@/store/toast';
 
 type User = { id: string; email: string; username: string } | null;
 
@@ -26,7 +28,10 @@ interface AuthState {
   setUser: (u: User) => void;
   login: (email: string, password: string) => Promise<void>;
   register: (username: string, email: string, password: string) => Promise<void>;
-  logout: () => void;
+  /**
+   * @param options.silent 为 true 时不弹出登出成功提示（例如 token 失效被强制清登录态）。
+   */
+  logout: (options?: { silent?: boolean }) => void;
 }
 
 export const useAuth = create<AuthState>((set, get) => {
@@ -46,21 +51,19 @@ export const useAuth = create<AuthState>((set, get) => {
       const res = await request<any>({ method: 'POST', url: '/api/auth/login', data: { email, password } });
       const token = res?.token;
       const user = res?.user ?? null;
-      if (!token) throw new Error('没有收到 token');
+      if (!token) throw new Error(TEXT.auth.missingToken);
       get().setToken(token);
       get().setUser(user ? { ...user, username: user.username ?? user.name ?? user.email } : decodeToken(token));
+      toast.success(TEXT.auth.loginSuccess);
     },
     register: async (username, email, password) => {
-      const res = await request<any>({ method: 'POST', url: '/api/auth/register', data: { username, email, password } });
-      const token = res?.token;
-      const user = res?.user ?? null;
-      if (!token) throw new Error('没有收到 token');
-      get().setToken(token);
-      get().setUser(user ? { ...user, username: user.username ?? user.name ?? user.email } : decodeToken(token));
+      await request({ method: 'POST', url: '/api/auth/register', data: { username, email, password } });
+      toast.success(TEXT.auth.registerSuccess);
     },
-    logout: () => {
+    logout: (options) => {
       if (typeof window !== 'undefined') localStorage.removeItem('token');
       set({ token: null, user: null });
+      if (!options?.silent) toast.success(TEXT.auth.logoutSuccess);
     },
   };
 });

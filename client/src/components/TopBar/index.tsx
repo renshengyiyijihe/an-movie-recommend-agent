@@ -1,5 +1,6 @@
 import useAuth from '@/store/auth';
 import AppLogo from '@/components/AppLogo';
+import { TEXT } from '@/constant';
 import styles from './index.module.less';
 
 interface Props {
@@ -20,22 +21,22 @@ export default function TopBar({ onOpenConfig, onOpenLogin, onOpenRegister }: Pr
         <span>An-movie</span>
       </div>
       <div className={styles.topBarActions} role="toolbar">
-        <button className={styles.btnSecondary} type="button" onClick={onOpenConfig} aria-label="打开配置">
-          ⚙ 配置
-        </button>
         {token ? (
           <>
-            <div className={styles.userPill} aria-label="当前登录用户">
-              <span className={styles.userPillName}>{user?.username ?? '用户'}</span>
+            <button className={styles.btnSecondary} type="button" onClick={onOpenConfig} aria-label="打开配置">
+              ⚙ 配置
+            </button>
+            <div className={styles.userPill} aria-label={TEXT.auth.currentUserAria}>
+              <span className={styles.userPillName}>{user?.username ?? TEXT.auth.userFallback}</span>
             </div>
-            <button className={styles.btnLogout} onClick={() => logout()} aria-label="登出">
-              登出
+            <button className={styles.btnLogout} onClick={() => logout()} aria-label={TEXT.auth.logoutAria}>
+              {TEXT.auth.logout}
             </button>
           </>
         ) : (
           <>
-            <button className={styles.btnOutline} onClick={onOpenLogin}>登录</button>
-            <button className={styles.btnPrimary} onClick={onOpenRegister}>注册</button>
+            <button className={styles.btnOutline} onClick={onOpenLogin}>{TEXT.auth.login}</button>
+            <button className={styles.btnPrimary} onClick={onOpenRegister}>{TEXT.auth.register}</button>
           </>
         )}
       </div>

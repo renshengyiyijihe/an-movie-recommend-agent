@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { request } from "@/api";
 import useAuth from "@/store/auth";
+import { toast } from "@/store/toast";
 import AuthModal from "@/components/AuthModal";
 import AppLogo from "@/components/AppLogo";
 import ConfigModal from "@/components/ConfigModal";
 import RecommendationPoster from "@/components/RecommendationPoster";
 import TopBar from "@/components/TopBar";
+import { TEXT } from "@/constant";
 import styles from "./index.module.less";
 import {
   convertConversationToMessages,
@@ -47,6 +49,7 @@ export default function HomePage() {
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [loginEmail, setLoginEmail] = useState("");
   const [historyLoading, setHistoryLoading] = useState(false);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -186,8 +189,12 @@ export default function HomePage() {
     } catch (err) {
       if (requestGen !== sessionGen.current) return;
       const msg = err instanceof Error ? err.message : "";
-      if (msg.includes("未授权") || msg.includes("请先登录")) {
-        logout();
+      if (
+        msg.includes(TEXT.auth.unauthorizedHint) ||
+        msg.includes(TEXT.auth.loginRequiredHint)
+      ) {
+        logout({ silent: true });
+        toast.info(TEXT.auth.sessionExpired);
         setShowLoginModal(true);
         return;
       }
@@ -339,8 +346,12 @@ export default function HomePage() {
     <div className={styles.appShell}>
       <TopBar
         onOpenConfig={openConfigModal}
-        onOpenLogin={() => setShowLoginModal(true)}
-        onOpenRegister={() => setShowRegisterModal(true)}
+        onOpenLogin={() => {
+          setShowLoginModal(true);
+        }}
+        onOpenRegister={() => {
+          setShowRegisterModal(true);
+        }}
       />
 
       <section className={styles.chatPanel}>
@@ -358,7 +369,10 @@ export default function HomePage() {
         <AuthModal
           visible={showLoginModal}
           mode="login"
-          onClose={() => setShowLoginModal(false)}
+          initialEmail={loginEmail}
+          onClose={() => {
+            setShowLoginModal(false);
+          }}
           onSwitchMode={() => {
             setShowLoginModal(false);
             setShowRegisterModal(true);
@@ -370,6 +384,11 @@ export default function HomePage() {
           onClose={() => setShowRegisterModal(false)}
           onSwitchMode={() => {
             setShowRegisterModal(false);
+            setShowLoginModal(true);
+          }}
+          onRegistered={(email) => {
+            setShowRegisterModal(false);
+            setLoginEmail(email);
             setShowLoginModal(true);
           }}
         />

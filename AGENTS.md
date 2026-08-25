@@ -24,6 +24,7 @@ an-movie-agent/
 │   ├── movie-service/           # 推荐工作流 / Agent / TMDB
 │   └── message-service/         # 会话消息 + Milvus 相似上下文
 ├── docker-compose.yml           # 镜像 context 为仓库根
+├── observability/               # Prometheus 刮取 + Grafana 数据源 / 总览仪表盘
 └── .github/workflows/
     ├── quality.yml              # lint + 四包 build（可复用）
     ├── ci.yml                   # PR 跑 quality
@@ -32,7 +33,7 @@ an-movie-agent/
 
 根级 `package.json` 只装 ESLint / Prettier / husky / commitlint，**没有 pnpm workspace**。四个应用仍各自 lockfile；共享包用 `file:` 引用 `@an-movie/contracts` / `@an-movie/auth-client`。根目录聚合命令：`pnpm typecheck`、`pnpm lint`、`pnpm build`（会先编共享包）。commit message 须符合 Conventional Commits，允许的 `type` 以 `commitlint.config.mjs` 为准。
 
-HTTP 错误体为 `{ code, message, details?, requestId? }`，`code` 见 `packages/contracts` 的 `ERROR_CODE`。各服务 `GET /health` 只表示进程活着；`GET /ready` 才给 Compose 探活（auth：JWT + Postgres，message：Postgres + Milvus，movie：`LLM_API_KEY` 存在）。`GET /metrics` 为 Prometheus 文本。这三个口 nginx 都不反代。日志为 JSON（pino），带 `service` / `requestId`。
+HTTP 错误体为 `{ code, message, details?, requestId? }`，`code` 见 `packages/contracts` 的 `ERROR_CODE`。各服务 `GET /health` 只表示进程活着；`GET /ready` 才给 Compose 探活（auth：JWT + Postgres，message：Postgres + Milvus，movie：`LLM_API_KEY` 存在）。`GET /metrics` 为 Prometheus 文本。这三个口 nginx 都不反代。Prometheus 在 Compose 网内刮三个 `/metrics`，Grafana 查 Prometheus。日志为 JSON（pino），带 `service` / `requestId`。
 
 
 ## 运行时拓扑
@@ -51,6 +52,8 @@ message-service ──HTTP──► SiliconFlow embeddings
 movie-service  ──HTTP──► SiliconFlow LLM + TMDB
 message-service ──► Postgres + Milvus(19530)
 auth-service    ──► Postgres
+Prometheus      ──HTTP──► auth:3002 / movie:3001 / message:3003  /metrics
+Grafana         ──HTTP──► Prometheus:9090
 ```
 
 本地一键：`docker compose up --build`
@@ -63,6 +66,7 @@ auth-service    ──► Postgres
 | auth-service | http://localhost:3002 |
 | message-service | http://localhost:3003 |
 | Portainer | http://localhost:9000 |
+| Grafana | http://localhost:3000（默认 admin/admin，进 UI 改密码） |
 
 ## 推荐主链路（改这里前先读）
 
@@ -267,6 +271,8 @@ Prompt 入口（改提示词只动这个文件）：
 | 登录鉴权 | `backend/auth-service/src/auth/auth.service.ts` |
 | 前端聊天 | `client/src/pages/HomePage/index.tsx`、`client/src/api.ts` |
 | 反代 | `client/nginx.conf`、`docker-compose.yml` |
+| 指标刮取 | `observability/prometheus.yml` |
+| Grafana 数据源与总览盘 | `observability/grafana/` |
 | 共享包镜像 | `packages/Dockerfile` |
 
 ## 已知坑
@@ -281,3 +287,4 @@ Prompt 入口（改提示词只动这个文件）：
 - 部署不再 `compose down` / `rm -f` 整栈；编完应用镜像后用 commit sha 打本地 tag，再 `up -d`。密钥仍写服务器 `.env`。
 - Compose 的 movie-service `env_file` 是 `backend/movie-service/.env`，auth/message 用 `backend/.env`。
 - auth-service 用原始 `pg` Pool，message-service 用 TypeORM。`users` 表只归 auth-service，message 不要碰。
+- Prometheus 不映射宿主机端口；看指标走 Grafana。总览盘会预置进去，网页里改完点保存会留下；只有仓库里那份仪表盘 JSON 以后又改了并重新部署，出厂布局才会再盖过来。删 `grafana_data` volume 会丢网页上改过的盘和密码。默认 admin/admin，公网 3000 务必立刻改密。

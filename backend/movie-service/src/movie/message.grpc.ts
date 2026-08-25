@@ -1,9 +1,13 @@
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { Metadata, credentials, loadPackageDefinition } from "@grpc/grpc-js";
 import { loadSync } from "@grpc/proto-loader";
-import { join } from "path";
-import { USER_ID_METADATA_KEY } from "../auth/grpc-metadata";
-import { UserContext } from "../auth/user-context";
+import {
+  REQUEST_ID_METADATA_KEY,
+  RequestId,
+  USER_ID_METADATA_KEY,
+  UserContext,
+  resolveProtoFile,
+} from "@an-movie/auth-client";
 import { AssistantPayload, UserMessagePayload } from "./transcript";
 
 interface CreateConversationRequest {
@@ -50,7 +54,7 @@ export class MessageGrpcClient implements OnModuleInit {
   private readonly logger = new Logger(MessageGrpcClient.name);
 
   onModuleInit() {
-    const protoPath = join(__dirname, "..", "..", "proto", "message.proto");
+    const protoPath = resolveProtoFile("message.proto", "MESSAGE_PROTO_PATH");
     const packageDef = loadSync(protoPath, {
       keepCase: true,
       longs: String,
@@ -125,6 +129,10 @@ export class MessageGrpcClient implements OnModuleInit {
   private rpc<TRes>(method: string, request: object): Promise<TRes> {
     const metadata = new Metadata();
     metadata.set(USER_ID_METADATA_KEY, UserContext.current().id);
+    const requestId = RequestId.current();
+    if (requestId) {
+      metadata.set(REQUEST_ID_METADATA_KEY, requestId);
+    }
     return new Promise((resolve, reject) => {
       this.client[method](request, metadata, (err: unknown, response: TRes) => {
         if (err) {

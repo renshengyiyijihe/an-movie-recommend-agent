@@ -2,33 +2,16 @@
  * 写入 messages.content 的判别联合。
  * message-service 原样存 JSONB，不解析 kind。
  */
+import type { RecommendationItem, RecommendationPayload } from "@an-movie/contracts";
 import { getStringValue } from "./helpers";
 
-export type UserMessagePayload = {
-  kind: "user_query";
-  text: string;
-};
-
-export type RecommendationPayload = {
-  kind: "recommendation";
-  text: string;
-  movies: unknown[];
-};
-
-export type RejectPayload = {
-  kind: "reject";
-  message: string;
-};
-
-export type ErrorPayload = {
-  kind: "error";
-  message: string;
-};
-
-export type AssistantPayload =
-  | RecommendationPayload
-  | RejectPayload
-  | ErrorPayload;
+export type {
+  AssistantPayload,
+  ErrorPayload,
+  RecommendationPayload,
+  RejectPayload,
+  UserMessagePayload,
+} from "@an-movie/contracts";
 
 export type TurnStatus = "success" | "reject" | "error";
 
@@ -61,6 +44,6 @@ export function recommendationFromParsed(
  * @param parsed 推荐 JSON 对象
  * @returns movies；没有或不是数组则返回空数组
  */
-export function moviesFromParsed(parsed: Record<string, unknown>): unknown[] {
-  return Array.isArray(parsed.movies) ? parsed.movies : [];
+export function moviesFromParsed(parsed: Record<string, unknown>): RecommendationItem[] {
+  return Array.isArray(parsed.movies) ? (parsed.movies as RecommendationItem[]) : [];
 }

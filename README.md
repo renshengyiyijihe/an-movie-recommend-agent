@@ -22,7 +22,7 @@
 | 数据 | PostgreSQL、Milvus |
 | LLM / Embedding | LangChain（OpenAI 兼容）+ SiliconFlow |
 | 影片数据 | TMDB |
-| 包管理 | pnpm 10.15.0（无根级 `package.json`） |
+| 包管理 | pnpm 10.15.0（四个应用各自 lockfile；根级 `package.json` 只做 lint / typecheck / husky） |
 
 ## 系统架构
 
@@ -65,6 +65,9 @@ OrchestratorAgent
 
 ```text
 an-movie-agent/
+├── package.json                  # 仅工具链：lint / typecheck / husky
+├── packages/contracts            # 错误码与聊天类型
+├── packages/auth-client          # 鉴权 Guard / 异常过滤器
 ├── client/                       # Vite + React 单页
 ├── backend/
 │   ├── proto/                    # 跨服务 .proto（构建时 COPY 进镜像）
@@ -72,11 +75,14 @@ an-movie-agent/
 │   ├── movie-service/            # 推荐工作流 / Agent / TMDB
 │   └── message-service/          # 会话消息 + Milvus 相似上下文
 ├── docker-compose.yml
-├── .github/workflows/deploy.yml  # push main 后 SSH 部署
+├── .github/workflows/
+│   ├── quality.yml               # lint + 四包 build
+│   ├── ci.yml                    # PR
+│   └── deploy.yml                # quality 通过后 SSH 部署
 └── AGENTS.md                     # 编码约定与模块边界
 ```
 
-三个后端服务和前端各自独立安装依赖。
+三个后端服务和前端各自独立安装依赖。仓库根目录可跑 `pnpm typecheck` / `pnpm lint` / `pnpm build`（不代替各包自己的 `pnpm install`）。
 
 ### 服务职责
 
@@ -158,8 +164,10 @@ docker compose up --build
 
 ## 部署
 
-push `main` 后由 [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) SSH 部署。需配置 GitHub secret `LLM_API_KEY`（以及可选 `LLM_BASE_URL`）。
+push `main` 后先跑 [quality](.github/workflows/quality.yml)（lint + 四包 `pnpm build`），通过后才由 [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) SSH 部署。需配置 GitHub secret `LLM_API_KEY`（以及可选 `LLM_BASE_URL`）。
 
 ## 开发约定
 
 模块边界、Agent / Tool / Prompt 扩展方式见 [AGENTS.md](AGENTS.md)。
+
+提交前 husky 会对暂存的 `ts/tsx` 跑 ESLint。PR 会跑 [quality](.github/workflows/quality.yml)；push `main` 在 quality 通过后才 SSH 部署。

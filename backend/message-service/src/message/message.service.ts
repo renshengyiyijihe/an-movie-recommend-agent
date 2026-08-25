@@ -8,7 +8,7 @@ import {
 import { InjectRepository } from "@nestjs/typeorm";
 import { LessThan, Repository } from "typeorm";
 import { randomUUID } from "crypto";
-import { UserContext } from "../auth/user-context";
+import { UserContext } from "@an-movie/auth-client";
 import { MilvusProvider } from "../milvus/milvus.provider";
 import {
   ConversationEntity,

@@ -1,4 +1,5 @@
 import { IsEmail, IsNotEmpty, IsString, Length } from 'class-validator';
+import { AUTH_PASSWORD_MAX_LENGTH, AUTH_PASSWORD_MIN_LENGTH } from '@an-movie/contracts';
 
 export class LoginDto {
   @IsNotEmpty()
@@ -7,6 +8,6 @@ export class LoginDto {
 
   @IsNotEmpty()
   @IsString()
-  @Length(6, 128)
+  @Length(AUTH_PASSWORD_MIN_LENGTH, AUTH_PASSWORD_MAX_LENGTH)
   password: string;
 }

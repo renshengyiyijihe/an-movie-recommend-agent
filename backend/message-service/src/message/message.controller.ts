@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
-import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { JwtAuthGuard } from "@an-movie/auth-client";
 import { CreateConversationDto } from "./dto/create-conversation.dto";
 import { MessageService } from "./message.service";
 

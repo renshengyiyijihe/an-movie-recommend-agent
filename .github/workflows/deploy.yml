@@ -6,81 +6,13 @@ on:
       - main
 
 jobs:
+  quality:
+    uses: ./.github/workflows/quality.yml
+
   deploy:
+    needs: quality
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.15.0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-          cache-dependency-path: |
-            backend/auth-service/package.json
-            backend/auth-service/pnpm-lock.yaml
-            backend/movie-service/package.json
-            backend/movie-service/pnpm-lock.yaml
-            backend/message-service/package.json
-            backend/message-service/pnpm-lock.yaml
-            client/package.json
-            client/pnpm-lock.yaml
-
-      - name: Cache auth-service node_modules
-        uses: actions/cache@v4
-        id: auth-node-modules
-        with:
-          path: backend/auth-service/node_modules
-          key: auth-node-modules-${{ runner.os }}-${{ hashFiles('backend/auth-service/package.json', 'backend/auth-service/pnpm-lock.yaml') }}
-
-      - name: Cache movie-service node_modules
-        uses: actions/cache@v4
-        id: movie-node-modules
-        with:
-          path: backend/movie-service/node_modules
-          key: movie-node-modules-${{ runner.os }}-${{ hashFiles('backend/movie-service/package.json', 'backend/movie-service/pnpm-lock.yaml') }}
-
-      - name: Cache message-service node_modules
-        uses: actions/cache@v4
-        id: message-node-modules
-        with:
-          path: backend/message-service/node_modules
-          key: message-node-modules-${{ runner.os }}-${{ hashFiles('backend/message-service/package.json', 'backend/message-service/pnpm-lock.yaml') }}
-
-      - name: Cache client node_modules
-        uses: actions/cache@v4
-        id: client-node-modules
-        with:
-          path: client/node_modules
-          key: client-node-modules-${{ runner.os }}-${{ hashFiles('client/package.json', 'client/pnpm-lock.yaml') }}
-
-      - name: Install auth-service dependencies
-        if: steps.auth-node-modules.outputs.cache-hit != 'true'
-        working-directory: backend/auth-service
-        run: pnpm install --frozen-lockfile --prefer-offline
-
-      - name: Install movie-service dependencies
-        if: steps.movie-node-modules.outputs.cache-hit != 'true'
-        working-directory: backend/movie-service
-        run: pnpm install --frozen-lockfile --prefer-offline
-
-      - name: Install message-service dependencies
-        if: steps.message-node-modules.outputs.cache-hit != 'true'
-        working-directory: backend/message-service
-        run: pnpm install --frozen-lockfile --prefer-offline
-
-      - name: Install client dependencies
-        if: steps.client-node-modules.outputs.cache-hit != 'true'
-        working-directory: client
-        run: pnpm install --frozen-lockfile --prefer-offline
-
       - name: Deploy via SSH and send notification
         id: deploy
         timeout-minutes: 60

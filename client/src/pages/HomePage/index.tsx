@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { request } from "@/api";
+import { ApiError, request } from "@/api";
+import { ERROR_CODE } from "@an-movie/contracts";
 import useAuth from "@/store/auth";
 import { toast } from "@/store/toast";
 import AuthModal from "@/components/AuthModal";
@@ -188,11 +189,11 @@ export default function HomePage() {
       if (result?.conversationId) setConversationId(result.conversationId);
     } catch (err) {
       if (requestGen !== sessionGen.current) return;
-      const msg = err instanceof Error ? err.message : "";
-      if (
-        msg.includes(TEXT.auth.unauthorizedHint) ||
-        msg.includes(TEXT.auth.loginRequiredHint)
-      ) {
+      const expired =
+        err instanceof ApiError &&
+        (err.code === ERROR_CODE.UNAUTHORIZED ||
+          (err.status === 401 && err.code !== ERROR_CODE.INVALID_CREDENTIALS));
+      if (expired) {
         logout({ silent: true });
         toast.info(TEXT.auth.sessionExpired);
         setShowLoginModal(true);
@@ -208,10 +209,11 @@ export default function HomePage() {
         },
       ]);
     } finally {
-      if (requestGen !== sessionGen.current) return;
-      sendingRef.current = false;
-      setLoading(false);
-      setImageData("");
+      if (requestGen === sessionGen.current) {
+        sendingRef.current = false;
+        setLoading(false);
+        setImageData("");
+      }
     }
   }
 

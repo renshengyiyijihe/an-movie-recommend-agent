@@ -1,8 +1,10 @@
-import { Injectable, ConflictException, UnauthorizedException, OnModuleInit, Logger } from '@nestjs/common';
+import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
 import { Pool } from 'pg';
+import { ERROR_CODE } from '@an-movie/contracts';
+import { AppHttpException } from '@an-movie/auth-client';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 
@@ -16,6 +18,7 @@ function requireJwtSecret(): string {
 
 const JWT_SECRET = requireJwtSecret();
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN ?? '7d';
+const LOGIN_FAILED_MESSAGE = '邮箱或密码错误';
 
 const pool = new Pool({ connectionString: process.env.POSTGRES_URL ?? 'postgresql://postgres:password@localhost:5432/anmovie_db' });
 
@@ -26,6 +29,10 @@ export class AuthService implements OnModuleInit {
   async onModuleInit() {
     this.logger.log('Starting auth service and verifying users table.');
     await this.ensureTable();
+  }
+
+  async ping(): Promise<void> {
+    await pool.query('SELECT 1');
   }
 
   private async ensureTable() {
@@ -45,12 +52,12 @@ export class AuthService implements OnModuleInit {
   }
 
   async register(dto: RegisterDto) {
-    this.logger.log(`Register attempt: username=${dto.username}, email=${dto.email}`);
+    this.logger.log('Register attempt');
     try {
       const existing = await pool.query('SELECT id FROM users WHERE email = $1', [dto.email]);
       if ((existing?.rowCount ?? 0) > 0) {
-        this.logger.warn(`Register failed: email already exists ${dto.email}`);
-        throw new ConflictException('email_exists');
+        this.logger.warn('Register failed: email already exists');
+        throw new AppHttpException(ERROR_CODE.EMAIL_EXISTS, '该邮箱已注册', 409);
       }
 
       const passwordHash = await bcrypt.hash(dto.password, 10);
@@ -62,36 +69,38 @@ export class AuthService implements OnModuleInit {
 
       const user = result.rows[0];
       const token = this.signToken(user);
-      this.logger.log(`Register successful: id=${user.id}, email=${dto.email}`);
+      this.logger.log(`Register successful: id=${user.id}`);
       return { token, user: { id: user.id, username: user.name, email: user.email } };
     } catch (error) {
-      this.logger.error(`Register error for email=${dto.email}`, error as Error);
+      if (error instanceof AppHttpException) throw error;
+      this.logger.error('Register error', error as Error);
       throw error;
     }
   }
 
   async login(dto: LoginDto) {
-    this.logger.log(`Login attempt for email: ${dto.email}`);
+    this.logger.log('Login attempt');
     try {
       const result = await pool.query('SELECT id, name, email, password_hash FROM users WHERE email = $1', [dto.email]);
       const user = result.rows[0];
 
       if (!user) {
-        this.logger.warn(`Login failed: user not found for email ${dto.email}`);
-        throw new UnauthorizedException('邮箱不存在，请确认后重试。');
+        this.logger.warn('Login failed');
+        throw new AppHttpException(ERROR_CODE.INVALID_CREDENTIALS, LOGIN_FAILED_MESSAGE, 401);
       }
 
       const valid = await bcrypt.compare(dto.password, user.password_hash);
       if (!valid) {
-        this.logger.warn(`Login failed: invalid password for email ${dto.email}`);
-        throw new UnauthorizedException('密码错误，请确认后重试。');
+        this.logger.warn('Login failed');
+        throw new AppHttpException(ERROR_CODE.INVALID_CREDENTIALS, LOGIN_FAILED_MESSAGE, 401);
       }
 
       const token = this.signToken(user);
-      this.logger.log(`Login successful for email: ${dto.email}`);
+      this.logger.log(`Login successful: id=${user.id}`);
       return { token, user: { id: user.id, username: user.name, email: user.email } };
     } catch (error) {
-      this.logger.error(`Login exception for email=${dto.email}`, error as Error);
+      if (error instanceof AppHttpException) throw error;
+      this.logger.error('Login exception', error as Error);
       throw error;
     }
   }
@@ -103,11 +112,11 @@ export class AuthService implements OnModuleInit {
       const allowedEmail = '1191681452@qq.com';
       
       if (payload.email !== allowedEmail) {
-        this.logger.warn(`ValidateToken failed: email ${payload.email} is not authorized`);
+        this.logger.warn(`ValidateToken failed: email is not authorized`);
         return { ok: false, error: 'email_not_authorized' };
       }
       
-      this.logger.log(`ValidateToken success for user=${payload.email ?? payload.sub}`);
+      this.logger.log(`ValidateToken success for user=${payload.sub}`);
       return { ok: true, user: { id: payload.sub, username: payload.username ?? payload.name, email: payload.email } };
     } catch (error) {
       this.logger.warn(`ValidateToken failed: ${(error as Error).message}`);

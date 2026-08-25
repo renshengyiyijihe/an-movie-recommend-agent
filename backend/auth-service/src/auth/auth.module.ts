@@ -6,5 +6,6 @@ import { AuthGrpcServer } from './auth.grpc';
 @Module({
   controllers: [AuthController],
   providers: [AuthService, AuthGrpcServer],
+  exports: [AuthService],
 })
 export class AuthModule {}

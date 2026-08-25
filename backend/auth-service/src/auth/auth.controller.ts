@@ -11,13 +11,13 @@ export class AuthController {
 
   @Post('register')
   async register(@Body() dto: RegisterDto) {
-    this.logger.log(`register request: username=${dto.username}, email=${dto.email}`);
+    this.logger.log('register request');
     return this.authService.register(dto);
   }
 
   @Post('login')
   async login(@Body() dto: LoginDto) {
-    this.logger.log(`login request: email=${dto.email}`);
+    this.logger.log('login request');
     return this.authService.login(dto);
   }
 }

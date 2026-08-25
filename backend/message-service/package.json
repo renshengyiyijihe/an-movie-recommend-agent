@@ -5,10 +5,13 @@
   "packageManager": "pnpm@10.15.0",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/main.js",
     "start:dev": "ts-node-dev --respawn --transpile-only src/main.ts"
   },
   "dependencies": {
+    "@an-movie/auth-client": "file:../../packages/auth-client",
+    "@an-movie/contracts": "file:../../packages/contracts",
     "@grpc/grpc-js": "^1.8.17",
     "@grpc/proto-loader": "^0.7.5",
     "@nestjs/common": "^10.0.0",

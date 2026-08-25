@@ -12,17 +12,27 @@
 
 ```text
 an-movie-agent/
+├── package.json                 # 仅工具链：lint / typecheck / husky
+├── packages/
+│   ├── contracts/               # 错误码、校验常量、聊天气泡类型（file: 依赖）
+│   └── auth-client/             # JwtAuthGuard、Auth gRPC 客户端、异常过滤器、request-id
 ├── client/                      # 前端（Vite + React）
 ├── backend/
 │   ├── proto/                   # 跨服务共享 .proto（构建时 COPY 进各镜像）
 │   ├── auth-service/            # 注册登录 + JWT + gRPC 验票
 │   ├── movie-service/           # 推荐工作流 / Agent / TMDB
 │   └── message-service/         # 会话消息 + Milvus 相似上下文
-├── docker-compose.yml
-└── .github/workflows/deploy.yml # push main 后 SSH 部署到阿里云
+├── docker-compose.yml           # 镜像 context 为仓库根
+└── .github/workflows/
+    ├── quality.yml              # lint + 四包 build（可复用）
+    ├── ci.yml                   # PR 跑 quality
+    └── deploy.yml               # quality 通过后 SSH 部署
 ```
 
-没有根级 package.json，三个后端服务和前端各自独立安装依赖。
+根级 `package.json` 只装 ESLint / Prettier / husky，**没有 pnpm workspace**。四个应用仍各自 lockfile；共享包用 `file:` 引用 `@an-movie/contracts` / `@an-movie/auth-client`。根目录聚合命令：`pnpm typecheck`、`pnpm lint`、`pnpm build`（会先编共享包）。
+
+HTTP 错误体为 `{ code, message, details?, requestId? }`，`code` 见 `packages/contracts` 的 `ERROR_CODE`。各服务 `GET /health` 只给容器探活，nginx 不反代。
+
 
 ## 运行时拓扑
 
@@ -237,13 +247,13 @@ Prompt 入口（改提示词只动这个文件）：
 | 目的 | 文件 |
 | --- | --- |
 | 推荐入口与会话 | `backend/movie-service/src/movie/movie.service.ts` |
-| HTTP / gRPC 鉴权 | `backend/movie-service/src/auth/`、`backend/message-service/src/auth/` |
+| HTTP / gRPC 鉴权 | `packages/auth-client/`、`backend/message-service/src/auth/grpc-user.guard.ts` |
 | 工作流上下文 | `backend/movie-service/src/movie/agents/workflow-context.ts` |
 | 工作副本 / 视图 | `backend/movie-service/src/movie/working-set.ts` |
 | 任务规划校验 | `backend/movie-service/src/movie/task-plan.ts` |
 | 业务错误 | `backend/movie-service/src/movie/errors/` |
 | 历史投影 | `backend/movie-service/src/movie/conversation-history.ts` |
-| 可见消息 / 事件类型 | `backend/movie-service/src/movie/transcript.ts`、`turn-events.ts` |
+| 可见消息 / 事件类型 | `packages/contracts/`、`backend/movie-service/src/movie/transcript.ts`、`turn-events.ts` |
 | 会话 gRPC | `backend/movie-service/src/movie/message.grpc.ts`、`backend/proto/message.proto` |
 | 意图与调度 | `backend/movie-service/src/movie/agents/orchestrator.agent.ts` |
 | 工具规划与执行 | `backend/movie-service/src/movie/agents/search.agent.ts` |
@@ -260,11 +270,9 @@ Prompt 入口（改提示词只动这个文件）：
 
 - 鉴权白名单邮箱写死在 `AuthService.validateToken`。
 - `JWT_SECRET` 必须显式配置，代码不再回退 `dev_secret`。
-- 部署需配置 GitHub secret `LLM_API_KEY`（以及可选 `LLM_BASE_URL`），不要再写供应商密钥名。
 - 内部 gRPC 信任 metadata 里的 `user-id`（依赖 Docker 网络隔离，message-service 不再二次验 JWT）。
 - 图片主链路仍未消费 `imageData`。
 - Relation 未做：计数/排名、多跳路径、公司/系列。规划应标 `unsupported` 或直接 `search`，不要假装能算。
 - 工作副本不跨请求保留；指代「刚才那批结果再筛」目前只能靠历史文本 + 重新取数。
 - Compose 的 movie-service `env_file` 是 `backend/movie-service/.env`，auth/message 用 `backend/.env`。
-- 前端 Dockerfile 激活的是 pnpm 9，`package.json` 声明 10.15.0。
 - auth-service 用原始 `pg` Pool，message-service 用 TypeORM。`users` 表只归 auth-service，message 不要碰。

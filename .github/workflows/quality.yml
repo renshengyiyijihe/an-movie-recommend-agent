@@ -1,0 +1,65 @@
+name: Quality
+
+on:
+  workflow_call:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile --prefer-offline
+
+      - run: pnpm lint
+
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - client
+          - backend/auth-service
+          - backend/movie-service
+          - backend/message-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: |
+            ${{ matrix.package }}/pnpm-lock.yaml
+            packages/contracts/pnpm-lock.yaml
+            packages/auth-client/pnpm-lock.yaml
+
+      - name: Build shared packages
+        run: |
+          pnpm --dir packages/contracts install --frozen-lockfile --prefer-offline
+          pnpm --dir packages/contracts build
+          pnpm --dir packages/auth-client install --frozen-lockfile --prefer-offline
+          pnpm --dir packages/auth-client build
+
+      - name: Install
+        working-directory: ${{ matrix.package }}
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Build
+        working-directory: ${{ matrix.package }}
+        run: pnpm build

@@ -2,11 +2,11 @@ import "reflect-metadata";
 import * as dotenv from "dotenv";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import "reflect-metadata";
-import { Logger, ValidationPipe } from "@nestjs/common";
+import { Logger } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
-import { AppModule } from "./app.module";
 import { MicroserviceOptions, Transport } from "@nestjs/microservices";
+import { createHttpValidationPipe, requestIdMiddleware, resolveProtoFile } from "@an-movie/auth-client";
+import { AppModule } from "./app.module";
 import { dropLegacyMessageSchema } from "./message/drop-legacy-schema";
 
 const logger = new Logger("MessageServiceBootstrap");
@@ -28,7 +28,8 @@ async function bootstrap() {
   await dropLegacyMessageSchema(postgresUrl);
 
   const app = await NestFactory.create(AppModule);
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.use(requestIdMiddleware);
+  app.useGlobalPipes(createHttpValidationPipe());
   app.enableCors();
 
   const grpcPort = Number(process.env.MESSAGE_GRPC_PORT ?? 50052);
@@ -36,7 +37,7 @@ async function bootstrap() {
     transport: Transport.GRPC,
     options: {
       package: "message",
-      protoPath: path.join(__dirname, "..", "proto", "message.proto"),
+      protoPath: resolveProtoFile("message.proto", "MESSAGE_PROTO_PATH"),
       url: `0.0.0.0:${grpcPort}`,
       loader: {
         keepCase: true,

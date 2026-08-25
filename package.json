@@ -1,0 +1,25 @@
+{
+  "name": "an-movie-agent",
+  "private": true,
+  "packageManager": "pnpm@10.15.0",
+  "scripts": {
+    "typecheck": "node scripts/run-in-packages.mjs typecheck",
+    "build": "node scripts/run-in-packages.mjs build",
+    "lint": "eslint .",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": "eslint --fix"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.9.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.11.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.3.0",
+    "prettier": "^3.9.6",
+    "typescript-eslint": "^8.68.0"
+  }
+}

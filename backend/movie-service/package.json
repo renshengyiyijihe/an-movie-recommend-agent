@@ -5,10 +5,13 @@
   "packageManager": "pnpm@10.15.0",
   "scripts": {
     "build": "nest build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/main.js",
     "start:dev": "nest start --watch"
   },
   "dependencies": {
+    "@an-movie/auth-client": "file:../../packages/auth-client",
+    "@an-movie/contracts": "file:../../packages/contracts",
     "@grpc/grpc-js": "^1.8.17",
     "@grpc/proto-loader": "^0.7.5",
     "@langchain/core": "^1.2.3",
@@ -31,11 +34,6 @@
     "@nestjs/schematics": "^10.0.0",
     "@types/lodash-es": "^4.17.12",
     "@types/node": "^20.19.43",
-    "@typescript-eslint/eslint-plugin": "^7.0.0",
-    "@typescript-eslint/parser": "^7.0.0",
-    "eslint": "^8.0.0",
-    "eslint-config-prettier": "^9.0.0",
-    "prettier": "^3.0.0",
     "ts-node": "^10.0.0",
     "typescript": "^5.5.0"
   }

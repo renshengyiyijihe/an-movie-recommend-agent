@@ -1,8 +1,7 @@
 import { CanActivate, ExecutionContext, Injectable } from "@nestjs/common";
 import { RpcException } from "@nestjs/microservices";
 import { Metadata, status } from "@grpc/grpc-js";
-import { USER_ID_METADATA_KEY } from "./grpc-metadata";
-import { RequestUser } from "./user-context";
+import { USER_ID_METADATA_KEY, type RequestUser } from "@an-movie/auth-client";
 
 type RpcContext = { metadata?: Metadata; user?: RequestUser } & Partial<Metadata>;
 

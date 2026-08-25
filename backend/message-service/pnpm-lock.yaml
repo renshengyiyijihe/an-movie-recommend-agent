@@ -8,6 +8,12 @@ importers:
 
   .:
     dependencies:
+      '@an-movie/auth-client':
+        specifier: file:../../packages/auth-client
+        version: file:../../packages/auth-client(@grpc/grpc-js@1.14.4)(@grpc/proto-loader@0.7.15)(@nestjs/common@10.4.22(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.1.14)(rxjs@7.8.2))
+      '@an-movie/contracts':
+        specifier: file:../../packages/contracts
+        version: file:../../packages/contracts
       '@grpc/grpc-js':
         specifier: ^1.8.17
         version: 1.14.4
@@ -71,6 +77,16 @@ importers:
         version: 5.9.3
 
 packages:
+
+  '@an-movie/auth-client@file:../../packages/auth-client':
+    resolution: {directory: ../../packages/auth-client, type: directory}
+    peerDependencies:
+      '@grpc/grpc-js': ^1.8.17
+      '@grpc/proto-loader': ^0.7.5
+      '@nestjs/common': ^10.0.0
+
+  '@an-movie/contracts@file:../../packages/contracts':
+    resolution: {directory: ../../packages/contracts, type: directory}
 
   '@aws-sdk/checksums@3.1000.27':
     resolution: {integrity: sha512-insWOqKKNUrbN/dohEG7BJ0U5GkyqhjbMb/NHNaLUtq+7my2M8C4EnZZZoxMmXRqCC+P9dEr+KyJA2JGGzoKLg==}
@@ -1581,6 +1597,15 @@ packages:
     engines: {node: '>=6'}
 
 snapshots:
+
+  '@an-movie/auth-client@file:../../packages/auth-client(@grpc/grpc-js@1.14.4)(@grpc/proto-loader@0.7.15)(@nestjs/common@10.4.22(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.1.14)(rxjs@7.8.2))':
+    dependencies:
+      '@an-movie/contracts': file:../../packages/contracts
+      '@grpc/grpc-js': 1.14.4
+      '@grpc/proto-loader': 0.7.15
+      '@nestjs/common': 10.4.22(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.1.14)(rxjs@7.8.2)
+
+  '@an-movie/contracts@file:../../packages/contracts': {}
 
   '@aws-sdk/checksums@3.1000.27':
     dependencies:

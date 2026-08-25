@@ -1,7 +1,5 @@
 import { Body, Controller, Logger, Post, UseGuards } from "@nestjs/common";
-import { CurrentUser } from "../auth/current-user.decorator";
-import { JwtAuthGuard } from "../auth/jwt-auth.guard";
-import { RequestUser } from "../auth/user-context";
+import { CurrentUser, JwtAuthGuard, type RequestUser } from "@an-movie/auth-client";
 import { RecommendDto } from "./dto/recommend.dto";
 import { MovieService } from "./movie.service";
 

@@ -1,5 +1,6 @@
 import 'reflect-metadata';
-import { Logger, ValidationPipe } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
+import { createHttpValidationPipe, requestIdMiddleware } from '@an-movie/auth-client';
 
 const logger = new Logger('AuthServiceBootstrap');
 
@@ -13,7 +14,8 @@ async function bootstrap() {
   const { NestFactory } = await import('@nestjs/core');
   const { AppModule } = await import('./app.module');
   const app = await NestFactory.create(AppModule);
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));
+  app.use(requestIdMiddleware);
+  app.useGlobalPipes(createHttpValidationPipe());
   const port = Number(process.env.AUTH_HTTP_PORT ?? 3002);
   await app.listen(port, '0.0.0.0');
   logger.log(`Auth service HTTP listening on http://0.0.0.0:${port}`);

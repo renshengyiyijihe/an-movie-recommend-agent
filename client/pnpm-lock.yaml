@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@an-movie/contracts':
+        specifier: file:../packages/contracts
+        version: file:../packages/contracts
       '@emotion/react':
         specifier: ^11.12.0
         version: 11.14.0(@types/react@18.3.31)(react@18.3.1)
@@ -59,6 +62,9 @@ importers:
         version: 5.4.1(@types/node@26.2.0)(less@4.8.1)
 
 packages:
+
+  '@an-movie/contracts@file:../packages/contracts':
+    resolution: {directory: ../packages/contracts, type: directory}
 
   '@babel/code-frame@7.29.7':
     resolution: {integrity: sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw==}
@@ -1145,6 +1151,8 @@ packages:
         optional: true
 
 snapshots:
+
+  '@an-movie/contracts@file:../packages/contracts': {}
 
   '@babel/code-frame@7.29.7':
     dependencies:

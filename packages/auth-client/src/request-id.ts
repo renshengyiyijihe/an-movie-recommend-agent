@@ -13,10 +13,23 @@ export const RequestId = {
   },
 };
 
-type IncomingReq = { headers: Record<string, string | string[] | undefined> };
+type IncomingReq = {
+  headers: Record<string, string | string[] | undefined>;
+  id?: unknown;
+};
 type OutgoingRes = { setHeader: (name: string, value: string) => void };
 
-function readIncomingId(req: IncomingReq): string {
+/**
+ * 优先用 pino 写在 `req.id` 上的值，否则读 `x-request-id`，再没有就新建。
+ * @example
+ * `{ id: "from-pino", headers: {} }` → `"from-pino"`
+ * `{ headers: { "x-request-id": "abc" } }` → `"abc"`
+ */
+export function readRequestId(req: IncomingReq): string {
+  if (req.id !== undefined && req.id !== null) {
+    const fromPino = String(req.id).trim();
+    if (fromPino) return fromPino;
+  }
   const raw = req.headers[HEADER];
   const text = Array.isArray(raw) ? raw[0] : raw;
   const trimmed = text?.trim();
@@ -29,7 +42,7 @@ export function requestIdMiddleware(
   res: OutgoingRes,
   next: () => void,
 ): void {
-  const id = readIncomingId(req);
+  const id = readRequestId(req);
   res.setHeader(HEADER, id);
   RequestId.run(id, () => next());
 }

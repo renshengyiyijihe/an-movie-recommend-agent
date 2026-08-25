@@ -1,4 +1,5 @@
 ﻿import { Injectable, Logger } from "@nestjs/common";
+import { MetricsRegistry } from "@an-movie/auth-client";
 
 /**
  * TMDB 查询参数。undefined / null / 空串不会写进 URL。
@@ -18,6 +19,8 @@ export class TmdbProvider {
   private readonly apiKey = process.env.TMDB_API_KEY;
   private readonly apiUrl =
     process.env.TMDB_API_URL || "https://tmdb.yangjinhu.asia";
+
+  constructor(private readonly metrics: MetricsRegistry) {}
 
   /**
    * GET TMDB 路径，返回 JSON。
@@ -63,15 +66,49 @@ export class TmdbProvider {
       init.body = JSON.stringify(body);
     }
 
-    const response = await fetch(url, init);
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(
-        `TMDB ${method} ${path} failed with status ${response.status}: ${errorText}`,
-      );
+    const route = tmdbRoute(path);
+    const started = Date.now();
+    try {
+      const response = await fetch(url, init);
+      const durationMs = Date.now() - started;
+      this.recordTmdb(method, route, response.status, durationMs, response.ok);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `TMDB ${method} ${path} failed with status ${response.status}: ${errorText}`,
+        );
+      }
+      return (await response.json()) as T;
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("TMDB ")) {
+        throw error;
+      }
+      this.recordTmdb(method, route, 0, Date.now() - started, false);
+      throw error;
     }
+  }
 
-    return (await response.json()) as T;
+  private recordTmdb(
+    method: string,
+    path: string,
+    status: number,
+    durationMs: number,
+    ok: boolean,
+  ): void {
+    this.logger.log({
+      msg: "tmdb_request",
+      method,
+      path,
+      status,
+      duration_ms: durationMs,
+      ok,
+    } as never);
+    this.metrics.observe(
+      "tmdb_request_duration_seconds",
+      "TMDB HTTP request duration in seconds",
+      { method, path, status: String(status) },
+      durationMs / 1000,
+    );
   }
 
   /**
@@ -101,4 +138,15 @@ export class TmdbProvider {
     }
     return this.apiKey;
   }
+}
+
+/**
+ * 数字 id 收成 `:id`，避免指标基数爆炸。
+ * @example
+ * `/3/movie/550` → `/3/movie/:id`
+ * `/3/search/movie` → `/3/search/movie`
+ */
+function tmdbRoute(path: string): string {
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  return normalized.replace(/\/\d+/g, "/:id");
 }

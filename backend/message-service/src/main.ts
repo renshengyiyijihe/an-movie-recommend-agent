@@ -5,6 +5,7 @@ import * as path from "node:path";
 import { Logger } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { MicroserviceOptions, Transport } from "@nestjs/microservices";
+import { Logger as PinoLogger } from "nestjs-pino";
 import { createHttpValidationPipe, requestIdMiddleware, resolveProtoFile } from "@an-movie/auth-client";
 import { AppModule } from "./app.module";
 import { dropLegacyMessageSchema } from "./message/drop-legacy-schema";
@@ -27,7 +28,8 @@ async function bootstrap() {
     "postgresql://postgres:password@localhost:5432/anmovie_db";
   await dropLegacyMessageSchema(postgresUrl);
 
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  app.useLogger(app.get(PinoLogger));
   app.use(requestIdMiddleware);
   app.useGlobalPipes(createHttpValidationPipe());
   app.enableCors();

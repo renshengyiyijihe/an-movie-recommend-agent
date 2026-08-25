@@ -3,7 +3,9 @@ import { ToolsRegistry } from "./tools/tools.registry";
 import { PromptTemplateService } from "../services/prompt-template.service";
 import { RetryableFormatError } from "../errors/retryable-format.error";
 import { executeWithRetry, tryParseJson } from "../helpers";
-import { AGENT_TYPE, CompatibleModel, ConversationHistoryItem, SearchAgentResult, VIEW_ANSWER, ViewSpec } from "../types";
+import { AGENT_TYPE, CompatibleModel, ConversationHistoryItem, LLM_STAGE, SearchAgentResult, VIEW_ANSWER, ViewSpec } from "../types";
+import { invokeLlm, SEARCH_ACTOR } from "../invoke-llm";
+import { TurnEventBody } from "../turn-events";
 import { buildEvidenceView, toToolEventOutput, WorkingSet } from "../working-set";
 import { AgentRuntime, SearchPrivateState } from "./workflow-context";
 import { z } from "zod";
@@ -56,6 +58,7 @@ export class SearchAgent {
       model,
       runtime.shared.query,
       runtime.shared.turns,
+      (body) => runtime.record(body),
     );
     runtime.local.toolCalls = result.tool_calls;
     runtime.local.reasoning = result.reasoning;
@@ -90,11 +93,13 @@ export class SearchAgent {
 
   /**
    * 规划并执行工具。不读写 WorkflowContext；摄入工作副本由 execute 负责。
+   * @param record 写入 llm_usage；execute 会传入 runtime.record
    */
   async run(
     model: CompatibleModel,
     query: string,
     turns?: ConversationHistoryItem[],
+    record?: (body: TurnEventBody) => Promise<void>,
   ): Promise<SearchAgentResult> {
     this.logger.log(`[SearchAgent] Executing search: query=${query}`);
 
@@ -110,12 +115,20 @@ export class SearchAgent {
       // 模型可能返回非 JSON、未知工具或错误参数。
       // 校验失败会进入统一重试流程，而不是把不可信参数直接交给工具。
       const plan = await executeWithRetry(async () => {
-        const response = await model.invoke([
-          ["system", prompt.system],
-          ["user", prompt.user],
-        ]);
+        const responseContent = await invokeLlm(
+          model,
+          [
+            ["system", prompt.system],
+            ["user", prompt.user],
+          ],
+          {
+            stage: LLM_STAGE.SEARCH_TOOLS,
+            actor: SEARCH_ACTOR,
+            record,
+          },
+        );
         const parsed = tryParseJson<ToolPlan>(
-          this.toText(response.content),
+          this.toText(responseContent),
           "search",
         );
         if (!parsed) {

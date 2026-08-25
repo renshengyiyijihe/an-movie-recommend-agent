@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
 import { createHttpValidationPipe, requestIdMiddleware } from '@an-movie/auth-client';
+import { Logger as PinoLogger } from 'nestjs-pino';
 
 const logger = new Logger('AuthServiceBootstrap');
 
@@ -13,7 +14,8 @@ async function bootstrap() {
   logger.log('Bootstrapping auth service');
   const { NestFactory } = await import('@nestjs/core');
   const { AppModule } = await import('./app.module');
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  app.useLogger(app.get(PinoLogger));
   app.use(requestIdMiddleware);
   app.useGlobalPipes(createHttpValidationPipe());
   const port = Number(process.env.AUTH_HTTP_PORT ?? 3002);

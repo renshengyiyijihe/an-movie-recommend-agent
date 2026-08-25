@@ -30,6 +30,19 @@ export class MilvusProvider implements OnModuleInit {
     private readonly siliconFlowEmbeddingProvider: SiliconFlowEmbeddingProvider,
   ) {}
 
+  /**
+   * Readiness：客户端已连上且 checkHealth 通过。
+   */
+  async ping(): Promise<void> {
+    if (!this.client) {
+      throw new Error("Milvus client not initialized");
+    }
+    const healthCheck = await this.client.checkHealth();
+    if (!healthCheck.isHealthy) {
+      throw new Error("Milvus is not healthy");
+    }
+  }
+
   async onModuleInit() {
     try {
       await this.connect();

@@ -4,6 +4,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { Logger as PinoLogger } from 'nestjs-pino';
 import { createHttpValidationPipe, requestIdMiddleware } from '@an-movie/auth-client';
 
 const logger = new Logger('MovieServiceBootstrap');
@@ -18,7 +19,8 @@ if (fs.existsSync(envPath)) {
 async function bootstrap() {
   logger.log('Bootstrapping movie service');
   const { AppModule } = await import('./app.module');
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  app.useLogger(app.get(PinoLogger));
   app.use(requestIdMiddleware);
   app.useGlobalPipes(createHttpValidationPipe());
   app.enableCors();

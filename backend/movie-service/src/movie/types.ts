@@ -29,14 +29,65 @@ export type ChatRole = "system" | "user" | "assistant";
 export type ChatMessage = [ChatRole, string];
 
 /**
+ * 一次 LLM 调用的阶段。日志、指标、turn_events.llm_usage 共用。
+ */
+export const LLM_STAGE = {
+	/** 意图分类 */
+	INTENT: "intent",
+	/** 任务规划 */
+	PLAN: "plan",
+	/** SearchAgent 选工具 */
+	SEARCH_TOOLS: "search_tools",
+	/** 汇总推荐 JSON */
+	SYNTHESIZE: "synthesize",
+} as const;
+
+/**
+ * LLM 阶段元组。
+ */
+export const LLM_STAGES = [
+	LLM_STAGE.INTENT,
+	LLM_STAGE.PLAN,
+	LLM_STAGE.SEARCH_TOOLS,
+	LLM_STAGE.SYNTHESIZE,
+] as const;
+
+/**
+ * LLM 调用阶段字面量。
+ */
+export type LlmStage = (typeof LLM_STAGES)[number];
+
+/**
+ * 一次模型调用的用量与耗时。
+ */
+export interface LlmUsage {
+	/** 调用耗时，毫秒 */
+	durationMs: number;
+	/** 是否成功返回 */
+	ok: boolean;
+	/** 输入 token，供应商没给则缺省 */
+	promptTokens?: number;
+	/** 输出 token */
+	completionTokens?: number;
+	/** 合计 token */
+	totalTokens?: number;
+	/** 实际模型名 */
+	model?: string;
+}
+
+/**
  * 工作流对聊天模型的最小依赖，便于测试时替换实现。
  */
 export type CompatibleModel = {
 	/**
 	 * 调用一次模型。
 	 * @param messages 系统/用户消息对
+	 * @param options.stage 写入日志 / 指标 / turn_events 的阶段名
 	 */
-	invoke(messages: ChatMessage[]): Promise<{ content: unknown }>;
+	invoke(
+		messages: ChatMessage[],
+		options: { stage: LlmStage },
+	): Promise<{ content: unknown; usage: LlmUsage }>;
 };
 
 /**

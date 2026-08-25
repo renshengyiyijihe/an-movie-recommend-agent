@@ -1,4 +1,9 @@
-import { AgentType, IntentClassification, RelationPlan } from "./types";
+import {
+  AgentType,
+  IntentClassification,
+  LlmStage,
+  RelationPlan,
+} from "./types";
 
 export type WorkflowActor = "orchestrator" | AgentType;
 
@@ -35,7 +40,31 @@ export type TurnEventBody =
       kind: "error";
       actor: WorkflowActor;
       message: string;
-    };
+    }
+  | LlmUsageTurnEvent;
+
+/**
+ * 一次 LLM 调用的用量。message-service 只存不解析。
+ */
+export interface LlmUsageTurnEvent {
+  kind: "llm_usage";
+  /** orchestrator 或发起这次调用的 Agent */
+  actor: WorkflowActor;
+  /** 意图 / 规划 / 选工具 / 汇总 */
+  stage: LlmStage;
+  /** 调用耗时，毫秒 */
+  durationMs: number;
+  /** 模型是否成功返回 */
+  ok: boolean;
+  /** 输入 token */
+  promptTokens?: number;
+  /** 输出 token */
+  completionTokens?: number;
+  /** 合计 token */
+  totalTokens?: number;
+  /** 实际模型名 */
+  model?: string;
+}
 
 /**
  * 工作流写 turn_events 的出口。movie.service 接到 gRPC，无 turnId 时用 noop。

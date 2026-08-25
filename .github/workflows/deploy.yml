@@ -73,11 +73,25 @@ jobs:
             export COMPOSE_BAKE=false
             export COMPOSE_PROJECT_NAME="an-movie"
 
+            SHA="$(git rev-parse --short=12 HEAD)"
+
             set +e
-            docker compose down --remove-orphans || true
-            docker rm -f an-movie-postgres-1 an-movie-milvus-1 an-movie-auth-service-1 an-movie-message-service-1 an-movie-movie-service-1 an-movie-frontend-1 an-movie-portainer-1 portainer 2>/dev/null || true
-            docker compose build packages && docker compose up -d --build --remove-orphans
-            deploy_status=$?
+            docker compose build packages && docker compose build auth-service movie-service message-service frontend
+            build_status=$?
+            if [ "$build_status" -eq 0 ]; then
+              for svc in packages auth-service movie-service message-service frontend; do
+                if [ "$svc" = "packages" ]; then
+                  docker tag an-movie-packages "an-movie-packages:${SHA}" 2>/dev/null || true
+                else
+                  docker tag "an-movie-${svc}:latest" "an-movie-${svc}:${SHA}" 2>/dev/null || \
+                    docker tag "an-movie-${svc}" "an-movie-${svc}:${SHA}" 2>/dev/null || true
+                fi
+              done
+              docker compose up -d --remove-orphans
+              deploy_status=$?
+            else
+              deploy_status=$build_status
+            fi
             set -e
 
             echo "DEPLOY_EXIT_CODE=$deploy_status"

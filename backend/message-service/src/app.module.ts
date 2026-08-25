@@ -1,10 +1,14 @@
 import { Module } from "@nestjs/common";
 import { APP_FILTER, APP_INTERCEPTOR } from "@nestjs/core";
 import { TypeOrmModule } from "@nestjs/typeorm";
+import { LoggerModule } from "nestjs-pino";
 import {
   AuthGrpcClient,
+  createPinoHttpOptions,
   HttpExceptionFilter,
+  HttpMetricsInterceptor,
   JwtAuthGuard,
+  MetricsModule,
   UserContextInterceptor,
 } from "@an-movie/auth-client";
 import { GrpcUserGuard } from "./auth/grpc-user.guard";
@@ -30,6 +34,10 @@ const entities = [
 
 @Module({
   imports: [
+    LoggerModule.forRoot({
+      pinoHttp: createPinoHttpOptions("message-service"),
+    }),
+    MetricsModule,
     TypeOrmModule.forRoot({
       type: "postgres",
       url:
@@ -56,6 +64,10 @@ const entities = [
     {
       provide: APP_INTERCEPTOR,
       useClass: UserContextInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: HttpMetricsInterceptor,
     },
   ],
 })

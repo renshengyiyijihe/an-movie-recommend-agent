@@ -22,10 +22,13 @@ export class HttpExceptionFilter implements ExceptionFilter {
     }
 
     const res = host.switchToHttp().getResponse<Reply>();
+    const req = host.switchToHttp().getRequest<{ url?: string }>();
     const requestId = RequestId.current();
     const body = toErrorBody(exception, requestId);
+    const path = req.url?.split("?")[0] ?? "";
 
-    if (body.status >= 500) {
+    // /ready 周期性 503 不打 error，避免探活把日志打爆。
+    if (body.status >= 500 && !(path === "/ready" && body.status === HttpStatus.SERVICE_UNAVAILABLE)) {
       this.logger.error(
         `requestId=${requestId ?? "none"} ${body.code}`,
         exception instanceof Error ? exception.stack : undefined,

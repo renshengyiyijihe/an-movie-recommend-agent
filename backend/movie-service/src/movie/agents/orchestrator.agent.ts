@@ -14,6 +14,7 @@ import { RelationAgent } from "./relation.agent";
 import { SearchAgent } from "./search.agent";
 import { WorkflowContext } from "./workflow-context";
 import { parseTaskPlan } from "../task-plan";
+import { invokeLlm, ORCHESTRATOR_ACTOR } from "../invoke-llm";
 import {
   AGENT_TYPE,
   AgentExecutionResult,
@@ -21,6 +22,7 @@ import {
   CompatibleModel,
   INTENT_TYPE,
   IntentClassification,
+  LLM_STAGE,
   OrchestratorResult,
   TaskPlan,
 } from "../types";
@@ -169,14 +171,22 @@ export class OrchestratorAgent {
             ctx.shared.query,
             ctx.shared.turns,
           );
-        const response = await model.invoke([
-          ["system", messages.system],
-          ["user", messages.user],
-        ]);
+        const responseContent = await invokeLlm(
+          model,
+          [
+            ["system", messages.system],
+            ["user", messages.user],
+          ],
+          {
+            stage: LLM_STAGE.INTENT,
+            actor: ORCHESTRATOR_ACTOR,
+            record: (body) => ctx.record(body),
+          },
+        );
         const result = tryParseJson<IntentClassification>(
-          typeof response.content === "string"
-            ? response.content
-            : JSON.stringify(response.content),
+          typeof responseContent === "string"
+            ? responseContent
+            : JSON.stringify(responseContent),
           "intent",
         );
 
@@ -220,14 +230,22 @@ export class OrchestratorAgent {
         ctx.shared.turns,
       );
       return await executeWithRetry(async () => {
-        const response = await model.invoke([
-          ["system", messages.system],
-          ["user", messages.user],
-        ]);
+        const responseContent = await invokeLlm(
+          model,
+          [
+            ["system", messages.system],
+            ["user", messages.user],
+          ],
+          {
+            stage: LLM_STAGE.PLAN,
+            actor: ORCHESTRATOR_ACTOR,
+            record: (body) => ctx.record(body),
+          },
+        );
         const result = tryParseJson(
-          typeof response.content === "string"
-            ? response.content
-            : JSON.stringify(response.content),
+          typeof responseContent === "string"
+            ? responseContent
+            : JSON.stringify(responseContent),
           "plan",
         );
         if (!result) {
@@ -352,14 +370,22 @@ export class OrchestratorAgent {
 
     try {
       return await executeWithRetry(async () => {
-        const response = await model.invoke([
-          ["system", messages.system],
-          ["user", messages.user],
-        ]);
+        const responseContent = await invokeLlm(
+          model,
+          [
+            ["system", messages.system],
+            ["user", messages.user],
+          ],
+          {
+            stage: LLM_STAGE.SYNTHESIZE,
+            actor: ORCHESTRATOR_ACTOR,
+            record: (body) => ctx.record(body),
+          },
+        );
         const parsed = tryParseJson<Record<string, unknown>>(
-          typeof response.content === "string"
-            ? response.content
-            : JSON.stringify(response.content),
+          typeof responseContent === "string"
+            ? responseContent
+            : JSON.stringify(responseContent),
           "synthesis",
         );
         if (!parsed) {

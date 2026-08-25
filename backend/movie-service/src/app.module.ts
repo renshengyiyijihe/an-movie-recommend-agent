@@ -1,11 +1,24 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
-import { HttpExceptionFilter, UserContextInterceptor } from '@an-movie/auth-client';
+import { LoggerModule } from 'nestjs-pino';
+import {
+  createPinoHttpOptions,
+  HttpExceptionFilter,
+  HttpMetricsInterceptor,
+  MetricsModule,
+  UserContextInterceptor,
+} from '@an-movie/auth-client';
 import { MovieModule } from './movie/movie.module';
 import { HealthController } from './health.controller';
 
 @Module({
-  imports: [MovieModule],
+  imports: [
+    LoggerModule.forRoot({
+      pinoHttp: createPinoHttpOptions('movie-service'),
+    }),
+    MetricsModule,
+    MovieModule,
+  ],
   controllers: [HealthController],
   providers: [
     {
@@ -15,6 +28,10 @@ import { HealthController } from './health.controller';
     {
       provide: APP_INTERCEPTOR,
       useClass: UserContextInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: HttpMetricsInterceptor,
     },
   ],
 })

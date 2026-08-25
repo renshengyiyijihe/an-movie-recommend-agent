@@ -32,7 +32,7 @@ an-movie-agent/
 
 根级 `package.json` 只装 ESLint / Prettier / husky / commitlint，**没有 pnpm workspace**。四个应用仍各自 lockfile；共享包用 `file:` 引用 `@an-movie/contracts` / `@an-movie/auth-client`。根目录聚合命令：`pnpm typecheck`、`pnpm lint`、`pnpm build`（会先编共享包）。commit message 须符合 Conventional Commits，允许的 `type` 以 `commitlint.config.mjs` 为准。
 
-HTTP 错误体为 `{ code, message, details?, requestId? }`，`code` 见 `packages/contracts` 的 `ERROR_CODE`。各服务 `GET /health` 只给容器探活，nginx 不反代。
+HTTP 错误体为 `{ code, message, details?, requestId? }`，`code` 见 `packages/contracts` 的 `ERROR_CODE`。各服务 `GET /health` 只表示进程活着；`GET /ready` 才给 Compose 探活（auth：JWT + Postgres，message：Postgres + Milvus，movie：`LLM_API_KEY` 存在）。`GET /metrics` 为 Prometheus 文本。这三个口 nginx 都不反代。日志为 JSON（pino），带 `service` / `requestId`。
 
 
 ## 运行时拓扑
@@ -236,7 +236,7 @@ Prompt 入口（改提示词只动这个文件）：
 - 会话历史投影：用 `conversation-history.ts`。`error` / `reject` 气泡不要进 prompt。用户正文用 `<user_query>` / `<conversation_history>` 包起来。
 - 工作副本读写：用 `WorkingSet` / `buildEvidenceView`，不要把 Tool `data` 整包 `JSON.stringify` 进汇总 prompt。人物/影片加**标量**字段：改 `PersonRecord` / `MovieRecord`，并只在 `readPersonRecord` / `readMovieRecord` 取值；不要再给 `upsert*` 手写一遍赋值。只有需要去重合并的数组才进 `PERSON_COLLECTIONS` / `MOVIE_COLLECTIONS`。
 - 类型：Agent / 规划 / 视图合同在 `types.ts`；工作副本记录类型在 `working-set.ts`。genre 映射在 `constants.ts`。不要在 agent 文件里再声明一份公用联合类型。公共类型用 **TSDoc**（即 JSDoc 的 `/** */`）：常量对象、联合类型、接口以及**每个字段**都要写清含义；函数写 `@param` / `@returns`。**工具函数**（把一种数据收成另一种）必须写 `@example`：**一条业务数据就够**，但要看得出从哪来、中间丢掉了什么、输出字段写全（不要 `{ id: 1 }` 或 `...`）。编排、Agent、HTTP 入口不必硬凑示例。
-- **禁止硬编码封闭取值。** `AGENT_TYPE`、`INTENT_TYPE`、`RELATION_STRATEGY`、`RELATION_ROLE`、`TOOL_NAME`、`VIEW_ANSWER`、`HISTORY_PROJECTION_KIND` 等已在 `types.ts` 定义的常量，业务代码、Zod、prompt 插值一律引用常量，不要写 `"search"` / `"relation"` 这种字面量。新增封闭集合时先在 `types.ts` 加常量对象，再导出 `as const` 数组给 Zod `z.enum`。TMDB 响应字段名（如 JSON 里的 `cast` 属性）和 HTTP 对外 JSON 字段（如汇总里的 `movies` 数组）属于外部契约，不在此列。
+- **禁止硬编码封闭取值。** `AGENT_TYPE`、`INTENT_TYPE`、`RELATION_STRATEGY`、`RELATION_ROLE`、`TOOL_NAME`、`VIEW_ANSWER`、`HISTORY_PROJECTION_KIND`、`LLM_STAGE` 等已在 `types.ts` 定义的常量，业务代码、Zod、prompt 插值一律引用常量，不要写 `"search"` / `"relation"` 这种字面量。新增封闭集合时先在 `types.ts` 加常量对象，再导出 `as const` 数组给 Zod `z.enum`。TMDB 响应字段名（如 JSON 里的 `cast` 属性）和 HTTP 对外 JSON 字段（如汇总里的 `movies` 数组）属于外部契约，不在此列。
 - LLM 结构化输出必须可被 `tryParseJson` 解析；成功回复的可见字段是 `text` + `movies`，拒绝/失败是 `message`。视图的 `answer` 为 `people` / `fact` 时，不要把人物 id 写进 `movies`。
 - 跨服务契约先改 `backend/proto/*.proto`，再改 client/server 实现。
 - 日志用 `Logger`，关键路径已有 `query` / `intent` / `tool` 日志，保持同风格。
@@ -278,5 +278,6 @@ Prompt 入口（改提示词只动这个文件）：
 - Relation 未做：计数/排名、多跳路径、公司/系列。规划应标 `unsupported` 或直接 `search`，不要假装能算。
 - 工作副本不跨请求保留；指代「刚才那批结果再筛」目前只能靠历史文本 + 重新取数。
 - 共享包由 `packages/Dockerfile` 编一次，各服务 `FROM an-movie-packages AS packages` 再 `COPY --from=packages`。不要用 `additional_contexts`（旧 BuildKit 没有 named context）。须先 `docker compose build packages` 再 `up --build`。`packages` 服务只产镜像，启动后立刻退出，`compose ps` 里 Exited 是正常的。
+- 部署不再 `compose down` / `rm -f` 整栈；编完应用镜像后用 commit sha 打本地 tag，再 `up -d`。密钥仍写服务器 `.env`。
 - Compose 的 movie-service `env_file` 是 `backend/movie-service/.env`，auth/message 用 `backend/.env`。
 - auth-service 用原始 `pg` Pool，message-service 用 TypeORM。`users` 表只归 auth-service，message 不要碰。

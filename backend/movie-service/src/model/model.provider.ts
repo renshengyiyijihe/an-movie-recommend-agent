@@ -1,7 +1,14 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { ChatOpenAI } from "@langchain/openai";
-import type { ChatMessage, CompatibleModel } from "../movie/types";
+import { MetricsRegistry } from "@an-movie/auth-client";
+import { asRecord, readFiniteNumber } from "../movie/helpers";
+import type {
+  ChatMessage,
+  CompatibleModel,
+  LlmStage,
+  LlmUsage,
+} from "../movie/types";
 
 export class ModelConfigurationError extends Error {
   readonly stage = "model";
@@ -12,6 +19,11 @@ export class ModelConfigurationError extends Error {
     this.name = ModelConfigurationError.name;
   }
 }
+
+const LLM_DURATION = "llm_call_duration_seconds";
+const LLM_DURATION_HELP = "LLM call duration in seconds";
+const LLM_TOKENS = "llm_tokens_total";
+const LLM_TOKENS_HELP = "LLM tokens consumed";
 
 const toLangChainMessages = (messages: ChatMessage[]) =>
   messages.map(([role, content]) => {
@@ -39,7 +51,7 @@ const extractContentText = (content: unknown): string => {
         }
         if (typeof item === "object" && item !== null) {
           const text = (item as { text?: string }).text ?? JSON.stringify(item);
-          return typeof text === "string" ? text : String(text);
+          return typeof text === "string" ? text : String(item);
         }
         return String(item ?? "");
       })
@@ -53,10 +65,57 @@ const extractContentText = (content: unknown): string => {
   return String(content ?? "");
 };
 
+/**
+ * 从 LangChain 响应里抽出 token 用量。
+ * @example
+ * `{ usage_metadata: { input_tokens: 10, output_tokens: 4, total_tokens: 14 } }`
+ * → `{ promptTokens: 10, completionTokens: 4, totalTokens: 14 }`
+ * `{ response_metadata: { tokenUsage: { promptTokens: 10 } } }`
+ * → `{ promptTokens: 10 }`（其余字段缺省）
+ */
+function readTokenUsage(
+  response: unknown,
+): Pick<LlmUsage, "promptTokens" | "completionTokens" | "totalTokens"> {
+  const rec = asRecord(response);
+  if (!rec) return {};
+
+  const usageMeta = asRecord(rec.usage_metadata);
+  if (usageMeta) {
+    return {
+      promptTokens: readFiniteNumber(usageMeta.input_tokens),
+      completionTokens: readFiniteNumber(usageMeta.output_tokens),
+      totalTokens: readFiniteNumber(usageMeta.total_tokens),
+    };
+  }
+
+  const responseMeta = asRecord(rec.response_metadata);
+  const tokenUsage =
+    asRecord(responseMeta?.tokenUsage) ??
+    asRecord(responseMeta?.token_usage) ??
+    asRecord(rec.usage);
+  if (!tokenUsage) return {};
+
+  return {
+    promptTokens:
+      readFiniteNumber(tokenUsage.promptTokens) ??
+      readFiniteNumber(tokenUsage.prompt_tokens) ??
+      readFiniteNumber(tokenUsage.input_tokens),
+    completionTokens:
+      readFiniteNumber(tokenUsage.completionTokens) ??
+      readFiniteNumber(tokenUsage.completion_tokens) ??
+      readFiniteNumber(tokenUsage.output_tokens),
+    totalTokens:
+      readFiniteNumber(tokenUsage.totalTokens) ??
+      readFiniteNumber(tokenUsage.total_tokens),
+  };
+}
+
 @Injectable()
 export class ModelProvider {
   private model: CompatibleModel | null = null;
   private readonly logger = new Logger(ModelProvider.name);
+
+  constructor(private readonly metrics: MetricsRegistry) {}
 
   getModel(): CompatibleModel {
     if (this.model) {
@@ -89,16 +148,35 @@ export class ModelProvider {
       },
     });
 
+    const metrics = this.metrics;
+    const logger = this.logger;
+
     this.model = {
-      async invoke(messages: ChatMessage[]) {
+      async invoke(messages: ChatMessage[], options: { stage: LlmStage }) {
+        const started = Date.now();
         try {
-          Logger.log(`Model invocation start: model=${modelName}`);
           const response = await client.invoke(toLangChainMessages(messages));
-          const text = extractContentText(response.content);
-          Logger.log(`Model invocation completed: length=${text.length}`);
-          return { content: text };
+          const durationMs = Date.now() - started;
+          const tokens = readTokenUsage(response);
+          const usage: LlmUsage = {
+            durationMs,
+            ok: true,
+            model: modelName,
+            ...tokens,
+          };
+          recordLlmMetrics(metrics, logger, options.stage, usage);
+          return {
+            content: extractContentText(response.content),
+            usage,
+          };
         } catch (error) {
-          Logger.error("Error invoking LangChain model:", error);
+          const durationMs = Date.now() - started;
+          recordLlmMetrics(metrics, logger, options.stage, {
+            durationMs,
+            ok: false,
+            model: modelName,
+          });
+          logger.error("Error invoking LangChain model:", error as Error);
           throw error;
         }
       },
@@ -108,5 +186,40 @@ export class ModelProvider {
       `LangChain model provider configured: model=${modelName}, baseURL=${baseURL}`,
     );
     return this.model;
+  }
+}
+
+function recordLlmMetrics(
+  metrics: MetricsRegistry,
+  logger: Logger,
+  stage: LlmStage,
+  usage: LlmUsage,
+): void {
+  logger.log({
+    msg: "llm_call",
+    stage,
+    duration_ms: usage.durationMs,
+    prompt_tokens: usage.promptTokens,
+    completion_tokens: usage.completionTokens,
+    total_tokens: usage.totalTokens,
+    model: usage.model,
+    ok: usage.ok,
+  } as never);
+  metrics.observe(
+    LLM_DURATION,
+    LLM_DURATION_HELP,
+    { stage, ok: String(usage.ok) },
+    usage.durationMs / 1000,
+  );
+  if (usage.promptTokens) {
+    metrics.inc(LLM_TOKENS, LLM_TOKENS_HELP, { stage, type: "prompt" }, usage.promptTokens);
+  }
+  if (usage.completionTokens) {
+    metrics.inc(
+      LLM_TOKENS,
+      LLM_TOKENS_HELP,
+      { stage, type: "completion" },
+      usage.completionTokens,
+    );
   }
 }

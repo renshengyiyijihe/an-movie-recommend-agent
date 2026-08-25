@@ -1,7 +1,7 @@
 services:
-  # Build artifact only. Other images COPY --from=packages; this container exits immediately.
-  # Use docker-image:// (not service:packages): older Compose/Bake treats
-  # service:packages as a path under the project dir and fails the build.
+  # Build artifact only. App Dockerfiles use FROM an-movie-packages AS packages.
+  # This container exits immediately. Do not use additional_contexts: old BuildKit
+  # lacks moby.buildkit.frontend.contexts.
   packages:
     image: an-movie-packages
     pull_policy: build
@@ -31,8 +31,6 @@ services:
     build:
       context: .
       dockerfile: backend/auth-service/Dockerfile
-      additional_contexts:
-        packages: docker-image://an-movie-packages
     ports:
       - "3002:3002"
     env_file:
@@ -63,8 +61,6 @@ services:
     build:
       context: .
       dockerfile: backend/movie-service/Dockerfile
-      additional_contexts:
-        packages: docker-image://an-movie-packages
     ports:
       - "3001:3001"
     env_file:
@@ -159,8 +155,6 @@ services:
     build:
       context: .
       dockerfile: backend/message-service/Dockerfile
-      additional_contexts:
-        packages: docker-image://an-movie-packages
     ports:
       - "3003:3003"
       - "50052:50052"
@@ -197,8 +191,6 @@ services:
     build:
       context: .
       dockerfile: client/Dockerfile
-      additional_contexts:
-        packages: docker-image://an-movie-packages
       args:
         VITE_API_BASE_URL: /
     ports:

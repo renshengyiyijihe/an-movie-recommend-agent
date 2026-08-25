@@ -14,6 +14,7 @@
 an-movie-agent/
 ├── package.json                 # 仅工具链：lint / typecheck / husky
 ├── packages/
+│   ├── Dockerfile               # 共享包镜像；compose additional_contexts 只编一次
 │   ├── contracts/               # 错误码、校验常量、聊天气泡类型（file: 依赖）
 │   └── auth-client/             # JwtAuthGuard、Auth gRPC 客户端、异常过滤器、request-id
 ├── client/                      # 前端（Vite + React）
@@ -265,6 +266,7 @@ Prompt 入口（改提示词只动这个文件）：
 | 登录鉴权 | `backend/auth-service/src/auth/auth.service.ts` |
 | 前端聊天 | `client/src/pages/HomePage/index.tsx`、`client/src/api.ts` |
 | 反代 | `client/nginx.conf`、`docker-compose.yml` |
+| 共享包镜像 | `packages/Dockerfile` |
 
 ## 已知坑
 
@@ -274,5 +276,6 @@ Prompt 入口（改提示词只动这个文件）：
 - 图片主链路仍未消费 `imageData`。
 - Relation 未做：计数/排名、多跳路径、公司/系列。规划应标 `unsupported` 或直接 `search`，不要假装能算。
 - 工作副本不跨请求保留；指代「刚才那批结果再筛」目前只能靠历史文本 + 重新取数。
+- 共享包由 `packages/Dockerfile` 编一次，各服务镜像 `COPY --from=packages`。须走 `docker compose`（`additional_contexts`）；单独 `docker build -f backend/*/Dockerfile` 会缺 named context。`packages` 服务只产镜像，启动后立刻退出，`compose ps` 里 Exited 是正常的。
 - Compose 的 movie-service `env_file` 是 `backend/movie-service/.env`，auth/message 用 `backend/.env`。
 - auth-service 用原始 `pg` Pool，message-service 用 TypeORM。`users` 表只归 auth-service，message 不要碰。

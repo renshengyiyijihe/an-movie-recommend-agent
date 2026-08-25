@@ -1,11 +1,12 @@
+# syntax=docker/dockerfile:1
 FROM node:24-alpine AS build
 
 WORKDIR /app
 
 RUN corepack enable && corepack prepare pnpm@10.15.0 --activate
 
-COPY packages/contracts /packages/contracts
-COPY packages/auth-client /packages/auth-client
+COPY --from=packages /packages/contracts /packages/contracts
+COPY --from=packages /packages/auth-client /packages/auth-client
 COPY backend/movie-service/package.json backend/movie-service/pnpm-lock.yaml backend/movie-service/tsconfig.json backend/movie-service/nest-cli.json ./
 RUN --mount=type=cache,target=/root/.cache/pnpm-store \
     pnpm install --frozen-lockfile --store-dir /root/.cache/pnpm-store

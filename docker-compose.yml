@@ -1,6 +1,15 @@
-version: '3.9'
-
 services:
+  # Build artifact only. Other images COPY --from=packages; this container exits immediately.
+  packages:
+    image: an-movie-packages
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: packages/Dockerfile
+    command: ["true"]
+    restart: "no"
+    network_mode: none
+
   postgres:
     image: postgres:15-alpine
     environment:
@@ -20,6 +29,8 @@ services:
     build:
       context: .
       dockerfile: backend/auth-service/Dockerfile
+      additional_contexts:
+        packages: service:packages
     ports:
       - "3002:3002"
     env_file:
@@ -50,6 +61,8 @@ services:
     build:
       context: .
       dockerfile: backend/movie-service/Dockerfile
+      additional_contexts:
+        packages: service:packages
     ports:
       - "3001:3001"
     env_file:
@@ -144,6 +157,8 @@ services:
     build:
       context: .
       dockerfile: backend/message-service/Dockerfile
+      additional_contexts:
+        packages: service:packages
     ports:
       - "3003:3003"
       - "50052:50052"
@@ -180,6 +195,8 @@ services:
     build:
       context: .
       dockerfile: client/Dockerfile
+      additional_contexts:
+        packages: service:packages
       args:
         VITE_API_BASE_URL: /
     ports:

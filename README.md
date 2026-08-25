@@ -68,6 +68,7 @@ an-movie-agent/
 ├── package.json                  # 仅工具链：lint / typecheck / husky
 ├── packages/contracts            # 错误码与聊天类型
 ├── packages/auth-client          # 鉴权 Guard / 异常过滤器
+├── packages/Dockerfile           # 共享包镜像（compose 只编一次）
 ├── client/                       # Vite + React 单页
 ├── backend/
 │   ├── proto/                    # 跨服务 .proto（构建时 COPY 进镜像）

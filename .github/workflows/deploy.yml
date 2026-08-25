@@ -70,6 +70,7 @@ jobs:
 
             export DOCKER_BUILDKIT=1
             export COMPOSE_DOCKER_CLI_BUILD=1
+            export COMPOSE_BAKE=true
             export COMPOSE_PROJECT_NAME="an-movie"
 
             set +e

@@ -1,10 +1,11 @@
+# syntax=docker/dockerfile:1
 FROM node:24-alpine AS build
 
 WORKDIR /app
 
 RUN corepack enable && corepack prepare pnpm@10.15.0 --activate
 
-COPY packages/contracts /packages/contracts
+COPY --from=packages /packages/contracts /packages/contracts
 COPY client/package.json client/pnpm-lock.yaml ./
 RUN --mount=type=cache,target=/root/.cache/pnpm-store \
     pnpm install --frozen-lockfile --store-dir /root/.cache/pnpm-store

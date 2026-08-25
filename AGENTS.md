@@ -12,7 +12,7 @@
 
 ```text
 an-movie-agent/
-├── package.json                 # 仅工具链：lint / typecheck / husky
+├── package.json                 # 仅工具链：lint / typecheck / husky / commitlint
 ├── packages/
 │   ├── Dockerfile               # 共享包镜像；compose additional_contexts 只编一次
 │   ├── contracts/               # 错误码、校验常量、聊天气泡类型（file: 依赖）
@@ -30,7 +30,7 @@ an-movie-agent/
     └── deploy.yml               # quality 通过后 SSH 部署
 ```
 
-根级 `package.json` 只装 ESLint / Prettier / husky，**没有 pnpm workspace**。四个应用仍各自 lockfile；共享包用 `file:` 引用 `@an-movie/contracts` / `@an-movie/auth-client`。根目录聚合命令：`pnpm typecheck`、`pnpm lint`、`pnpm build`（会先编共享包）。
+根级 `package.json` 只装 ESLint / Prettier / husky / commitlint，**没有 pnpm workspace**。四个应用仍各自 lockfile；共享包用 `file:` 引用 `@an-movie/contracts` / `@an-movie/auth-client`。根目录聚合命令：`pnpm typecheck`、`pnpm lint`、`pnpm build`（会先编共享包）。commit message 须符合 Conventional Commits，允许的 `type` 以 `commitlint.config.mjs` 为准。
 
 HTTP 错误体为 `{ code, message, details?, requestId? }`，`code` 见 `packages/contracts` 的 `ERROR_CODE`。各服务 `GET /health` 只给容器探活，nginx 不反代。
 
@@ -241,6 +241,7 @@ Prompt 入口（改提示词只动这个文件）：
 - 跨服务契约先改 `backend/proto/*.proto`，再改 client/server 实现。
 - 日志用 `Logger`，关键路径已有 `query` / `intent` / `tool` 日志，保持同风格。
 - 不要提交 `.env`、密钥、`node_modules`、`dist`。
+- commit message 用 Conventional Commits：`type(scope): subject`。允许的 `type` 写在 `commitlint.config.mjs` 的 `COMMIT_TYPES`（`feat` / `fix` / `docs` / `style` / `refactor` / `perf` / `test` / `build` / `ci` / `chore` / `revert`）；husky `commit-msg` 会拦截不合规说明。改允许列表只改那份配置。
 - 用户要求用简体中文回复；代码标识符保持英文。
 
 ## 改动时优先读的文件

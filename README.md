@@ -22,7 +22,7 @@
 | 数据 | PostgreSQL、Milvus |
 | LLM / Embedding | LangChain（OpenAI 兼容）+ SiliconFlow |
 | 影片数据 | TMDB |
-| 包管理 | pnpm 10.15.0（四个应用各自 lockfile；根级 `package.json` 只做 lint / typecheck / husky） |
+| 包管理 | pnpm 10.15.0（四个应用各自 lockfile；根级 `package.json` 只做 lint / typecheck / husky / commitlint） |
 
 ## 系统架构
 
@@ -65,7 +65,7 @@ OrchestratorAgent
 
 ```text
 an-movie-agent/
-├── package.json                  # 仅工具链：lint / typecheck / husky
+├── package.json                  # 仅工具链：lint / typecheck / husky / commitlint
 ├── packages/contracts            # 错误码与聊天类型
 ├── packages/auth-client          # 鉴权 Guard / 异常过滤器
 ├── packages/Dockerfile           # 共享包镜像（compose 只编一次）
@@ -171,4 +171,4 @@ push `main` 后先跑 [quality](.github/workflows/quality.yml)（lint + 四包 `
 
 模块边界、Agent / Tool / Prompt 扩展方式见 [AGENTS.md](AGENTS.md)。
 
-提交前 husky 会对暂存的 `ts/tsx` 跑 ESLint。PR 会跑 [quality](.github/workflows/quality.yml)；push `main` 在 quality 通过后才 SSH 部署。
+提交前 husky 会对暂存的 `ts/tsx` 跑 ESLint；commit message 须符合 [Conventional Commits](https://www.conventionalcommits.org/)，例如 `feat: 增加会话列表`。允许的 type 以 [`commitlint.config.mjs`](commitlint.config.mjs) 为准：`feat`、`fix`、`docs`、`style`、`refactor`、`perf`、`test`、`build`、`ci`、`chore`、`revert`。PR 会跑 [quality](.github/workflows/quality.yml)；push `main` 在 quality 通过后才 SSH 部署。

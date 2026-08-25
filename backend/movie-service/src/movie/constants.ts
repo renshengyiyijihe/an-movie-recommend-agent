@@ -78,6 +78,8 @@ export const MESSAGE_CONSTANTS = {
   START_TURN_FAILED: "无法开始本轮对话，请稍后重试。",
   /** 工作流已出结果，但 CompleteTurn 写入失败 */
   COMPLETE_TURN_FAILED: "结果未能保存到会话，请稍后刷新或再试一次。",
+  /** 开流后的未分类失败，避免把内部异常原文推到浏览器 */
+  UNEXPECTED_FAILURE: "服务暂时不可用",
 } as const;
 
 // ========== 类型映射 ==========

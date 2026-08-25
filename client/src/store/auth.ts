@@ -1,6 +1,6 @@
 import create from 'zustand';
 import { request } from '@/api';
-import { TEXT } from '@/constant';
+import { AUTH_STORAGE_KEY, TEXT } from '@/constant';
 import { toast } from '@/store/toast';
 
 type User = { id: string; email: string; username: string } | null;
@@ -35,14 +35,14 @@ interface AuthState {
 }
 
 export const useAuth = create<AuthState>((set, get) => {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  const token = typeof window !== 'undefined' ? localStorage.getItem(AUTH_STORAGE_KEY.TOKEN) : null;
   return {
     token,
     user: decodeToken(token),
     setToken: (t) => {
       if (typeof window !== 'undefined') {
-        if (t) localStorage.setItem('token', t);
-        else localStorage.removeItem('token');
+        if (t) localStorage.setItem(AUTH_STORAGE_KEY.TOKEN, t);
+        else localStorage.removeItem(AUTH_STORAGE_KEY.TOKEN);
       }
       set({ token: t, user: decodeToken(t) });
     },
@@ -61,7 +61,7 @@ export const useAuth = create<AuthState>((set, get) => {
       toast.success(TEXT.auth.registerSuccess);
     },
     logout: (options) => {
-      if (typeof window !== 'undefined') localStorage.removeItem('token');
+      if (typeof window !== 'undefined') localStorage.removeItem(AUTH_STORAGE_KEY.TOKEN);
       set({ token: null, user: null });
       if (!options?.silent) toast.success(TEXT.auth.logoutSuccess);
     },

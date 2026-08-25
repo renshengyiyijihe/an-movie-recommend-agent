@@ -54,10 +54,31 @@ export type AssistantPayload =
   | RejectPayload
   | ErrorPayload;
 
-/** `POST /movie/recommend` 的 HTTP 成功体（业务 type，不是 HTTP 错误）。 */
+/**
+ * HTTP / SSE `final` 里的业务 type。不是气泡 `kind`，也不是 SSE 的 `event`。
+ */
+export const RECOMMEND_RESULT_TYPE = {
+  SUCCESS: "success",
+  REJECT: "reject",
+  ERROR: "error",
+} as const;
+
+export const RECOMMEND_RESULT_TYPES = [
+  RECOMMEND_RESULT_TYPE.SUCCESS,
+  RECOMMEND_RESULT_TYPE.REJECT,
+  RECOMMEND_RESULT_TYPE.ERROR,
+] as const;
+
+export type RecommendResultType = (typeof RECOMMEND_RESULT_TYPES)[number];
+
+/**
+ * 一轮推荐的业务结论。
+ * SSE 的 `final` 事件 JSON 与此同形（另带 `event: "final"`）；
+ * 鉴权 / DTO 失败仍走 `{ code, message }` JSON，不走这里。
+ */
 export interface RecommendResponse {
   conversationId?: string;
-  type: "success" | "reject" | "error";
+  type: RecommendResultType;
   data: AssistantPayload;
 }
 

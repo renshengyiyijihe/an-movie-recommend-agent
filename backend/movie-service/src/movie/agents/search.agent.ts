@@ -67,7 +67,6 @@ export class SearchAgent {
     for (const call of result.tool_calls) {
       runtime.workspace.ingestToolData(call.tool_name, call.output?.data);
     }
-    await this.recordToolCalls(runtime, result.tool_calls);
 
     const anyToolOk = result.tool_calls.some(
       (call) => call.output?.success !== false,
@@ -93,7 +92,7 @@ export class SearchAgent {
 
   /**
    * 规划并执行工具。不读写 WorkflowContext；摄入工作副本由 execute 负责。
-   * @param record 写入 llm_usage；execute 会传入 runtime.record
+   * @param record 写入 llm_usage，以及每个 tool 返回后的 tool_call
    */
   async run(
     model: CompatibleModel,
@@ -156,6 +155,13 @@ export class SearchAgent {
           input: plannedCall.input,
           output,
         });
+        await record?.({
+          kind: "tool_call",
+          actor: AGENT_TYPE.SEARCH,
+          tool_name: plannedCall.tool_name,
+          input: plannedCall.input,
+          output: toToolEventOutput(output),
+        });
       }
 
       return {
@@ -182,21 +188,6 @@ export class SearchAgent {
         tool_calls: [],
         error: error instanceof Error ? error.message : String(error),
       };
-    }
-  }
-
-  async recordToolCalls(
-    runtime: Pick<AgentRuntime<unknown>, "record">,
-    toolCalls: SearchAgentResult["tool_calls"],
-  ): Promise<void> {
-    for (const call of toolCalls) {
-      await runtime.record({
-        kind: "tool_call",
-        actor: AGENT_TYPE.SEARCH,
-        tool_name: call.tool_name,
-        input: call.input,
-        output: toToolEventOutput(call.output ?? {}),
-      });
     }
   }
 

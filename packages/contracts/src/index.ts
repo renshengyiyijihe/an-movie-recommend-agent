@@ -8,6 +8,10 @@ export {
   AUTH_USERNAME_MIN_LENGTH,
 } from "./auth-rules";
 
+export {
+  RECOMMEND_RESULT_TYPE,
+  RECOMMEND_RESULT_TYPES,
+} from "./chat";
 export type {
   AssistantPayload,
   ConversationChatItem,
@@ -17,6 +21,28 @@ export type {
   RecommendationItem,
   RecommendationPayload,
   RecommendResponse,
+  RecommendResultType,
   RejectPayload,
   UserMessagePayload,
 } from "./chat";
+
+export {
+  SSE_WIRE,
+  STREAM_EVENT,
+  STREAM_EVENTS,
+  STREAM_STAGE,
+  STREAM_STAGES,
+} from "./stream";
+export type {
+  RecommendStreamAgentStage,
+  RecommendStreamErrorEvent,
+  RecommendStreamEvent,
+  RecommendStreamFinalEvent,
+  RecommendStreamIntentStage,
+  RecommendStreamPlanStage,
+  RecommendStreamStageEvent,
+  RecommendStreamToolStage,
+  RecommendStreamTurnEvent,
+  StreamEventName,
+  StreamStage,
+} from "./stream";

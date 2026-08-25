@@ -1,6 +1,12 @@
-import { useEffect, useRef, useState } from "react";
-import { ApiError, request } from "@/api";
-import { ERROR_CODE } from "@an-movie/contracts";
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { ApiError, request, streamRecommend } from "@/api";
+import {
+  ERROR_CODE,
+  STREAM_EVENT,
+  STREAM_STAGE,
+  type RecommendStreamEvent,
+  type RecommendStreamStageEvent,
+} from "@an-movie/contracts";
 import useAuth from "@/store/auth";
 import { toast } from "@/store/toast";
 import AuthModal from "@/components/AuthModal";
@@ -24,7 +30,6 @@ import type {
   ConversationDetail,
   ConversationSummary,
   RecommendationItem,
-  RecommendResponse,
 } from "@/types";
 
 const quickPrompts = [
@@ -54,6 +59,8 @@ export default function HomePage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [streamStage, setStreamStage] =
+    useState<RecommendStreamStageEvent | null>(null);
   const [error, setError] = useState("");
 
   const token = useAuth((s) => s.token);
@@ -129,6 +136,7 @@ export default function HomePage() {
     setImageData("");
     setShowConfigModal(false);
     setLoading(false);
+    setStreamStage(null);
     setHistoryLoading(false);
     setDetailsLoading(false);
   }, [userId]);
@@ -162,6 +170,7 @@ export default function HomePage() {
     const requestGen = sessionGen.current;
     sendingRef.current = true;
     setLoading(true);
+    setStreamStage(null);
     setError("");
 
     const userMessage: ChatMessage = {
@@ -175,43 +184,54 @@ export default function HomePage() {
     setFile(null);
 
     try {
-      const result = await request<RecommendResponse>({
-        method: "POST",
-        url: "/api/movie/recommend",
-        data: {
+      await streamRecommend(
+        {
           message: trimmedMessage,
           imageData,
           conversationId,
         },
-      });
-      if (requestGen !== sessionGen.current) return;
-      setMessages((prev) => [...prev, toAssistantMessage(result)]);
-      if (result?.conversationId) setConversationId(result.conversationId);
+        (event) => {
+          if (requestGen !== sessionGen.current) return;
+          applyRecommendStreamEvent(event, setConversationId, setMessages, setStreamStage);
+        },
+      );
     } catch (err) {
       if (requestGen !== sessionGen.current) return;
       const expired =
         err instanceof ApiError &&
         (err.code === ERROR_CODE.UNAUTHORIZED ||
-          (err.status === 401 && err.code !== ERROR_CODE.INVALID_CREDENTIALS));
+          (err.status === 401 &&
+            err.code !== ERROR_CODE.INVALID_CREDENTIALS));
       if (expired) {
         logout({ silent: true });
         toast.info(TEXT.auth.sessionExpired);
         setShowLoginModal(true);
         return;
       }
-      setError("请求后端失败，请检查服务是否启动");
+      setError(
+        err instanceof ApiError && err.message
+          ? err.message
+          : TEXT.recommend.requestFailed,
+      );
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
           kind: "error",
-          payload: { kind: "error", message: "请求失败，请稍后再试。" },
+          payload: {
+            kind: "error",
+            message:
+              err instanceof ApiError && err.message
+                ? err.message
+                : TEXT.recommend.requestFailedBubble,
+          },
         },
       ]);
     } finally {
       if (requestGen === sessionGen.current) {
         sendingRef.current = false;
         setLoading(false);
+        setStreamStage(null);
         setImageData("");
       }
     }
@@ -441,10 +461,10 @@ export default function HomePage() {
                   >
                     <div className={styles.messageRole}>
                       {item.role === "user"
-                        ? "你"
+                        ? TEXT.chat.userRole
                         : failed
-                          ? "智能体（异常）"
-                          : "智能体"}
+                          ? TEXT.chat.assistantErrorRole
+                          : TEXT.chat.assistantRole}
                     </div>
                     <div className={styles.messageText}>
                       {item.role === "user"
@@ -462,12 +482,19 @@ export default function HomePage() {
               })}
               {loading ? (
                 <div className={`${styles.message} ${styles.assistantMessage}`}>
-                  <div className={styles.messageRole}>智能体</div>
+                  <div className={styles.messageRole}>
+                    {TEXT.chat.assistantRole}
+                  </div>
                   <div className={styles.messageText}>
                     <div
-                      className={styles.loadingDots}
-                      aria-label="智能体正在思考"
-                    />
+                      className={styles.loadingStatus}
+                      aria-label={recommendStageLabel(streamStage)}
+                    >
+                      <div className={styles.loadingDots} aria-hidden="true" />
+                      <span className={styles.loadingLabel}>
+                        {recommendStageLabel(streamStage)}
+                      </span>
+                    </div>
                   </div>
                 </div>
               ) : null}
@@ -514,7 +541,7 @@ export default function HomePage() {
                   onClick={() => void sendMessage()}
                   disabled={loading}
                 >
-                  {loading ? "发送中..." : "发送"}
+                  {loading ? TEXT.recommend.sending : TEXT.recommend.send}
                 </button>
               </div>
             </div>
@@ -531,4 +558,45 @@ export default function HomePage() {
       </section>
     </div>
   );
+}
+
+function applyRecommendStreamEvent(
+  event: RecommendStreamEvent,
+  setConversationId: Dispatch<SetStateAction<string | undefined>>,
+  setMessages: Dispatch<SetStateAction<ChatMessage[]>>,
+  setStreamStage: Dispatch<SetStateAction<RecommendStreamStageEvent | null>>,
+) {
+  switch (event.event) {
+    case STREAM_EVENT.TURN:
+      setConversationId(event.conversationId);
+      return;
+    case STREAM_EVENT.STAGE:
+      setStreamStage(event);
+      return;
+    case STREAM_EVENT.FINAL:
+      setMessages((prev) => [...prev, toAssistantMessage(event)]);
+      if (event.conversationId) setConversationId(event.conversationId);
+      return;
+    case STREAM_EVENT.ERROR:
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          kind: "error",
+          payload: { kind: "error", message: event.message },
+        },
+      ]);
+      if (event.conversationId) setConversationId(event.conversationId);
+      return;
+    default:
+      return;
+  }
+}
+
+function recommendStageLabel(stage: RecommendStreamStageEvent | null): string {
+  if (!stage) return TEXT.recommend.stagePending;
+  if (stage.stage === STREAM_STAGE.TOOL && !stage.ok) {
+    return TEXT.recommend.stageToolFailed;
+  }
+  return TEXT.recommend.stages[stage.stage];
 }

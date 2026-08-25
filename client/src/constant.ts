@@ -5,9 +5,25 @@ import {
   AUTH_PASSWORD_MIN_LENGTH,
   AUTH_USERNAME_MIN_LENGTH,
   ERROR_CODE,
+  STREAM_STAGE,
 } from "@an-movie/contracts";
 
 export { AUTH_PASSWORD_MIN_LENGTH, AUTH_USERNAME_MIN_LENGTH };
+
+/** 浏览器请求路径。Vite / Docker nginx 都从站点根反代。 */
+export const API_PATH = {
+  recommend: "/api/movie/recommend",
+} as const;
+
+/** 与 axios 实例相同的等待上限，recommend 流式也用。 */
+export const HTTP_CONSTANTS = {
+  REQUEST_TIMEOUT_MS: 1000 * 300,
+} as const;
+
+/** localStorage 里 JWT 的键。 */
+export const AUTH_STORAGE_KEY = {
+  TOKEN: "token",
+} as const;
 
 /** 界面文案，按模块分组。 */
 export const TEXT = {
@@ -55,5 +71,29 @@ export const TEXT = {
     crashTitle: "页面出错了",
     crashHint: "请刷新页面重试。",
     reload: "刷新页面",
+    requestFailed: "请求失败",
+  },
+  /** 聊天角色标签 */
+  chat: {
+    userRole: "你",
+    assistantRole: "智能体",
+    assistantErrorRole: "智能体（异常）",
+  },
+  /** 推荐请求与流式阶段 */
+  recommend: {
+    sending: "发送中...",
+    send: "发送",
+    stagePending: "正在处理你的请求",
+    stageToolFailed: "检索未成功，继续处理",
+    stages: {
+      [STREAM_STAGE.INTENT]: "正在判断是否与电影相关",
+      [STREAM_STAGE.PLAN]: "正在规划检索任务",
+      [STREAM_STAGE.TOOL]: "正在检索影片信息",
+      [STREAM_STAGE.AGENT]: "检索完成，正在继续处理",
+    },
+    requestFailed: "请求后端失败，请检查服务是否启动",
+    requestFailedBubble: "请求失败，请稍后再试。",
+    streamIncomplete: "连接中断，请稍后重试。",
+    timeout: "请求超时，请稍后重试。",
   },
 } as const;

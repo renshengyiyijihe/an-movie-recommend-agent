@@ -1,5 +1,12 @@
 ﻿import { Injectable, Logger } from "@nestjs/common";
 import { status as GrpcStatus } from "@grpc/grpc-js";
+import {
+  RECOMMEND_RESULT_TYPE,
+  STREAM_EVENT,
+  type RecommendResultType,
+  type RecommendStreamEvent,
+  type RecommendStreamFinalEvent,
+} from "@an-movie/contracts";
 import { ModelProvider } from "../model/model.provider";
 import { MessageGrpcClient } from "./message.grpc";
 import { OrchestratorAgent } from "./agents/orchestrator.agent";
@@ -16,6 +23,7 @@ import {
   recommendationFromParsed,
 } from "./transcript";
 import { noopTurnEventSink, TurnEventSink } from "./turn-events";
+import { toStreamStageEvent } from "./recommend-stream";
 import {
   ConversationHistoryItem,
   INTENT_TYPE,
@@ -48,51 +56,81 @@ export class MovieService {
     private readonly orchestratorAgent: OrchestratorAgent,
   ) {}
 
-  async recommend(payload: RecommendPayload) {
+  async recommend(
+    payload: RecommendPayload,
+    emit: (event: RecommendStreamEvent) => void,
+  ): Promise<void> {
     this.logger.log(
       `recommend request received: messageLength=${payload.message?.length ?? 0}, hasImage=${Boolean(payload.imageUrl || payload.imageData)}`,
     );
 
-    const conversationId = await this.ensureConversation(payload);
-    const turns = await this.loadConversationHistory(conversationId);
-
-    let turnId: string;
+    let conversationId: string | undefined;
     try {
-      turnId = await this.startTurn(conversationId, payload.message);
-    } catch (error) {
-      this.logger.warn(
-        `startTurn failed: conversationId=${conversationId} message=${errorMessage(error)}`,
-      );
-      return this.errorResponse(
+      conversationId = await this.ensureConversation(payload);
+      const turns = await this.loadConversationHistory(conversationId);
+
+      let turnId: string;
+      try {
+        turnId = await this.startTurn(conversationId, payload.message);
+      } catch (error) {
+        this.logger.warn(
+          `startTurn failed: conversationId=${conversationId} message=${errorMessage(error)}`,
+        );
+        emit(
+          this.finalEvent(
+            conversationId,
+            this.errorResponse(this.startTurnErrorMessage(error)),
+          ),
+        );
+        return;
+      }
+
+      emit({
+        event: STREAM_EVENT.TURN,
         conversationId,
-        this.startTurnErrorMessage(error),
+        turnId,
+      });
+
+      const outcome = await this.resolveOutcome(
+        payload.message,
+        turns,
+        turnId,
+        emit,
       );
-    }
 
-    const outcome = await this.resolveOutcome(
-      payload.message,
-      turns,
-      turnId,
-    );
+      try {
+        await this.completeTurn(turnId, outcome.status, outcome.payload);
+      } catch (error) {
+        this.logger.error(
+          `Failed to complete turn status=${outcome.status} turnId=${turnId}: ${errorMessage(error)}`,
+          error instanceof Error ? error : undefined,
+        );
+        emit(
+          this.finalEvent(
+            conversationId,
+            this.errorResponse(MESSAGE_CONSTANTS.COMPLETE_TURN_FAILED),
+          ),
+        );
+        return;
+      }
 
-    try {
-      await this.completeTurn(turnId, outcome.status, outcome.payload);
+      emit(
+        this.finalEvent(conversationId, {
+          type: outcome.type,
+          data: outcome.payload,
+        }),
+      );
     } catch (error) {
       this.logger.error(
-        `Failed to complete turn status=${outcome.status} turnId=${turnId}: ${errorMessage(error)}`,
+        `recommend failed: ${errorMessage(error)}`,
         error instanceof Error ? error : undefined,
       );
-      return this.errorResponse(
+      emit({
+        event: STREAM_EVENT.ERROR,
         conversationId,
-        MESSAGE_CONSTANTS.COMPLETE_TURN_FAILED,
-      );
+        message: MESSAGE_CONSTANTS.UNEXPECTED_FAILURE,
+      });
     }
-
-    return {
-      conversationId,
-      type: outcome.type,
-      data: outcome.payload,
-    };
   }
 
   /**
@@ -102,13 +140,14 @@ export class MovieService {
     query: string,
     turns: ConversationHistoryItem[],
     turnId: string,
+    emit: (event: RecommendStreamEvent) => void,
   ): Promise<RecommendOutcome> {
     try {
       const model = this.modelProvider.getModel();
       const ctx = new WorkflowContext({
         query,
         turns,
-        events: this.createEventSink(turnId),
+        events: this.createEventSink(turnId, emit),
       });
       const orchestratorResult = await this.orchestratorAgent.orchestrate(
         model,
@@ -176,9 +215,21 @@ export class MovieService {
     return { type: "success", status: "success", payload: parsed };
   }
 
-  private errorResponse(conversationId: string, message: string) {
+  private errorResponse(message: string) {
     const payload: ErrorPayload = { kind: "error", message };
-    return { conversationId, type: "error" as const, data: payload };
+    return { type: RECOMMEND_RESULT_TYPE.ERROR, data: payload };
+  }
+
+  private finalEvent(
+    conversationId: string,
+    body: { type: RecommendResultType; data: AssistantPayload },
+  ): RecommendStreamFinalEvent {
+    return {
+      event: STREAM_EVENT.FINAL,
+      conversationId,
+      type: body.type,
+      data: body.data,
+    };
   }
 
   private startTurnErrorMessage(error: unknown): string {
@@ -245,7 +296,10 @@ export class MovieService {
     throw lastError ?? new Error(MESSAGE_CONSTANTS.COMPLETE_TURN_FAILED);
   }
 
-  private createEventSink(turnId: string): TurnEventSink {
+  private createEventSink(
+    turnId: string,
+    emit: (event: RecommendStreamEvent) => void,
+  ): TurnEventSink {
     if (!turnId) return noopTurnEventSink;
 
     return {
@@ -255,6 +309,16 @@ export class MovieService {
         } catch (error) {
           this.logger.warn(
             `Failed to append turn event kind=${body.kind}`,
+            error as Error,
+          );
+        }
+        const stage = toStreamStageEvent(body);
+        if (!stage) return;
+        try {
+          emit(stage);
+        } catch (error) {
+          this.logger.warn(
+            `Failed to emit stream stage kind=${body.kind}`,
             error as Error,
           );
         }

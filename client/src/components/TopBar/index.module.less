@@ -27,6 +27,24 @@
   flex-shrink: 0;
 }
 
+.sidebarToggle {
+  display: none;
+  border: none;
+  border-radius: 999px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-weight: 700;
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+@media (max-width: 760px) {
+  .sidebarToggle {
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
 .topBarActions {
   display: flex;
   align-items: center;

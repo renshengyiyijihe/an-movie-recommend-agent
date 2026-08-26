@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { ApiError, request, streamChat } from "@/api";
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import Drawer from "@mui/material/Drawer";
+import { ApiError, isSessionExpiredError, request, streamChat } from "@/api";
 import {
-  ERROR_CODE,
   STREAM_EVENT,
   STREAM_STAGE,
   type ChatStreamEvent,
@@ -12,9 +12,15 @@ import { toast } from "@/store/toast";
 import AuthModal from "@/components/AuthModal";
 import AppLogo from "@/components/AppLogo";
 import ConfigModal from "@/components/ConfigModal";
+import ConversationSidebar from "@/components/ConversationSidebar";
 import RecommendationPoster from "@/components/RecommendationPoster";
 import TopBar from "@/components/TopBar";
-import { TEXT } from "@/constant";
+import {
+  API_PATH,
+  conversationDetailPath,
+  LAYOUT,
+  TEXT,
+} from "@/constant";
 import styles from "./index.module.less";
 import {
   convertConversationToMessages,
@@ -24,6 +30,7 @@ import {
   renderMessageText,
   toAssistantMessage,
 } from "@/utils/chatUtils";
+import { resolveActiveConversationTitle } from "@/utils/conversation";
 import { getTmdbImage } from "@/utils/tmdb";
 import type {
   ChatMessage,
@@ -58,6 +65,8 @@ export default function HomePage() {
   const [loginEmail, setLoginEmail] = useState("");
   const [historyLoading, setHistoryLoading] = useState(false);
   const [detailsLoading, setDetailsLoading] = useState(false);
+  const [listError, setListError] = useState("");
+  const [sidebarDrawerOpen, setSidebarDrawerOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [streamStage, setStreamStage] =
     useState<ChatStreamStageEvent | null>(null);
@@ -68,42 +77,120 @@ export default function HomePage() {
   const logout = useAuth((s) => s.logout);
   const sendingRef = useRef(false);
   const sessionGen = useRef(0);
+  const conversationLoadGen = useRef(0);
+  const interactionLocked = loading || detailsLoading;
 
-  async function fetchConversations() {
-    if (!token) return;
+  const handleSessionExpired = useCallback(() => {
+    logout({ silent: true });
+    toast.info(TEXT.auth.sessionExpired);
+    setShowLoginModal(true);
+  }, [logout]);
 
-    const requestGen = sessionGen.current;
-    setHistoryLoading(true);
-    try {
-      const result = await request<{ conversations: ConversationSummary[] }>({
-        method: "GET",
-        url: "/api/message/conversations",
-      });
-      if (requestGen !== sessionGen.current) return;
-      setConversationList(result.conversations ?? []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      if (requestGen === sessionGen.current) setHistoryLoading(false);
-    }
+  const fetchConversations = useCallback(
+    async (requestGen = sessionGen.current, options?: { silent?: boolean }) => {
+      if (!token) return;
+
+      if (!options?.silent) {
+        setHistoryLoading(true);
+        setListError("");
+      }
+      try {
+        const result = await request<{ conversations?: ConversationSummary[] }>({
+          method: "GET",
+          url: API_PATH.conversations,
+        });
+        if (requestGen !== sessionGen.current) return;
+        setConversationList(
+          Array.isArray(result.conversations) ? result.conversations : [],
+        );
+        setListError("");
+      } catch (err) {
+        if (requestGen !== sessionGen.current) return;
+        if (isSessionExpiredError(err)) {
+          handleSessionExpired();
+          return;
+        }
+        setListError(
+          err instanceof ApiError && err.message
+            ? err.message
+            : TEXT.workspace.loadFailed,
+        );
+      } finally {
+        if (requestGen === sessionGen.current && !options?.silent) {
+          setHistoryLoading(false);
+        }
+      }
+    },
+    [token, handleSessionExpired],
+  );
+
+  function rememberConversationIfNew(id: string, title: string) {
+    setConversationList((prev) => {
+      if (prev.some((item) => item.conversation_id === id)) return prev;
+      return [
+        {
+          conversation_id: id,
+          title,
+          created_at: new Date().toISOString(),
+        },
+        ...prev,
+      ];
+    });
   }
 
-  async function fetchConversationDetail(conversationId: string) {
-    const requestGen = sessionGen.current;
+  async function loadConversation(targetId: string) {
+    if (!token) {
+      setShowLoginModal(true);
+      return;
+    }
+    if (sendingRef.current) {
+      toast.info(TEXT.workspace.waitUntilIdle);
+      return;
+    }
+    if (targetId === conversationId && !detailsLoading) {
+      setSidebarDrawerOpen(false);
+      return;
+    }
+
+    const sessionAtStart = sessionGen.current;
+    const loadGen = ++conversationLoadGen.current;
     setDetailsLoading(true);
+    setError("");
+
     try {
       const detail = await request<ConversationDetail>({
         method: "GET",
-        url: `/api/message/conversations/${conversationId}`,
+        url: conversationDetailPath(targetId),
       });
-      if (requestGen !== sessionGen.current) return;
+      if (loadGen !== conversationLoadGen.current) return;
+      if (sessionAtStart !== sessionGen.current) return;
+      if (!detail?.conversation_id) {
+        toast.error(TEXT.workspace.detailFailed);
+        return;
+      }
       setSelectedConversation(detail);
       setConversationId(detail.conversation_id);
-      setMessages(convertConversationToMessages(detail.messages));
+      setMessages(convertConversationToMessages(detail.messages ?? []));
+      setSidebarDrawerOpen(false);
     } catch (err) {
-      console.error(err);
+      if (loadGen !== conversationLoadGen.current) return;
+      if (sessionAtStart !== sessionGen.current) return;
+      if (isSessionExpiredError(err)) {
+        handleSessionExpired();
+        return;
+      }
+      toast.error(
+        err instanceof ApiError && err.message
+          ? err.message
+          : TEXT.workspace.detailFailed,
+      );
     } finally {
-      if (requestGen === sessionGen.current) setDetailsLoading(false);
+      if (
+        loadGen === conversationLoadGen.current &&
+        sessionAtStart === sessionGen.current
+      ) {
+        setDetailsLoading(false);
+      }
     }
   }
 
@@ -118,28 +205,54 @@ export default function HomePage() {
   }
 
   function startNewConversation() {
+    if (sendingRef.current) {
+      toast.info(TEXT.workspace.waitUntilIdle);
+      return;
+    }
+    conversationLoadGen.current += 1;
     setConversationId(undefined);
     setMessages([]);
     setSelectedConversation(null);
+    setError("");
+    setStreamStage(null);
+    setDetailsLoading(false);
+    setMessage("");
+    setFile(null);
+    setImageData("");
+    setSidebarDrawerOpen(false);
   }
 
   useEffect(() => {
-    sessionGen.current += 1;
+    const requestGen = ++sessionGen.current;
+    conversationLoadGen.current += 1;
     sendingRef.current = false;
     setConversationId(undefined);
     setMessages([]);
     setSelectedConversation(null);
     setConversationList([]);
+    setListError("");
     setError("");
     setMessage("");
     setFile(null);
     setImageData("");
     setShowConfigModal(false);
+    setSidebarDrawerOpen(false);
     setLoading(false);
     setStreamStage(null);
     setHistoryLoading(false);
     setDetailsLoading(false);
-  }, [userId]);
+    if (!token) return;
+    void fetchConversations(requestGen);
+  }, [userId, token, fetchConversations]);
+
+  useEffect(() => {
+    const media = window.matchMedia(`(max-width: ${LAYOUT.NARROW_MAX_PX}px)`);
+    function closeDrawerOnWideViewport(event: MediaQueryListEvent) {
+      if (!event.matches) setSidebarDrawerOpen(false);
+    }
+    media.addEventListener("change", closeDrawerOnWideViewport);
+    return () => media.removeEventListener("change", closeDrawerOnWideViewport);
+  }, []);
 
   useEffect(() => {
     if (!file) {
@@ -161,7 +274,7 @@ export default function HomePage() {
 
   async function sendMessage() {
     const trimmedMessage = message.trim();
-    if (!trimmedMessage || sendingRef.current) return;
+    if (!trimmedMessage || sendingRef.current || detailsLoading) return;
     if (!token) {
       setShowLoginModal(true);
       return;
@@ -193,19 +306,16 @@ export default function HomePage() {
         (event) => {
           if (requestGen !== sessionGen.current) return;
           applyChatStreamEvent(event, setConversationId, setMessages, setStreamStage);
+          if (event.event === STREAM_EVENT.TURN) {
+            rememberConversationIfNew(event.conversationId, trimmedMessage);
+            void fetchConversations(requestGen, { silent: true });
+          }
         },
       );
     } catch (err) {
       if (requestGen !== sessionGen.current) return;
-      const expired =
-        err instanceof ApiError &&
-        (err.code === ERROR_CODE.UNAUTHORIZED ||
-          (err.status === 401 &&
-            err.code !== ERROR_CODE.INVALID_CREDENTIALS));
-      if (expired) {
-        logout({ silent: true });
-        toast.info(TEXT.auth.sessionExpired);
-        setShowLoginModal(true);
+      if (isSessionExpiredError(err)) {
+        handleSessionExpired();
         return;
       }
       setError(
@@ -364,10 +474,33 @@ export default function HomePage() {
     );
   }
 
+  const activeConversationTitle = resolveActiveConversationTitle({
+    conversationId,
+    conversations: conversationList,
+    selectedTitle: selectedConversation?.title,
+    messages,
+  });
+
+  const sidebarProps = {
+    conversations: conversationList,
+    activeConversationId: conversationId,
+    listLoading: historyLoading,
+    listError,
+    interactionLocked,
+    isGuest: !token,
+    onNewConversation: startNewConversation,
+    onSelectConversation: (id: string) => void loadConversation(id),
+    onRetryList: () => void fetchConversations(),
+    onLogin: () => setShowLoginModal(true),
+  };
+
+  const composerDisabled = loading || detailsLoading;
+
   return (
     <div className={styles.appShell}>
       <TopBar
         onOpenConfig={openConfigModal}
+        onOpenSidebar={() => setSidebarDrawerOpen(true)}
         onOpenLogin={() => {
           setShowLoginModal(true);
         }}
@@ -376,186 +509,210 @@ export default function HomePage() {
         }}
       />
 
-      <section className={styles.chatPanel}>
-        <ConfigModal
-          visible={showConfigModal}
-          onClose={() => setShowConfigModal(false)}
-          onSelectConversation={(id: string) =>
-            void fetchConversationDetail(id)
-          }
-          conversations={conversationList}
-          selectedConversation={selectedConversation}
-          loading={historyLoading}
-          detailLoading={detailsLoading}
-        />
-        <AuthModal
-          visible={showLoginModal}
-          mode="login"
-          initialEmail={loginEmail}
-          onClose={() => {
-            setShowLoginModal(false);
-          }}
-          onSwitchMode={() => {
-            setShowLoginModal(false);
-            setShowRegisterModal(true);
-          }}
-        />
-        <AuthModal
-          visible={showRegisterModal}
-          mode="register"
-          onClose={() => setShowRegisterModal(false)}
-          onSwitchMode={() => {
-            setShowRegisterModal(false);
-            setShowLoginModal(true);
-          }}
-          onRegistered={(email) => {
-            setShowRegisterModal(false);
-            setLoginEmail(email);
-            setShowLoginModal(true);
-          }}
-        />
+      <ConfigModal
+        visible={showConfigModal}
+        onClose={() => setShowConfigModal(false)}
+        onSelectConversation={(id: string) => void loadConversation(id)}
+        conversations={conversationList}
+        selectedConversation={selectedConversation}
+        loading={historyLoading}
+        detailLoading={detailsLoading}
+      />
+      <AuthModal
+        visible={showLoginModal}
+        mode="login"
+        initialEmail={loginEmail}
+        onClose={() => {
+          setShowLoginModal(false);
+        }}
+        onSwitchMode={() => {
+          setShowLoginModal(false);
+          setShowRegisterModal(true);
+        }}
+      />
+      <AuthModal
+        visible={showRegisterModal}
+        mode="register"
+        onClose={() => setShowRegisterModal(false)}
+        onSwitchMode={() => {
+          setShowRegisterModal(false);
+          setShowLoginModal(true);
+        }}
+        onRegistered={(email) => {
+          setShowRegisterModal(false);
+          setLoginEmail(email);
+          setShowLoginModal(true);
+        }}
+      />
 
-        <header className={styles.heroHeader}>
-          <div className={styles.titleRow}>
-            <div>
-              <h1>为你挑选你喜欢的电影</h1>
-              <p>说出你的口味、风格和观影需求，马上帮你推荐合适影片。</p>
-            </div>
-          </div>
-          <div className={styles.quickPrompts}>
-            {quickPrompts.map((prompt) => (
-              <button
-                key={prompt}
-                type="button"
-                className={styles.chipButton}
-                onClick={() => setMessage(prompt)}
-              >
-                {prompt}
-              </button>
-            ))}
-          </div>
-        </header>
+      <Drawer
+        anchor="left"
+        open={sidebarDrawerOpen}
+        onClose={() => setSidebarDrawerOpen(false)}
+        slotProps={{
+          paper: {
+            className: styles.drawerPaper,
+            style: { width: LAYOUT.SIDEBAR_WIDTH_PX },
+          },
+        }}
+      >
+        <ConversationSidebar {...sidebarProps} />
+      </Drawer>
 
-        <div className={styles.messages}>
+      <div className={styles.workspace}>
+        <aside className={styles.sidebarSlot}>
+          <ConversationSidebar {...sidebarProps} />
+        </aside>
+
+        <section className={styles.chatPanel}>
           {messages.length === 0 ? (
-            <div className={styles.emptyState}>
-              <AppLogo className={styles.emptyStateIcon} size={44} />
-              <h3>从一句简单的话开始</h3>
-              <p>比如“想看一部剧情片，时长2小时以内，最好有温情结局”。</p>
-            </div>
-          ) : (
-            <>
-              {messages.map((item, index) => {
-                const failed =
-                  item.kind === "error" || item.kind === "reject";
-                return (
-                  <div
-                    key={`${item.role}-${item.kind}-${index}`}
-                    className={`${styles.message} ${
-                      item.role === "user"
-                        ? styles.userMessage
-                        : failed
-                          ? styles.assistantErrorMessage
-                          : styles.assistantMessage
-                    }`}
+            <header className={styles.heroHeader}>
+              <div className={styles.titleRow}>
+                <div>
+                  <h1>为你挑选你喜欢的电影</h1>
+                  <p>说出你的口味、风格和观影需求，马上帮你推荐合适影片。</p>
+                </div>
+              </div>
+              <div className={styles.quickPrompts}>
+                {quickPrompts.map((prompt) => (
+                  <button
+                    key={prompt}
+                    type="button"
+                    className={styles.chipButton}
+                    onClick={() => setMessage(prompt)}
                   >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+            </header>
+          ) : (
+            <header className={styles.chatHeader}>
+              <h2>{activeConversationTitle}</h2>
+            </header>
+          )}
+
+          {detailsLoading ? (
+            <p className={styles.switchingBanner} role="status">
+              {TEXT.workspace.switching}
+            </p>
+          ) : null}
+
+          <div className={styles.messages}>
+            {messages.length === 0 ? (
+              <div className={styles.emptyState}>
+                <AppLogo className={styles.emptyStateIcon} size={44} />
+                <h3>从一句简单的话开始</h3>
+                <p>比如“想看一部剧情片，时长2小时以内，最好有温情结局”。</p>
+              </div>
+            ) : (
+              <>
+                {messages.map((item, index) => {
+                  const failed =
+                    item.kind === "error" || item.kind === "reject";
+                  return (
+                    <div
+                      key={`${item.role}-${item.kind}-${index}`}
+                      className={`${styles.message} ${
+                        item.role === "user"
+                          ? styles.userMessage
+                          : failed
+                            ? styles.assistantErrorMessage
+                            : styles.assistantMessage
+                      }`}
+                    >
+                      <div className={styles.messageRole}>
+                        {item.role === "user"
+                          ? TEXT.chat.userRole
+                          : failed
+                            ? TEXT.chat.assistantErrorRole
+                            : TEXT.chat.assistantRole}
+                      </div>
+                      <div className={styles.messageText}>
+                        {item.role === "user"
+                          ? renderMessageText(chatMessageText(item)).map(
+                              (line, lineIndex) => (
+                                <p key={`${item.kind}-${index}-${lineIndex}`}>
+                                  {line}
+                                </p>
+                              ),
+                            )
+                          : renderAssistantContent(item)}
+                      </div>
+                    </div>
+                  );
+                })}
+                {loading ? (
+                  <div className={`${styles.message} ${styles.assistantMessage}`}>
                     <div className={styles.messageRole}>
-                      {item.role === "user"
-                        ? TEXT.chat.userRole
-                        : failed
-                          ? TEXT.chat.assistantErrorRole
-                          : TEXT.chat.assistantRole}
+                      {TEXT.chat.assistantRole}
                     </div>
                     <div className={styles.messageText}>
-                      {item.role === "user"
-                        ? renderMessageText(chatMessageText(item)).map(
-                            (line, lineIndex) => (
-                              <p key={`${item.kind}-${index}-${lineIndex}`}>
-                                {line}
-                              </p>
-                            ),
-                          )
-                        : renderAssistantContent(item)}
+                      <div
+                        className={styles.loadingStatus}
+                        aria-label={chatStageLabel(streamStage)}
+                      >
+                        <div className={styles.loadingDots} aria-hidden="true" />
+                        <span className={styles.loadingLabel}>
+                          {chatStageLabel(streamStage)}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                );
-              })}
-              {loading ? (
-                <div className={`${styles.message} ${styles.assistantMessage}`}>
-                  <div className={styles.messageRole}>
-                    {TEXT.chat.assistantRole}
-                  </div>
-                  <div className={styles.messageText}>
-                    <div
-                      className={styles.loadingStatus}
-                      aria-label={chatStageLabel(streamStage)}
-                    >
-                      <div className={styles.loadingDots} aria-hidden="true" />
-                      <span className={styles.loadingLabel}>
-                        {chatStageLabel(streamStage)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-            </>
-          )}
-        </div>
-
-        <div className={styles.inputArea}>
-          <div className={styles.inputCard}>
-            <textarea
-              value={message}
-              disabled={loading}
-              onChange={(event) => setMessage(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  void sendMessage();
-                }
-              }}
-              placeholder="输入你的观影偏好、类型或心情，比如：想看科幻片，2小时以内，有精彩视觉效果。"
-            />
-            <div className={styles.inputActions}>
-              <label className={styles.fileInput}>
-                <span>📷 上传图片（可选）</span>
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg"
-                  disabled={loading}
-                  onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-                />
-              </label>
-              <div className={styles.actionButtons}>
-                <button
-                  type="button"
-                  className={styles.btnNewConversation}
-                  onClick={startNewConversation}
-                  disabled={loading}
-                >
-                  新会话
-                </button>
-                <button
-                  type="button"
-                  className={styles.sendButton}
-                  onClick={() => void sendMessage()}
-                  disabled={loading}
-                >
-                  {loading ? TEXT.chat.sending : TEXT.chat.send}
-                </button>
-              </div>
-            </div>
-            {imagePreview ? (
-              <img
-                src={imagePreview}
-                alt="图片预览"
-                className={styles.previewImage}
-              />
-            ) : null}
+                ) : null}
+              </>
+            )}
           </div>
-          {error ? <p className={styles.error}>{error}</p> : null}
-        </div>
-      </section>
+
+          <div className={styles.inputArea}>
+            <div className={styles.inputCard}>
+              <textarea
+                value={message}
+                disabled={composerDisabled}
+                onChange={(event) => setMessage(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void sendMessage();
+                  }
+                }}
+                placeholder="输入你的观影偏好、类型或心情，比如：想看科幻片，2小时以内，有精彩视觉效果。"
+              />
+              <div className={styles.inputActions}>
+                <label className={styles.fileInput}>
+                  <span>📷 上传图片（可选）</span>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg"
+                    disabled={composerDisabled}
+                    onChange={(event) =>
+                      setFile(event.target.files?.[0] ?? null)
+                    }
+                  />
+                </label>
+                <div className={styles.actionButtons}>
+                  <button
+                    type="button"
+                    className={styles.sendButton}
+                    onClick={() => void sendMessage()}
+                    disabled={composerDisabled}
+                  >
+                    {loading ? TEXT.chat.sending : TEXT.chat.send}
+                  </button>
+                </div>
+              </div>
+              {imagePreview ? (
+                <img
+                  src={imagePreview}
+                  alt="图片预览"
+                  className={styles.previewImage}
+                />
+              ) : null}
+            </div>
+            {error ? <p className={styles.error}>{error}</p> : null}
+          </div>
+        </section>
+      </div>
     </div>
   );
 }

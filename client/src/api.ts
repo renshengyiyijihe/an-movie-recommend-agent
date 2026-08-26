@@ -1,5 +1,6 @@
 import axios, { AxiosRequestConfig, isAxiosError } from "axios";
 import {
+  ERROR_CODE,
   SSE_WIRE,
   STREAM_EVENT,
   type ErrorResponseBody,
@@ -40,6 +41,18 @@ export class ApiError extends Error {
     this.details = details;
     this.requestId = requestId;
   }
+}
+
+/**
+ * 鉴权失效：需要清登录态并弹出登录框。
+ * 登录接口的 401（邮箱或密码错误）不算会话过期。
+ */
+export function isSessionExpiredError(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    (error.code === ERROR_CODE.UNAUTHORIZED ||
+      (error.status === 401 && error.code !== ERROR_CODE.INVALID_CREDENTIALS))
+  );
 }
 
 export async function request<T = unknown>(config: AxiosRequestConfig): Promise<T> {

@@ -13,7 +13,26 @@ export { AUTH_PASSWORD_MIN_LENGTH, AUTH_USERNAME_MIN_LENGTH };
 /** 浏览器请求路径。Vite / Docker nginx 都从站点根反代。 */
 export const API_PATH = {
   chat: "/api/movie/chat",
+  conversations: "/api/message/conversations",
 } as const;
+
+/** 工作台布局，与 HomePage / TopBar 的 `@media` 保持同一套数字。 */
+export const LAYOUT = {
+  SIDEBAR_WIDTH_PX: 280,
+  NARROW_MAX_PX: 760,
+} as const;
+
+/**
+ * 单条会话详情的 REST 路径。
+ *
+ * @param conversationId 会话 id
+ * @returns `/api/message/conversations/{id}`，id 会做 URL 编码
+ * @example
+ * conversationDetailPath("a1b2-c3") // "/api/message/conversations/a1b2-c3"
+ */
+export function conversationDetailPath(conversationId: string): string {
+  return `${API_PATH.conversations}/${encodeURIComponent(conversationId)}`;
+}
 
 /** 与 axios 实例相同的等待上限，chat 流式也用。 */
 export const HTTP_CONSTANTS = {
@@ -92,5 +111,23 @@ export const TEXT = {
     requestFailedBubble: "请求失败，请稍后再试。",
     streamIncomplete: "连接中断，请稍后重试。",
     timeout: "请求超时，请稍后重试。",
+  },
+  /** 左侧会话工作台 */
+  workspace: {
+    title: "会话",
+    newConversation: "新对话",
+    newConversationAria: "开始新对话",
+    openSidebarAria: "打开会话列表",
+    listAria: "会话列表",
+    loading: "加载会话列表中...",
+    empty: "暂无会话，发送消息后会自动生成。",
+    untitled: "会话",
+    guestHint: "登录后可查看和切换历史会话。",
+    loginToView: "登录后查看会话",
+    retry: "重试",
+    loadFailed: "会话列表加载失败",
+    detailFailed: "无法打开该会话，请稍后重试。",
+    waitUntilIdle: "请等待当前回复完成后再切换会话。",
+    switching: "正在加载会话...",
   },
 } as const;

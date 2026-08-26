@@ -4,3 +4,10 @@
 **/.env
 .eslintcache
 temp.txt
+.cursor/
+
+# planning-with-files session files (created per task, not source)
+task_plan.md
+findings.md
+progress.md
+.planning/

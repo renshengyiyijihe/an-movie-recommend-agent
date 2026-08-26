@@ -100,7 +100,7 @@ POST /api/movie/chat   Accept: text/event-stream
 
 | `event` | 何时推 | 载荷要点 | 前端 |
 | --- | --- | --- | --- |
-| `turn` | `StartTurn` 成功 | `conversationId`、`turnId` | 记下会话 id，后续提问带上 |
+| `turn` | `StartTurn` 成功 | `conversationId`、`turnId` | 记下会话 id，后续提问带上；侧栏没有该项则插入并静默 refetch 列表 |
 | `stage` | `ctx.record()` 且 `toStreamStageEvent` 能映射 | 见下表；不含 Tool 完整结果 | 只改加载文案，**不进**消息列表 |
 | `final` | **先** `CompleteTurn` **再**推 | `type` + `data` 与写入 payload 同一份 | 收成一条助手气泡 |
 | `error` | 开流后未收成 `final` | `message`（`UNEXPECTED_FAILURE`） | 错误气泡 |
@@ -229,12 +229,17 @@ Prompt 入口（改提示词只动这个文件）：
 ## 前端
 
 - 单页：`client/src/pages/HomePage`。路由只有 `/`。
-- 状态：Zustand `store/auth.ts`，token 存 `localStorage`。
-- HTTP：`api.ts` 的 `request()` 自动带 Bearer；`baseURL: '/'`。**只有 chat 走 `streamChat()` 读 SSE**，其它接口继续 `request()`。Docker 下由 nginx 反代；本地 `vite` 默认 **没有** 把 `/api` 转到后端。
-- 组件：`TopBar`、`AuthModal`、`ConfigModal`（会话列表）、`RecommendationPoster`。样式用 Less CSS Modules。
+- 布局：TopBar + **左侧会话栏** + 右侧主聊天。桌面常驻 `ConversationSidebar`（约 280px）；窄屏（`LAYOUT.NARROW_MAX_PX` = 760）TopBar「会话」打开 MUI `Drawer`。未登录侧栏只给登录引导，不请求会话 API。
+- 会话主入口是侧栏，不是配置弹窗。登录后 `GET /api/message/conversations` 拉列表。点选 `GET /api/message/conversations/:id`（`conversationDetailPath`）把气泡载入主聊天；详情未成功前不要改当前 `conversationId`。路径写在 `API_PATH`，不要在页面里再写死 `/api/message/...`。
+- 「新对话」只清本地 `conversationId` / `messages`，**不要**预先 `POST /message/conversations`（会留下无标题空行）。首条发送仍由 movie-service `ensureConversation` 创建（title = 用户原话）。SSE `turn` 后侧栏若没有该项则插入，再静默 refetch。
+- 发送中或正在拉详情时禁止切换/新建：断开不会取消后端轮次，SSE 仍会写入当前 `messages`。用 `conversationLoadGen` 丢掉过期的详情响应。
+- `ConfigModal` 与 TopBar「配置」**保留**（后续设置用）。点弹窗里的会话也走同一套 `loadConversation` 进主聊天，弹窗内纯文本预览仍在。不要把侧栏列表再塞回配置，也不要删掉配置入口。
+- 状态：Zustand 只有 `store/auth.ts`（token 在 `localStorage`）和 toast。会话列表 / 当前对话放 `HomePage` 本地 state，不要为工作台再加全局 store。
+- HTTP：`api.ts` 的 `request()` 自动带 Bearer；`baseURL: '/'`。**只有 chat 走 `streamChat()` 读 SSE**，其它接口继续 `request()`。鉴权失效用 `isSessionExpiredError()`（登录 401「密码错误」不算过期）。Docker 下由 nginx 反代；本地 `vite` 默认 **没有** 把 `/api` 转到后端。
+- 组件：`TopBar`、`ConversationSidebar`、`AuthModal`、`ConfigModal`、`RecommendationPoster`。会话标题/时间在 `utils/conversation.ts`。界面文案进 `TEXT`（`TEXT.workspace` 是侧栏）。样式用 Less CSS Modules。
 - UI 只用 MUI 9，不要再引入另一套组件库。
 - 发送前必须登录。后端 `/movie/chat` 无 token 或验票失败返回 `401` JSON，前端会弹出登录框。图片以 Data URL 传 `imageData`，**后端 Orchestrator 当前未使用图片**；上传预览只留在输入区，不进聊天消息。
-- 聊天列表与后端 `ChatItem` 对齐：`role` 只有 `user` | `assistant`，`kind` 为 `user_query` | `recommendation` | `reject` | `error`，一条助手消息一个气泡（`text` 下方可选 `movies` 卡片）。`final` 收成气泡；`stage` 只更新加载文案，不进消息列表。
+- 聊天列表与后端 `ChatItem` 对齐：`role` 只有 `user` | `assistant`，`kind` 为 `user_query` | `recommendation` | `reject` | `error`，一条助手消息一个气泡（`text` 下方可选 `movies` 卡片）。`final` 收成气泡；`stage` 只更新加载文案，不进消息列表。有消息时收起 hero，顶栏显示当前会话标题。
 - nginx：`/api/movie/chat` 关缓冲；movie / message 代理超时 300s，与 `HTTP_CONSTANTS.REQUEST_TIMEOUT_MS`（5min，axios 与 chat 流式共用）对齐。
 
 ## 环境变量（不要提交 .env）
@@ -269,6 +274,7 @@ Prompt 入口（改提示词只动这个文件）：
 - 新增 **Agent**：扩展 `AGENT_TYPE` / `AGENT_TYPES`，在 `OrchestratorAgent` 的 `agentExecutors` 用 `AGENT_TYPE.*` 注册，不要改执行循环本身。
 - 新增 **工作流事件**：扩展 `TurnEventBody`，在 Agent 里 `runtime.record()` / `ctx.record()`。message-service 只存 JSONB，不要在那边 switch kind。要推到浏览器再改 `toStreamStageEvent`（默认不推 `llm_usage` / `error`）。
 - 新增 **SSE 事件 / stage**：先改 `packages/contracts/src/stream.ts` 的 `STREAM_EVENT` / `STREAM_STAGE`，再改 `chat-stream.ts` 编码和 `client/src/utils/chat-stream.ts` 解码。不要在 controller 里手写帧格式。
+- 前端会话列表 UI 放 `ConversationSidebar`，拉取/切换/锁定放 `HomePage`。不要把列表逻辑写进 `ConfigModal`，也不要为切换会话预先 POST 空会话。
 - 可见聊天消息只走 `StartTurn` / `CompleteTurn`，payload 类型在 `transcript.ts`。SSE `final` 的 `data` 与写入 payload 同一份。
 - 新增 **Tool**：实现 `ITool`，在 `ToolsRegistry.registerTools()` 注册。SearchAgent 会自动拿到 schema，不要在 Agent 里再写一份参数定义。调 TMDB 用 `TmdbProvider.get` / `post`，不要在 Tool 里 `fetch`。
 - 新增 / 修改 **Prompt**：只改 `PromptTemplateService`。对话历史在 prompt 内按阶段投影，不要在 service 里先拼成字符串。关系计划只改 `getTaskPlanningPrompt`，不要再加一层分析 prompt。
@@ -307,6 +313,7 @@ Prompt 入口（改提示词只动这个文件）：
 | 会话与向量 | `backend/message-service/src/message/message.service.ts` |
 | 登录鉴权 | `backend/auth-service/src/auth/auth.service.ts` |
 | 前端聊天 | `client/src/pages/HomePage/index.tsx`、`client/src/api.ts` |
+| 前端会话工作台 | `client/src/components/ConversationSidebar/`、`client/src/utils/conversation.ts` |
 | 反代 | `client/nginx.conf`、`docker-compose.yml` |
 | 指标刮取 | `observability/prometheus.yml` |
 | Grafana 数据源与总览盘 | `observability/grafana/` |
@@ -318,7 +325,7 @@ Prompt 入口（改提示词只动这个文件）：
 - `JWT_SECRET` 必须显式配置，代码不再回退 `dev_secret`。
 - 内部 gRPC 信任 metadata 里的 `user-id`（依赖 Docker 网络隔离，message-service 不再二次验 JWT）。
 - 图片主链路仍未消费 `imageData`。
-- chat 开流后客户端超时/断开不会取消工作流；轮次仍是 `running`，立刻重发会撞「上一轮还在处理」。
+- chat 开流后客户端超时/断开不会取消工作流；轮次仍是 `running`，立刻重发会撞「上一轮还在处理」。因此前端发送中会锁侧栏切换；配置弹窗里的会话项本身未 disable，但 `loadConversation` 会拒绝并 toast。
 - Relation 未做：计数/排名、多跳路径、公司/系列。规划应标 `unsupported` 或直接 `search`，不要假装能算。
 - 工作副本不跨请求保留；指代「刚才那批结果再筛」目前只能靠历史文本 + 重新取数。
 - 共享包由 `packages/Dockerfile` 编一次，各服务 `FROM an-movie-packages AS packages` 再 `COPY --from=packages`。不要用 `additional_contexts`（旧 BuildKit 没有 named context）。须先 `docker compose build packages` 再 `up --build`。`packages` 服务只产镜像，启动后立刻退出，`compose ps` 里 Exited 是正常的。

@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 780" role="img" aria-label="An-movie Agent runtime architecture">
+  <defs>
+    <linearGradient id="page" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b1220"/>
+      <stop offset="100%" stop-color="#1e1b4b"/>
+    </linearGradient>
+    <filter id="glow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <rect width="1120" height="780" fill="url(#page)"/>
+  <text x="56" y="52" font-size="13" letter-spacing="3" fill="#818cf8" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">RUNTIME</text>
+  <text x="56" y="86" font-size="28" font-weight="700" fill="#f8fafc" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">一眼看完的请求路径</text>
+  <text x="56" y="116" font-size="14" fill="#94a3b8" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">边缘是 HTTP，服务之间是 gRPC。推荐从 TMDB 取回，不从模型权重里「回忆」。</text>
+  <text x="56" y="162" font-size="11" letter-spacing="2" fill="#64748b" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">EXPERIENCE</text>
+  <g filter="url(#glow)">
+    <rect x="56" y="176" width="1008" height="88" rx="16" fill="#111827" stroke="#334155"/>
+  </g>
+  <text x="84" y="214" font-size="18" font-weight="700" fill="#ffffff" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">React 18 · Vite · MUI</text>
+  <text x="84" y="240" font-size="13" fill="#94a3b8" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">streamChat() 读 SSE · stage 只改加载文案 · final 才进气泡</text>
+  <rect x="760" y="200" width="132" height="40" rx="10" fill="#312e81"/>
+  <text x="826" y="225" text-anchor="middle" font-size="12" font-weight="700" fill="#c7d2fe" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">POST /movie/chat</text>
+  <rect x="904" y="200" width="132" height="40" rx="10" fill="#1e3a5f"/>
+  <text x="970" y="225" text-anchor="middle" font-size="12" font-weight="700" fill="#93c5fd" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">Bearer JWT</text>
+  <text x="56" y="298" font-size="11" letter-spacing="2" fill="#64748b" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">EDGE</text>
+  <g filter="url(#glow)">
+    <rect x="56" y="312" width="1008" height="64" rx="16" fill="#0f172a" stroke="#334155"/>
+  </g>
+  <text x="84" y="352" font-size="16" font-weight="700" fill="#e2e8f0" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">nginx</text>
+  <text x="168" y="352" font-size="13" fill="#94a3b8" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">/api/auth :3002    /api/movie :3001    /api/message :3003    chat 关缓冲 · 超时 300s</text>
+  <text x="56" y="412" font-size="11" letter-spacing="2" fill="#64748b" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">DOMAIN SERVICES · NESTJS 10</text>
+  <g filter="url(#glow)">
+    <rect x="56" y="426" width="320" height="168" rx="16" fill="#111827" stroke="#f97316"/>
+  </g>
+  <text x="76" y="458" font-size="12" fill="#fdba74" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">AUTH · :3002 / gRPC :50051</text>
+  <text x="76" y="488" font-size="20" font-weight="700" fill="#ffffff" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">auth-service</text>
+  <text x="76" y="518" font-size="13" fill="#cbd5e1" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">注册 / 登录 / 签发 JWT</text>
+  <text x="76" y="542" font-size="13" fill="#cbd5e1" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">ValidateToken 给兄弟服务验票</text>
+  <text x="76" y="566" font-size="13" fill="#64748b" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">身份不进推荐请求体</text>
+  <g filter="url(#glow)">
+    <rect x="400" y="426" width="320" height="168" rx="16" fill="#1e1b4b" stroke="#818cf8"/>
+  </g>
+  <text x="420" y="458" font-size="12" fill="#c7d2fe" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">MOVIE · :3001  * 主编排</text>
+  <text x="420" y="488" font-size="20" font-weight="700" fill="#ffffff" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">movie-service</text>
+  <text x="420" y="518" font-size="13" fill="#c7d2fe" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">Orchestrator · Search · Relation</text>
+  <text x="420" y="542" font-size="13" fill="#c7d2fe" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">WorkingSet 本轮内存 · 精简视图进 LLM</text>
+  <text x="420" y="566" font-size="13" fill="#818cf8" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">开流后只推 SSE，没有 JSON 成功体</text>
+  <g filter="url(#glow)">
+    <rect x="744" y="426" width="320" height="168" rx="16" fill="#111827" stroke="#22d3ee"/>
+  </g>
+  <text x="764" y="458" font-size="12" fill="#67e8f9" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">MESSAGE · :3003 / gRPC :50052</text>
+  <text x="764" y="488" font-size="20" font-weight="700" fill="#ffffff" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">message-service</text>
+  <text x="764" y="518" font-size="13" fill="#a5f3fc" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">会话 / 轮次 / turn_events</text>
+  <text x="764" y="542" font-size="13" fill="#a5f3fc" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">Milvus 相似摘要检索</text>
+  <text x="764" y="566" font-size="13" fill="#64748b" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">metadata user-id · 只允许主人</text>
+  <text x="400" y="612" font-size="11" fill="#64748b" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">gRPC</text>
+  <text x="470" y="612" font-size="12" fill="#cbd5e1" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">movie &lt;-&gt; auth · movie &lt;-&gt; message · message &lt;-&gt; auth</text>
+  <text x="56" y="648" font-size="11" letter-spacing="2" fill="#64748b" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">INTELLIGENCE  AND  STATE</text>
+  <g filter="url(#glow)">
+    <rect x="56" y="662" width="240" height="78" rx="14" fill="#0f172a" stroke="#334155"/>
+  </g>
+  <text x="76" y="694" font-size="15" font-weight="700" fill="#ffffff" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">SiliconFlow</text>
+  <text x="76" y="718" font-size="12" fill="#94a3b8" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">LLM + Embedding</text>
+  <g filter="url(#glow)">
+    <rect x="312" y="662" width="240" height="78" rx="14" fill="#0f172a" stroke="#334155"/>
+  </g>
+  <text x="332" y="694" font-size="15" font-weight="700" fill="#ffffff" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">TMDB</text>
+  <text x="332" y="718" font-size="12" fill="#94a3b8" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">search / discover / credits</text>
+  <g filter="url(#glow)">
+    <rect x="568" y="662" width="240" height="78" rx="14" fill="#0f172a" stroke="#334155"/>
+  </g>
+  <text x="588" y="694" font-size="15" font-weight="700" fill="#ffffff" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">PostgreSQL</text>
+  <text x="588" y="718" font-size="12" fill="#94a3b8" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">用户 · 会话 · 气泡 JSONB</text>
+  <g filter="url(#glow)">
+    <rect x="824" y="662" width="240" height="78" rx="14" fill="#0f172a" stroke="#334155"/>
+  </g>
+  <text x="844" y="694" font-size="15" font-weight="700" fill="#ffffff" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">Milvus</text>
+  <text x="844" y="718" font-size="12" fill="#94a3b8" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">推荐摘要向量回忆</text>
+</svg>

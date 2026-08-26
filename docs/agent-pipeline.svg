@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 420" role="img" aria-label="An-movie Agent orchestrator pipeline">
+  <defs>
+    <linearGradient id="pipe" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#f8fafc"/>
+      <stop offset="100%" stop-color="#eef2ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="1120" height="420" fill="url(#pipe)"/>
+  <text x="40" y="40" font-size="13" letter-spacing="3" fill="#6366f1" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">ORCHESTRATOR</text>
+  <text x="40" y="72" font-size="24" font-weight="700" fill="#0f172a" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">一次提问，一条可观测流水线</text>
+  <text x="40" y="100" font-size="14" fill="#64748b" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">域外直接拒绝。关系题能算就算。Tool 原文进 WorkingSet，汇总只看证据视图。</text>
+  <rect x="40" y="132" width="196" height="120" rx="16" fill="#ffffff" stroke="#c7d2fe"/>
+  <text x="56" y="164" font-size="11" font-weight="700" fill="#6366f1" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">1 · INTENT</text>
+  <text x="56" y="194" font-size="16" font-weight="700" fill="#0f172a" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">意图分类</text>
+  <text x="56" y="220" font-size="12" fill="#475569" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">in_scope / out_of_scope</text>
+  <text x="56" y="238" font-size="12" fill="#475569" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">unknown 立刻短路</text>
+  <path d="M244 192h28" stroke="#818cf8" stroke-width="3" stroke-linecap="round"/>
+  <path d="M264 184l12 8-12 8" fill="none" stroke="#818cf8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="280" y="132" width="196" height="120" rx="16" fill="#ffffff" stroke="#c7d2fe"/>
+  <text x="296" y="164" font-size="11" font-weight="700" fill="#6366f1" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">2 · PLAN</text>
+  <text x="296" y="194" font-size="16" font-weight="700" fill="#0f172a" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">任务规划</text>
+  <text x="296" y="220" font-size="12" fill="#475569" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">agents + 可选 relation</text>
+  <text x="296" y="238" font-size="12" fill="#475569" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">非法 relation 收成 search</text>
+  <path d="M484 192h28" stroke="#818cf8" stroke-width="3" stroke-linecap="round"/>
+  <path d="M504 184l12 8-12 8" fill="none" stroke="#818cf8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="520" y="132" width="280" height="120" rx="16" fill="#1e1b4b"/>
+  <text x="536" y="164" font-size="11" font-weight="700" fill="#c7d2fe" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">3 · EXECUTE</text>
+  <text x="536" y="194" font-size="16" font-weight="700" fill="#ffffff" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">双路径执行</text>
+  <text x="536" y="222" font-size="12" fill="#c7d2fe" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">Search：LLM 规划 1–4 个 TMDB 工具</text>
+  <text x="536" y="242" font-size="12" fill="#c7d2fe" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">Relation：discover / compute，不再调模型</text>
+  <path d="M808 192h28" stroke="#818cf8" stroke-width="3" stroke-linecap="round"/>
+  <path d="M828 184l12 8-12 8" fill="none" stroke="#818cf8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="844" y="132" width="236" height="120" rx="16" fill="#ffffff" stroke="#c7d2fe"/>
+  <text x="860" y="164" font-size="11" font-weight="700" fill="#6366f1" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">4 · SYNTHESIZE</text>
+  <text x="860" y="194" font-size="16" font-weight="700" fill="#0f172a" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">视图汇总</text>
+  <text x="860" y="220" font-size="12" fill="#475569" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">证据视图 → { text, movies }</text>
+  <text x="860" y="238" font-size="12" fill="#475569" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">先落库再推 final</text>
+  <rect x="40" y="276" width="336" height="112" rx="14" fill="#ffffff" stroke="#e2e8f0"/>
+  <text x="56" y="308" font-size="13" font-weight="700" fill="#0f172a" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">WorkingSet 不是 Prompt</text>
+  <text x="56" y="334" font-size="13" fill="#475569" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">Tool 完整结果只活在本轮内存。</text>
+  <text x="56" y="356" font-size="13" fill="#475569" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">raw_result 不准进副本，也不进模型。</text>
+  <text x="56" y="378" font-size="13" fill="#475569" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">publish 只给精简 AgentEvidenceView。</text>
+  <rect x="392" y="276" width="336" height="112" rx="14" fill="#ffffff" stroke="#e2e8f0"/>
+  <text x="408" y="308" font-size="13" font-weight="700" fill="#0f172a" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">Relation 是集合运算</text>
+  <text x="408" y="334" font-size="13" fill="#475569" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">discover：一次 movie_discover</text>
+  <text x="408" y="356" font-size="13" fill="#475569" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">compute：作品表交 / 并 / 差</text>
+  <text x="408" y="378" font-size="13" fill="#475569" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">失败且本轮没跑 Search → fallback</text>
+  <rect x="744" y="276" width="336" height="112" rx="14" fill="#111827"/>
+  <text x="760" y="308" font-size="13" font-weight="700" fill="#ffffff" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">模型调用次数可控</text>
+  <text x="760" y="334" font-size="13" fill="#cbd5e1" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">意图 1 + 规划 1 + 汇总 1</text>
+  <text x="760" y="356" font-size="13" fill="#cbd5e1" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">仅 Search 再加一次选工具</text>
+  <text x="760" y="378" font-size="13" fill="#fbbf24" font-family="ui-sans-serif, system-ui, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">Relation 成功路径没有第四次 LLM</text>
+</svg>

@@ -1,5 +1,11 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState } from 'react';
+import { Controller, useForm, type Control, type FieldPath, type RegisterOptions } from 'react-hook-form';
 import Dialog from '@mui/material/Dialog';
+import IconButton from '@mui/material/IconButton';
+import InputAdornment from '@mui/material/InputAdornment';
+import TextField from '@mui/material/TextField';
+import Visibility from '@mui/icons-material/Visibility';
+import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import { AUTH_PASSWORD_MIN_LENGTH, AUTH_USERNAME_MIN_LENGTH, TEXT } from '@/constant';
 import { ApiError } from '@/api';
 import useAuth from '@/store/auth';
@@ -15,7 +21,113 @@ interface Props {
   initialEmail?: string;
 }
 
+interface AuthFormValues {
+  username: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+}
+
+interface AuthFieldProps<T extends FieldPath<AuthFormValues>> {
+  control: Control<AuthFormValues>;
+  name: T;
+  rules?: RegisterOptions<AuthFormValues, T>;
+  label: string;
+  type?: 'text' | 'email';
+  autoComplete?: string;
+  autoFocus?: boolean;
+  placeholder?: string;
+  passwordToggle?: boolean;
+  showPasswordLabel?: string;
+  hidePasswordLabel?: string;
+  onAfterChange?: () => void;
+}
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const FIELD_SX = {
+  '& .MuiOutlinedInput-root': {
+    borderRadius: '14px',
+    backgroundColor: '#f8fafc',
+  },
+} as const;
+
+function AuthField<T extends FieldPath<AuthFormValues>>({
+  control,
+  name,
+  rules,
+  label,
+  type = 'text',
+  autoComplete,
+  autoFocus,
+  placeholder,
+  passwordToggle = false,
+  showPasswordLabel,
+  hidePasswordLabel,
+  onAfterChange,
+}: AuthFieldProps<T>) {
+  const [visible, setVisible] = useState(false);
+  const inputType = passwordToggle ? (visible ? 'text' : 'password') : type;
+
+  return (
+    <Controller
+      name={name}
+      control={control}
+      rules={rules}
+      render={({ field: { ref, onChange, ...field }, fieldState }) => (
+        <TextField
+          {...field}
+          inputRef={ref}
+          type={inputType}
+          label={label}
+          autoFocus={autoFocus}
+          placeholder={placeholder}
+          fullWidth
+          error={Boolean(fieldState.error)}
+          helperText={fieldState.error?.message}
+          sx={FIELD_SX}
+          onChange={(event) => {
+            onChange(event);
+            onAfterChange?.();
+          }}
+          slotProps={{
+            htmlInput: {
+              autoComplete,
+              spellCheck: passwordToggle ? false : undefined,
+              inputMode: type === 'email' ? 'email' : undefined,
+            },
+            input: passwordToggle
+              ? {
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        type="button"
+                        edge="end"
+                        aria-label={visible ? hidePasswordLabel : showPasswordLabel}
+                        aria-pressed={visible}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => setVisible((open) => !open)}
+                      >
+                        {visible ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }
+              : undefined,
+          }}
+        />
+      )}
+    />
+  );
+}
+
+function formatAuthError(err: unknown): string {
+  if (err instanceof ApiError && err.code && err.code in TEXT.errors) {
+    return TEXT.errors[err.code as keyof typeof TEXT.errors];
+  }
+  if (err instanceof Error && err.message) return err.message;
+  return TEXT.auth.genericError;
+}
 
 export default function AuthModal({
   visible,
@@ -25,93 +137,58 @@ export default function AuthModal({
   onRegistered,
   initialEmail,
 }: Props) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [username, setUsername] = useState('');
-  const [error, setError] = useState('');
-  const [emailError, setEmailError] = useState('');
-  const [usernameError, setUsernameError] = useState('');
-  const [passwordError, setPasswordError] = useState('');
-  const [loading, setLoading] = useState(false);
-
   const login = useAuth((s) => s.login);
-  const register = useAuth((s) => s.register);
+  const registerUser = useAuth((s) => s.register);
   const titleId = mode === 'login' ? 'auth-dialog-login-title' : 'auth-dialog-register-title';
+  const {
+    control,
+    handleSubmit,
+    setValue,
+    setError,
+    clearErrors,
+    trigger,
+    formState: { errors, isSubmitting },
+  } = useForm<AuthFormValues>({
+    defaultValues: {
+      username: '',
+      email: '',
+      password: '',
+      confirmPassword: '',
+    },
+    mode: 'onBlur',
+    reValidateMode: 'onChange',
+  });
 
   useEffect(() => {
-    if (!visible) return;
-    if (initialEmail) setEmail(initialEmail);
-  }, [visible, initialEmail]);
+    if (!visible || !initialEmail) return;
+    setValue('email', initialEmail);
+  }, [visible, initialEmail, setValue]);
 
   function handleDialogClose(_event: unknown, reason: 'backdropClick' | 'escapeKeyDown') {
     if (reason === 'backdropClick') return;
     onClose();
   }
 
-  function validateEmail(value: string) {
-    const trimmed = value.trim();
-    if (!trimmed) return TEXT.auth.emailRequired;
-    if (!EMAIL_RE.test(trimmed)) return TEXT.auth.emailInvalid;
-    return '';
-  }
+  async function onSubmit(values: AuthFormValues) {
+    const email = values.email.trim();
+    const password = values.password.trim();
+    const username = values.username.trim();
 
-  function validateUsername(value: string) {
-    if (!value) return TEXT.auth.usernameRequired;
-    if (value.length < AUTH_USERNAME_MIN_LENGTH) return TEXT.auth.usernameMin;
-    return '';
-  }
-
-  function validatePassword(value: string) {
-    if (!value) return TEXT.auth.passwordRequired;
-    if (value.length < AUTH_PASSWORD_MIN_LENGTH) return TEXT.auth.passwordMin;
-    return '';
-  }
-
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setError('');
-
-    const trimmedEmail = email.trim();
-    const trimmedPassword = password.trim();
-    const trimmedUsername = username.trim();
-
-    const nextEmailError = validateEmail(trimmedEmail);
-    const nextUsernameError = mode === 'register' ? validateUsername(trimmedUsername) : '';
-    const nextPasswordError = validatePassword(trimmedPassword);
-    setEmailError(nextEmailError);
-    setUsernameError(nextUsernameError);
-    setPasswordError(nextPasswordError);
-
-    if (nextEmailError || nextUsernameError || nextPasswordError) {
-      return;
-    }
-
-    setLoading(true);
     try {
       if (mode === 'login') {
-        await login(trimmedEmail, trimmedPassword);
+        await login(email, password);
         onClose();
+        return;
+      }
+      await registerUser(username, email, password);
+      if (onRegistered) {
+        onRegistered(email);
       } else {
-        await register(trimmedUsername, trimmedEmail, trimmedPassword);
-        if (onRegistered) {
-          onRegistered(trimmedEmail);
-        } else {
-          onSwitchMode();
-        }
+        onSwitchMode();
       }
     } catch (err) {
-      setError(formatAuthError(err));
-    } finally {
-      setLoading(false);
+      setError('root', { message: formatAuthError(err) });
     }
-  }
-
-  function formatAuthError(err: unknown): string {
-    if (err instanceof ApiError && err.code && err.code in TEXT.errors) {
-      return TEXT.errors[err.code as keyof typeof TEXT.errors];
-    }
-    if (err instanceof Error && err.message) return err.message;
-    return TEXT.auth.genericError;
   }
 
   return (
@@ -133,69 +210,94 @@ export default function AuthModal({
         ×
       </button>
       <h3 id={titleId}>{mode === 'login' ? TEXT.auth.login : TEXT.auth.register}</h3>
-      <form onSubmit={handleSubmit} className={styles.authForm}>
+      <form
+        onSubmit={handleSubmit(onSubmit)}
+        onChange={() => clearErrors('root')}
+        className={styles.authForm}
+      >
         {mode === 'register' ? (
-          <label className={styles.fieldLabel}>
-            {TEXT.auth.username}
-            <input
-              value={username}
-              autoFocus
-              aria-invalid={Boolean(usernameError || error)}
-              onChange={(e) => {
-                setUsername(e.target.value);
-                setUsernameError('');
-                if (error) setError('');
-              }}
-              placeholder={TEXT.auth.usernamePlaceholder}
-            />
-            {usernameError ? <div className={styles.fieldError}>{usernameError}</div> : null}
-          </label>
+          <AuthField
+            control={control}
+            name="username"
+            label={TEXT.auth.username}
+            autoFocus
+            autoComplete="username"
+            placeholder={TEXT.auth.usernamePlaceholder}
+            rules={{
+              validate: (value) => {
+                const username = value.trim();
+                if (!username) return TEXT.auth.usernameRequired;
+                if (username.length < AUTH_USERNAME_MIN_LENGTH) return TEXT.auth.usernameMin;
+                return true;
+              },
+            }}
+          />
         ) : null}
 
-        <label className={styles.fieldLabel}>
-          {TEXT.auth.email}
-          <input
-            type="email"
-            value={email}
-            autoFocus={mode === 'login'}
-            inputMode="email"
-            autoComplete="email"
-            aria-invalid={Boolean(emailError || error)}
-            onChange={(e) => {
-              const nextValue = e.target.value;
-              setEmail(nextValue);
-              setEmailError(validateEmail(nextValue));
-              if (error) setError('');
-            }}
-            onBlur={() => setEmailError(validateEmail(email))}
-            placeholder={TEXT.auth.emailPlaceholder}
-          />
-          {emailError ? <div className={styles.fieldError}>{emailError}</div> : null}
-        </label>
+        <AuthField
+          control={control}
+          name="email"
+          type="email"
+          label={TEXT.auth.email}
+          autoFocus={mode === 'login'}
+          autoComplete="email"
+          placeholder={TEXT.auth.emailPlaceholder}
+          rules={{
+            validate: (value) => {
+              const email = value.trim();
+              if (!email) return TEXT.auth.emailRequired;
+              if (!EMAIL_RE.test(email)) return TEXT.auth.emailInvalid;
+              return true;
+            },
+          }}
+        />
 
-        <label className={styles.fieldLabel}>
-          {TEXT.auth.password}
-          <input
-            type="password"
-            value={password}
-            aria-invalid={Boolean(passwordError || error)}
-            onChange={(e) => {
-              const nextValue = e.target.value;
-              setPassword(nextValue);
-              setPasswordError(validatePassword(nextValue));
-              if (error) setError('');
-            }}
-            onBlur={() => setPasswordError(validatePassword(password))}
-            placeholder={TEXT.auth.passwordPlaceholder}
-          />
-          {passwordError ? <div className={styles.fieldError}>{passwordError}</div> : null}
-        </label>
+        <AuthField
+          control={control}
+          name="password"
+          label={TEXT.auth.password}
+          autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+          placeholder={TEXT.auth.passwordPlaceholder}
+          passwordToggle
+          showPasswordLabel={TEXT.auth.showPassword}
+          hidePasswordLabel={TEXT.auth.hidePassword}
+          onAfterChange={() => {
+            if (mode === 'register') void trigger('confirmPassword');
+          }}
+          rules={{
+            required: TEXT.auth.passwordRequired,
+            minLength: {
+              value: AUTH_PASSWORD_MIN_LENGTH,
+              message: TEXT.auth.passwordMin,
+            },
+          }}
+        />
 
-        {error ? <div className={styles.authError}>{error}</div> : null}
+        {mode === 'register' ? (
+          <AuthField
+            control={control}
+            name="confirmPassword"
+            label={TEXT.auth.confirmPassword}
+            autoComplete="new-password"
+            placeholder={TEXT.auth.confirmPasswordPlaceholder}
+            passwordToggle
+            showPasswordLabel={TEXT.auth.showConfirmPassword}
+            hidePasswordLabel={TEXT.auth.hideConfirmPassword}
+            rules={{
+              validate: (value, formValues) => {
+                if (!value) return TEXT.auth.confirmPasswordRequired;
+                if (value !== formValues.password) return TEXT.auth.passwordMismatch;
+                return true;
+              },
+            }}
+          />
+        ) : null}
+
+        {errors.root?.message ? <div className={styles.authError}>{errors.root.message}</div> : null}
 
         <div className={styles.authActions}>
-          <button type="submit" className={styles.btnPrimary} disabled={loading}>
-            {loading ? TEXT.auth.submitting : mode === 'login' ? TEXT.auth.login : TEXT.auth.register}
+          <button type="submit" className={styles.btnPrimary} disabled={isSubmitting}>
+            {isSubmitting ? TEXT.auth.submitting : mode === 'login' ? TEXT.auth.login : TEXT.auth.register}
           </button>
           <button type="button" className={styles.btnOutline} onClick={onSwitchMode}>
             {mode === 'login' ? TEXT.auth.goRegister : TEXT.auth.goLogin}

@@ -237,6 +237,7 @@ Prompt 入口（改提示词只动这个文件）：
 - 状态：Zustand 只有 `store/auth.ts`（token 在 `localStorage`）和 toast。会话列表 / 当前对话放 `HomePage` 本地 state，不要为工作台再加全局 store。
 - HTTP：`api.ts` 的 `request()` 自动带 Bearer；`baseURL: '/'`。**只有 chat 走 `streamChat()` 读 SSE**，其它接口继续 `request()`。鉴权失效用 `isSessionExpiredError()`（登录 401「密码错误」不算过期）。Docker 下由 nginx 反代；本地 `vite` 默认 **没有** 把 `/api` 转到后端。
 - 组件：`TopBar`、`ConversationSidebar`、`AuthModal`、`ConfigModal`、`RecommendationPoster`。会话标题/时间在 `utils/conversation.ts`。界面文案进 `TEXT`（`TEXT.workspace` 是侧栏）。样式用 Less CSS Modules。
+- 登录/注册表单用 `react-hook-form` + MUI `TextField`；密码框用 `InputAdornment` 和 `@mui/icons-material` 的 Visibility，不要再手写一套校验 state 或 SVG 眼睛图标。
 - UI 只用 MUI 9，不要再引入另一套组件库。
 - 发送前必须登录。后端 `/movie/chat` 无 token 或验票失败返回 `401` JSON，前端会弹出登录框。图片以 Data URL 传 `imageData`，**后端 Orchestrator 当前未使用图片**；上传预览只留在输入区，不进聊天消息。
 - 聊天列表与后端 `ChatItem` 对齐：`role` 只有 `user` | `assistant`，`kind` 为 `user_query` | `recommendation` | `reject` | `error`，一条助手消息一个气泡（`text` 下方可选 `movies` 卡片）。`final` 收成气泡；`stage` 只更新加载文案，不进消息列表。有消息时收起 hero，顶栏显示当前会话标题。

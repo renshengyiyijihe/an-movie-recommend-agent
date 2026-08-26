@@ -42,14 +42,14 @@ message-service ──► Postgres + Milvus(19530)
 auth-service    ──► Postgres
 ```
 
-推荐主链路：`HomePage` `POST /api/movie/recommend`（**SSE，不是 JSON 成功体**）→ `MovieService.recommend()` → `OrchestratorAgent` → `CompleteTurn`。鉴权/DTO 失败仍返回 JSON 错误体。开流后的事件与字段见下一节。
+对话主链路：`HomePage` `POST /api/movie/chat`（**SSE，不是 JSON 成功体**）→ `MovieService.chat()` → `OrchestratorAgent` → `CompleteTurn`。鉴权/DTO 失败仍返回 JSON 错误体。开流后的事件与字段见下一节。
 
-## 推荐流式（SSE）
+## 对话流式（SSE）
 
-`POST /api/movie/recommend` 鉴权通过后固定 `200` + `text/event-stream`，一直推到结束。契约：[`packages/contracts/src/stream.ts`](packages/contracts/src/stream.ts)。细节与编码约定见 [AGENTS.md](AGENTS.md)「recommend SSE」。
+`POST /api/movie/chat` 鉴权通过后固定 `200` + `text/event-stream`，一直推到结束。契约：[`packages/contracts/src/stream.ts`](packages/contracts/src/stream.ts)。细节与编码约定见 [AGENTS.md](AGENTS.md)「chat SSE」。
 
 ```text
-POST /api/movie/recommend   Accept: text/event-stream
+POST /api/movie/chat   Accept: text/event-stream
   ├─ 401 / 400 → JSON { code, message }     不开流
   └─ 200 text/event-stream
        event: turn      StartTurn 成功（conversationId + turnId）
@@ -65,7 +65,7 @@ POST /api/movie/recommend   Accept: text/event-stream
 | `final` | 业务结论，收成助手气泡（`success` / `reject` / `error`） |
 | `error` | 传输/内部失败，泛化文案 |
 
-前端：`streamRecommend()`（`fetch` 读流）。不要用 `EventSource`（只支持 GET）。其它接口仍走 `request()`。nginx 对 `/api/movie/recommend` 关缓冲。
+前端：`streamChat()`（`fetch` 读流）。不要用 `EventSource`（只支持 GET）。其它接口仍走 `request()`。nginx 对 `/api/movie/chat` 关缓冲。
 
 ## Agent 工作流
 
@@ -89,7 +89,7 @@ OrchestratorAgent
 ```text
 an-movie-agent/
 ├── package.json                  # 仅工具链：lint / typecheck / husky / commitlint
-├── packages/contracts            # 错误码、聊天类型、recommend SSE 契约
+├── packages/contracts            # 错误码、聊天类型、chat SSE 契约
 ├── packages/auth-client          # 鉴权 Guard / 异常过滤器
 ├── packages/Dockerfile           # 共享包镜像（compose 只编一次）
 ├── client/                       # Vite + React 单页
@@ -113,7 +113,7 @@ an-movie-agent/
 | 服务 | HTTP | 职责 |
 | --- | --- | --- |
 | **auth-service** | `:3002` | `POST /auth/register`、`POST /auth/login`；gRPC `ValidateToken`（`:50051`） |
-| **movie-service** | `:3001` | `POST /movie/recommend`（SSE，强制登录）；编排 Agent、调 TMDB |
+| **movie-service** | `:3001` | `POST /movie/chat`（SSE，强制登录）；编排 Agent、调 TMDB |
 | **message-service** | `:3003` | 会话 REST；gRPC 轮次/事件；Postgres + Milvus |
 
 movie → message 的身份走 gRPC metadata `user-id`，请求体不传 `user_id`。只允许会话主人读写。
@@ -139,7 +139,7 @@ docker compose up --build
 | message-service | http://localhost:3003 |
 | Portainer | http://localhost:9000 |
 
-本地单独跑 Vite（`http://localhost:5173`）时，默认 **没有** 把 `/api` 转到后端，需要自行配代理。Docker 下由 nginx 反代；`/api/movie/recommend` 关缓冲（SSE）；movie / message 代理超时 300s，与前端 `HTTP_CONSTANTS.REQUEST_TIMEOUT_MS`（5min，axios 与 recommend 流式共用）对齐。
+本地单独跑 Vite（`http://localhost:5173`）时，默认 **没有** 把 `/api` 转到后端，需要自行配代理。Docker 下由 nginx 反代；`/api/movie/chat` 关缓冲（SSE）；movie / message 代理超时 300s，与前端 `HTTP_CONSTANTS.REQUEST_TIMEOUT_MS`（5min，axios 与 chat 流式共用）对齐。
 
 ## 环境变量
 
@@ -175,7 +175,7 @@ docker compose up --build
 | --- | --- | --- |
 | `POST` | `/api/auth/register` | 注册（username 2–50，password 6–128） |
 | `POST` | `/api/auth/login` | 登录，返回 JWT |
-| `POST` | `/api/movie/recommend` | **SSE**（需 Bearer）。请求体：`message`，可选 `imageData` / `conversationId`。鉴权/DTO 失败：JSON `{ code, message }`。开流后：`turn` / `stage` / `final` / `error`（见上文「推荐流式」） |
+| `POST` | `/api/movie/chat` | **SSE**（需 Bearer）。请求体：`message`，可选 `imageData` / `conversationId`。鉴权/DTO 失败：JSON `{ code, message }`。开流后：`turn` / `stage` / `final` / `error`（见上文「对话流式」） |
 | `POST` | `/api/message/conversations` | 新建会话 |
 | `GET` | `/api/message/conversations` | 会话列表 |
 | `GET` | `/api/message/conversations/:id` | 会话详情（扁平 `ChatItem`） |
@@ -184,7 +184,7 @@ docker compose up --build
 
 ## 前端
 
-单页应用，路由只有 `/`。登录态存在 `localStorage`。发送推荐前必须登录，后端无 token 或验票失败返回 `401` JSON，前端弹出登录框。推荐请求走 `streamRecommend()` 读 SSE，其它接口走 `request()`。
+单页应用，路由只有 `/`。登录态存在 `localStorage`。发送前必须登录，后端无 token 或验票失败返回 `401` JSON，前端弹出登录框。对话请求走 `streamChat()` 读 SSE，其它接口走 `request()`。
 
 ## 部署
 

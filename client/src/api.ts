@@ -3,14 +3,14 @@ import {
   SSE_WIRE,
   STREAM_EVENT,
   type ErrorResponseBody,
-  type RecommendStreamEvent,
+  type ChatStreamEvent,
 } from "@an-movie/contracts";
 import { API_PATH, AUTH_STORAGE_KEY, HTTP_CONSTANTS, TEXT } from "@/constant";
 import {
   consumeSseFrames,
   isEventStreamContentType,
-  parseRecommendSseFrame,
-} from "@/utils/recommend-stream";
+  parseChatSseFrame,
+} from "@/utils/chat-stream";
 
 const api = axios.create({
   baseURL: "/",
@@ -58,15 +58,15 @@ export async function request<T = unknown>(config: AxiosRequestConfig): Promise<
 }
 
 /**
- * 只给 recommend 用：读 SSE，每帧回调一次。其它接口继续走 `request()`。
+ * 只给 chat 用：读 SSE，每帧回调一次。其它接口继续走 `request()`。
  */
-export async function streamRecommend(
+export async function streamChat(
   body: {
     message: string;
     imageData?: string;
     conversationId?: string;
   },
-  onEvent: (event: RecommendStreamEvent) => void,
+  onEvent: (event: ChatStreamEvent) => void,
 ): Promise<void> {
   const controller = new AbortController();
   const timer = window.setTimeout(
@@ -82,7 +82,7 @@ export async function streamRecommend(
     const token = readToken();
     if (token) headers.Authorization = `Bearer ${token}`;
 
-    const response = await fetch(API_PATH.recommend, {
+    const response = await fetch(API_PATH.chat, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
@@ -93,14 +93,14 @@ export async function streamRecommend(
       throw await apiErrorFromResponse(response);
     }
     if (!response.body) {
-      throw new ApiError(TEXT.recommend.streamIncomplete, response.status);
+      throw new ApiError(TEXT.chat.streamIncomplete, response.status);
     }
 
-    await readRecommendStream(response.body, onEvent);
+    await readChatStream(response.body, onEvent);
   } catch (error: unknown) {
     if (error instanceof ApiError) throw error;
     if (isAbortError(error)) {
-      throw new ApiError(TEXT.recommend.timeout, 0);
+      throw new ApiError(TEXT.chat.timeout, 0);
     }
     throw toApiError(error);
   } finally {
@@ -108,9 +108,9 @@ export async function streamRecommend(
   }
 }
 
-async function readRecommendStream(
+async function readChatStream(
   body: ReadableStream<Uint8Array>,
-  onEvent: (event: RecommendStreamEvent) => void,
+  onEvent: (event: ChatStreamEvent) => void,
 ): Promise<void> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -119,7 +119,7 @@ async function readRecommendStream(
 
   const handleFrame = (frame: string) => {
     if (terminal) return;
-    const event = parseRecommendSseFrame(frame);
+    const event = parseChatSseFrame(frame);
     if (!event) return;
     onEvent(event);
     if (
@@ -147,7 +147,7 @@ async function readRecommendStream(
   }
 
   if (!terminal) {
-    throw new ApiError(TEXT.recommend.streamIncomplete, 0);
+    throw new ApiError(TEXT.chat.streamIncomplete, 0);
   }
 }
 

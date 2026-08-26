@@ -31,7 +31,7 @@
     {
       "id": 1,
       "type": "stat",
-      "title": "1. 刮取状态",
+      "title": "1. 采集可用性",
       "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
@@ -147,8 +147,8 @@
         },
         {
           "refId": "B",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{job=\"movie-service\",path=\"/movie/recommend\"}[$__rate_interval])))",
-          "legendFormat": "/movie/recommend p95",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{job=\"movie-service\",path=\"/movie/chat\"}[$__rate_interval])))",
+          "legendFormat": "/movie/chat p95",
           "editorMode": "code"
         }
       ],

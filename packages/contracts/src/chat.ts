@@ -72,7 +72,7 @@ export const RECOMMEND_RESULT_TYPES = [
 export type RecommendResultType = (typeof RECOMMEND_RESULT_TYPES)[number];
 
 /**
- * 一轮推荐的业务结论。
+ * 一轮对话的业务结论。
  * SSE 的 `final` 事件 JSON 与此同形（另带 `event: "final"`）；
  * 鉴权 / DTO 失败仍走 `{ code, message }` JSON，不走这里。
  */

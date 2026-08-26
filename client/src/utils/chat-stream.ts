@@ -1,7 +1,7 @@
 import {
+  ChatStreamEvent,
+  ChatStreamStageEvent,
   RECOMMEND_RESULT_TYPES,
-  RecommendStreamEvent,
-  RecommendStreamStageEvent,
   SSE_WIRE,
   STREAM_EVENT,
   STREAM_EVENTS,
@@ -36,14 +36,14 @@ export function consumeSseFrames(buffer: string): {
 /**
  * 解析一帧 SSE。JSON 不合格或缺字段则丢弃，不抛。
  * @param frame 不含结尾空行的一帧
- * @returns 推荐流事件；无法识别则为 null
+ * @returns 对话流事件；无法识别则为 null
  * @example
  * `"event: turn\ndata: {\"event\":\"turn\",\"conversationId\":\"c1\",\"turnId\":\"t1\"}"`
  * → `{ event: "turn", conversationId: "c1", turnId: "t1" }`
  */
-export function parseRecommendSseFrame(
+export function parseChatSseFrame(
   frame: string,
-): RecommendStreamEvent | null {
+): ChatStreamEvent | null {
   const parsed = readSseFields(frame);
   if (!parsed.data) return null;
 
@@ -86,7 +86,7 @@ function readSseFields(frame: string): { event?: string; data?: string } {
 function toStreamEvent(
   eventName: StreamEventName,
   record: Record<string, unknown>,
-): RecommendStreamEvent | null {
+): ChatStreamEvent | null {
   switch (eventName) {
     case STREAM_EVENT.TURN: {
       if (
@@ -131,7 +131,7 @@ function toStreamEvent(
 
 function toStageEvent(
   record: Record<string, unknown>,
-): RecommendStreamStageEvent | null {
+): ChatStreamStageEvent | null {
   if (!isStreamStage(record.stage)) return null;
   const stage = record.stage;
 

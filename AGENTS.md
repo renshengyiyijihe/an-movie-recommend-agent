@@ -15,7 +15,7 @@ an-movie-agent/
 ├── package.json                 # 仅工具链：lint / typecheck / husky / commitlint
 ├── packages/
 │   ├── Dockerfile               # 共享包镜像；各服务 FROM an-movie-packages
-│   ├── contracts/               # 错误码、校验常量、聊天气泡、recommend SSE 契约（file: 依赖）
+│   ├── contracts/               # 错误码、校验常量、聊天气泡、chat SSE 契约（file: 依赖）
 │   └── auth-client/             # JwtAuthGuard、Auth gRPC 客户端、异常过滤器、request-id
 ├── client/                      # 前端（Vite + React）
 ├── backend/
@@ -68,28 +68,28 @@ Grafana         ──HTTP──► Prometheus:9090
 | Portainer | http://localhost:9000 |
 | Grafana | http://localhost:3000（默认 admin/admin，进 UI 改密码） |
 
-## 推荐主链路（改这里前先读）
+## 对话主链路（改这里前先读）
 
-1. 前端 `HomePage` 走 `streamRecommend()`（`client/src/api.ts`），`POST /api/movie/recommend`，带 `message`、可选 `imageData`、`conversationId`，Header `Authorization: Bearer <jwt>`，`Accept: text/event-stream`。其它接口仍走 `request()`。
-2. 鉴权 / DTO 失败（无 token、验票失败、校验失败）仍返回 JSON `{ code, message }`，**不开流**，不进入 Agent。`JwtAuthGuard` + `@CurrentUser()`；请求体经 `RecommendDto` + 全局 `ValidationPipe`。
-3. 通过后 `MovieController` 调用 `openRecommendSse`，固定 `200` + `text/event-stream`。之后只推 SSE，不再返回 JSON 成功体。事件名与 JSON 形状在 `packages/contracts/src/stream.ts`（`STREAM_EVENT` / `STREAM_STAGE`）。
-4. `MovieService.recommend(payload, emit)`：
+1. 前端 `HomePage` 走 `streamChat()`（`client/src/api.ts`），`POST /api/movie/chat`，带 `message`、可选 `imageData`、`conversationId`，Header `Authorization: Bearer <jwt>`，`Accept: text/event-stream`。其它接口仍走 `request()`。
+2. 鉴权 / DTO 失败（无 token、验票失败、校验失败）仍返回 JSON `{ code, message }`，**不开流**，不进入 Agent。`JwtAuthGuard` + `@CurrentUser()`；请求体经 `ChatDto` + 全局 `ValidationPipe`。
+3. 通过后 `MovieController` 调用 `openChatSse`，固定 `200` + `text/event-stream`。之后只推 SSE，不再返回 JSON 成功体。事件名与 JSON 形状在 `packages/contracts/src/stream.ts`（`STREAM_EVENT` / `STREAM_STAGE`）。
+4. `MovieService.chat(payload, emit)`：
    - 当前用户放进 `UserContext`；movie → message 的 gRPC 在 metadata `user-id` 里带身份，**请求体不传 `user_id`**。
    - `ensureConversation` / `loadConversationHistory`（gRPC `GetConversation`）/ `StartTurn` 写入本轮用户问题。同一会话同时只能有一个 `running` 轮次；冲突或 StartTurn 失败推 SSE `final`（`type: error`），不是 HTTP 4xx。message-service 从上下文取当前用户，只允许会话主人读写；无主会话、非本人一律按「不存在」处理。
    - StartTurn 成功后推 `turn`（`conversationId` + `turnId`）。
-   - 调用 `OrchestratorAgent.orchestrate(model, ctx)`；`ctx.shared.turns` 为结构化历史，prompt 按阶段投影，不要提前拼成一段字符串。完整检索数据进 `ctx.workspace`（本轮内存工作副本），`publish` 只给精简视图。工作流过程通过 `ctx.record()` 写入 `turn_events`；`toStreamStageEvent`（`recommend-stream.ts`）把 `intent` / `plan` / `tool_call` / `agent_result` 推成 `stage`。`llm_usage` / `error` 不推；汇总开始也不单独推。
+   - 调用 `OrchestratorAgent.orchestrate(model, ctx)`；`ctx.shared.turns` 为结构化历史，prompt 按阶段投影，不要提前拼成一段字符串。完整检索数据进 `ctx.workspace`（本轮内存工作副本），`publish` 只给精简视图。工作流过程通过 `ctx.record()` 写入 `turn_events`；`toStreamStageEvent`（`chat-stream.ts`）把 `intent` / `plan` / `tool_call` / `agent_result` 推成 `stage`。`llm_usage` / `error` 不推；汇总开始也不单独推。
    - 结束时 `CompleteTurn` 写入一条 assistant JSONB（`recommendation` / `reject` / `error`）。**先写入再推 `final`**；`final` 的 `type` / `data` 与写入的 payload 同一份。写入失败不得推 `success` / `reject`。
    - 开流后未能收成 `final` 的内部失败推 `error`（文案用 `MESSAGE_CONSTANTS.UNEXPECTED_FAILURE`，不要把异常原文推到浏览器）。
 5. Orchestrator：意图分类 → 任务规划（`TaskPlan`：`agents` + 可选 `relation`）→ 按 plan 执行 Agent → Relation 失败则补一次 Search → `synthesizeResults` 再调 LLM，把**视图**整理成推荐 JSON。意图为 `out_of_scope` 或 `unknown` 时立即短路。域外 `final` 为 `{ type: "reject", data: RejectPayload }`；成功则 `parseRecommendation()` 后 `{ type: "success", data: RecommendationPayload }`。
 
-检索参数由 SearchAgent 按 tool schema 填写。`MovieService.parseRecommendation()` 只解析，不负责生成。关系计划在规划那一次给全，RelationAgent 不再另调 LLM，也不再调用 `SearchAgent.run`。nginx 对 `location = /api/movie/recommend` 单独 `proxy_buffering off`，超时 300s；其余 `/api/movie/*` 仍走默认 location。
+检索参数由 SearchAgent 按 tool schema 填写。`MovieService.parseRecommendation()` 只解析，不负责生成。关系计划在规划那一次给全，RelationAgent 不再另调 LLM，也不再调用 `SearchAgent.run`。nginx 对 `location = /api/movie/chat` 单独 `proxy_buffering off`，超时 300s；其余 `/api/movie/*` 仍走默认 location。
 
-### recommend SSE（不要再当 JSON 接口改）
+### chat SSE（不要再当 JSON 接口改）
 
-`POST /movie/recommend` **没有 JSON 成功体**。鉴权 / DTO 失败才是 `{ code, message }`；一旦开流就是 `200` + `text/event-stream`，直到 `final` 或 `error` 后关流。契约：`packages/contracts/src/stream.ts`。编解码：后端 `movie/recommend-stream.ts`，前端 `client/src/utils/recommend-stream.ts`。
+`POST /movie/chat` **没有 JSON 成功体**。鉴权 / DTO 失败才是 `{ code, message }`；一旦开流就是 `200` + `text/event-stream`，直到 `final` 或 `error` 后关流。契约：`packages/contracts/src/stream.ts`。编解码：后端 `movie/chat-stream.ts`，前端 `client/src/utils/chat-stream.ts`。
 
 ```text
-POST /api/movie/recommend   Accept: text/event-stream
+POST /api/movie/chat   Accept: text/event-stream
   ├─ 401 / 400 → JSON { code, message }     不开流
   └─ 200 text/event-stream
        event: turn      StartTurn 成功（conversationId + turnId）
@@ -114,7 +114,7 @@ POST /api/movie/recommend   Accept: text/event-stream
 | `tool` | `tool_call`（每个 tool 返回后立刻 record） | 汇总开始（没有单独 stage） |
 | `agent` | `agent_result` | |
 
-`final.type` 为 `success` / `reject` / `error`（`RECOMMEND_RESULT_TYPE`），与气泡 `kind`、SSE `event` 不是同一套字。写入失败不得推 `success` / `reject`。不要用 `EventSource`（它只支持 GET）；前端用 `fetch` + `streamRecommend()`。
+`final.type` 为 `success` / `reject` / `error`（`RECOMMEND_RESULT_TYPE`），与气泡 `kind`、SSE `event` 不是同一套字。写入失败不得推 `success` / `reject`。不要用 `EventSource`（它只支持 GET）；前端用 `fetch` + `streamChat()`。
 
 ## 后端服务
 
@@ -133,8 +133,8 @@ POST /api/movie/recommend   Accept: text/event-stream
 
 | 层 | 路径 | 做什么 |
 | --- | --- | --- |
-| HTTP 入口 | `movie/movie.controller.ts` | 仅 `/movie/recommend`：鉴权过了就开 SSE；DTO 在 `movie/dto/recommend.dto.ts` |
-| SSE 编解码 | `movie/recommend-stream.ts` | 开流、写帧、`turn_events` → `stage` |
+| HTTP 入口 | `movie/movie.controller.ts` | 仅 `/movie/chat`：鉴权过了就开 SSE；DTO 在 `movie/dto/chat.dto.ts` |
+| SSE 编解码 | `movie/chat-stream.ts` | 开流、写帧、`turn_events` → `stage` |
 | 鉴权上下文 | `auth/` | `JwtAuthGuard`、`UserContext`、gRPC metadata `user-id` |
 | 编排门面 | `movie/movie.service.ts` | 会话、调 Orchestrator、`emit` 流事件 |
 | Agent | `movie/agents/` | 意图、规划、搜索、关系 |
@@ -230,12 +230,12 @@ Prompt 入口（改提示词只动这个文件）：
 
 - 单页：`client/src/pages/HomePage`。路由只有 `/`。
 - 状态：Zustand `store/auth.ts`，token 存 `localStorage`。
-- HTTP：`api.ts` 的 `request()` 自动带 Bearer；`baseURL: '/'`。**只有 recommend 走 `streamRecommend()` 读 SSE**，其它接口继续 `request()`。Docker 下由 nginx 反代；本地 `vite` 默认 **没有** 把 `/api` 转到后端。
+- HTTP：`api.ts` 的 `request()` 自动带 Bearer；`baseURL: '/'`。**只有 chat 走 `streamChat()` 读 SSE**，其它接口继续 `request()`。Docker 下由 nginx 反代；本地 `vite` 默认 **没有** 把 `/api` 转到后端。
 - 组件：`TopBar`、`AuthModal`、`ConfigModal`（会话列表）、`RecommendationPoster`。样式用 Less CSS Modules。
 - UI 只用 MUI 9，不要再引入另一套组件库。
-- 发送推荐前必须登录。后端 `/movie/recommend` 无 token 或验票失败返回 `401` JSON，前端会弹出登录框。图片以 Data URL 传 `imageData`，**后端 Orchestrator 当前未使用图片**；上传预览只留在输入区，不进聊天消息。
+- 发送前必须登录。后端 `/movie/chat` 无 token 或验票失败返回 `401` JSON，前端会弹出登录框。图片以 Data URL 传 `imageData`，**后端 Orchestrator 当前未使用图片**；上传预览只留在输入区，不进聊天消息。
 - 聊天列表与后端 `ChatItem` 对齐：`role` 只有 `user` | `assistant`，`kind` 为 `user_query` | `recommendation` | `reject` | `error`，一条助手消息一个气泡（`text` 下方可选 `movies` 卡片）。`final` 收成气泡；`stage` 只更新加载文案，不进消息列表。
-- nginx：`/api/movie/recommend` 关缓冲；movie / message 代理超时 300s，与 `HTTP_CONSTANTS.REQUEST_TIMEOUT_MS`（5min，axios 与 recommend 流式共用）对齐。
+- nginx：`/api/movie/chat` 关缓冲；movie / message 代理超时 300s，与 `HTTP_CONSTANTS.REQUEST_TIMEOUT_MS`（5min，axios 与 chat 流式共用）对齐。
 
 ## 环境变量（不要提交 .env）
 
@@ -268,7 +268,7 @@ Prompt 入口（改提示词只动这个文件）：
 - movie → message 的身份走 gRPC metadata `user-id`，由客户端从 `UserContext` 注入。proto 请求不要带 `user_id`。会话表 / `GetConversation` 响应里的 `user_id` 是会话主人字段，不是调用身份。
 - 新增 **Agent**：扩展 `AGENT_TYPE` / `AGENT_TYPES`，在 `OrchestratorAgent` 的 `agentExecutors` 用 `AGENT_TYPE.*` 注册，不要改执行循环本身。
 - 新增 **工作流事件**：扩展 `TurnEventBody`，在 Agent 里 `runtime.record()` / `ctx.record()`。message-service 只存 JSONB，不要在那边 switch kind。要推到浏览器再改 `toStreamStageEvent`（默认不推 `llm_usage` / `error`）。
-- 新增 **SSE 事件 / stage**：先改 `packages/contracts/src/stream.ts` 的 `STREAM_EVENT` / `STREAM_STAGE`，再改 `recommend-stream.ts` 编码和 `client/src/utils/recommend-stream.ts` 解码。不要在 controller 里手写帧格式。
+- 新增 **SSE 事件 / stage**：先改 `packages/contracts/src/stream.ts` 的 `STREAM_EVENT` / `STREAM_STAGE`，再改 `chat-stream.ts` 编码和 `client/src/utils/chat-stream.ts` 解码。不要在 controller 里手写帧格式。
 - 可见聊天消息只走 `StartTurn` / `CompleteTurn`，payload 类型在 `transcript.ts`。SSE `final` 的 `data` 与写入 payload 同一份。
 - 新增 **Tool**：实现 `ITool`，在 `ToolsRegistry.registerTools()` 注册。SearchAgent 会自动拿到 schema，不要在 Agent 里再写一份参数定义。调 TMDB 用 `TmdbProvider.get` / `post`，不要在 Tool 里 `fetch`。
 - 新增 / 修改 **Prompt**：只改 `PromptTemplateService`。对话历史在 prompt 内按阶段投影，不要在 service 里先拼成字符串。关系计划只改 `getTaskPlanningPrompt`，不要再加一层分析 prompt。
@@ -288,8 +288,8 @@ Prompt 入口（改提示词只动这个文件）：
 
 | 目的 | 文件 |
 | --- | --- |
-| 推荐入口与会话 | `backend/movie-service/src/movie/movie.service.ts` |
-| recommend SSE | `packages/contracts/src/stream.ts`、`backend/movie-service/src/movie/recommend-stream.ts`、`client/src/utils/recommend-stream.ts` |
+| 对话入口与会话 | `backend/movie-service/src/movie/movie.service.ts` |
+| chat SSE | `packages/contracts/src/stream.ts`、`backend/movie-service/src/movie/chat-stream.ts`、`client/src/utils/chat-stream.ts` |
 | HTTP / gRPC 鉴权 | `packages/auth-client/`、`backend/message-service/src/auth/grpc-user.guard.ts` |
 | 工作流上下文 | `backend/movie-service/src/movie/agents/workflow-context.ts` |
 | 工作副本 / 视图 | `backend/movie-service/src/movie/working-set.ts` |
@@ -318,7 +318,7 @@ Prompt 入口（改提示词只动这个文件）：
 - `JWT_SECRET` 必须显式配置，代码不再回退 `dev_secret`。
 - 内部 gRPC 信任 metadata 里的 `user-id`（依赖 Docker 网络隔离，message-service 不再二次验 JWT）。
 - 图片主链路仍未消费 `imageData`。
-- recommend 开流后客户端超时/断开不会取消工作流；轮次仍是 `running`，立刻重发会撞「上一轮还在处理」。
+- chat 开流后客户端超时/断开不会取消工作流；轮次仍是 `running`，立刻重发会撞「上一轮还在处理」。
 - Relation 未做：计数/排名、多跳路径、公司/系列。规划应标 `unsupported` 或直接 `search`，不要假装能算。
 - 工作副本不跨请求保留；指代「刚才那批结果再筛」目前只能靠历史文本 + 重新取数。
 - 共享包由 `packages/Dockerfile` 编一次，各服务 `FROM an-movie-packages AS packages` 再 `COPY --from=packages`。不要用 `additional_contexts`（旧 BuildKit 没有 named context）。须先 `docker compose build packages` 再 `up --build`。`packages` 服务只产镜像，启动后立刻退出，`compose ps` 里 Exited 是正常的。

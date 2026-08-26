@@ -1,5 +1,5 @@
 /**
- * `POST /movie/recommend` 的 SSE 契约。
+ * `POST /movie/chat` 的 SSE 契约。
  * 鉴权 / DTO 失败仍走 JSON 错误体；开流之后只推这些事件。
  */
 import type { AssistantPayload, RecommendResultType } from "./chat";
@@ -64,7 +64,7 @@ export const SSE_WIRE = {
 } as const;
 
 /** StartTurn 成功。 */
-export type RecommendStreamTurnEvent = {
+export type ChatStreamTurnEvent = {
   event: typeof STREAM_EVENT.TURN;
   /** 会话 id，后续提问可带上 */
   conversationId: string;
@@ -73,7 +73,7 @@ export type RecommendStreamTurnEvent = {
 };
 
 /** 意图阶段。 */
-export type RecommendStreamIntentStage = {
+export type ChatStreamIntentStage = {
   event: typeof STREAM_EVENT.STAGE;
   stage: typeof STREAM_STAGE.INTENT;
   /** `INTENT_TYPE` 取值，例如 `in_scope` */
@@ -81,7 +81,7 @@ export type RecommendStreamIntentStage = {
 };
 
 /** 规划阶段。 */
-export type RecommendStreamPlanStage = {
+export type ChatStreamPlanStage = {
   event: typeof STREAM_EVENT.STAGE;
   stage: typeof STREAM_STAGE.PLAN;
   /** 将要执行的 Agent 名 */
@@ -89,7 +89,7 @@ export type RecommendStreamPlanStage = {
 };
 
 /** Tool 阶段。 */
-export type RecommendStreamToolStage = {
+export type ChatStreamToolStage = {
   event: typeof STREAM_EVENT.STAGE;
   stage: typeof STREAM_STAGE.TOOL;
   /** 已注册工具名，例如 `movie_search` */
@@ -99,7 +99,7 @@ export type RecommendStreamToolStage = {
 };
 
 /** Agent 收口阶段。 */
-export type RecommendStreamAgentStage = {
+export type ChatStreamAgentStage = {
   event: typeof STREAM_EVENT.STAGE;
   stage: typeof STREAM_STAGE.AGENT;
   /** `search` / `relation` */
@@ -109,16 +109,16 @@ export type RecommendStreamAgentStage = {
 };
 
 /** 阶段事件联合。 */
-export type RecommendStreamStageEvent =
-  | RecommendStreamIntentStage
-  | RecommendStreamPlanStage
-  | RecommendStreamToolStage
-  | RecommendStreamAgentStage;
+export type ChatStreamStageEvent =
+  | ChatStreamIntentStage
+  | ChatStreamPlanStage
+  | ChatStreamToolStage
+  | ChatStreamAgentStage;
 
 /**
  * 业务结论。`type` / `data` 与改流式之前的 JSON 成功体相同。
  */
-export type RecommendStreamFinalEvent = {
+export type ChatStreamFinalEvent = {
   event: typeof STREAM_EVENT.FINAL;
   conversationId?: string;
   type: RecommendResultType;
@@ -126,15 +126,15 @@ export type RecommendStreamFinalEvent = {
 };
 
 /** 未能收成 `final`。 */
-export type RecommendStreamErrorEvent = {
+export type ChatStreamErrorEvent = {
   event: typeof STREAM_EVENT.ERROR;
   conversationId?: string;
   message: string;
 };
 
 /** 开流之后浏览器会收到的事件。 */
-export type RecommendStreamEvent =
-  | RecommendStreamTurnEvent
-  | RecommendStreamStageEvent
-  | RecommendStreamFinalEvent
-  | RecommendStreamErrorEvent;
+export type ChatStreamEvent =
+  | ChatStreamTurnEvent
+  | ChatStreamStageEvent
+  | ChatStreamFinalEvent
+  | ChatStreamErrorEvent;

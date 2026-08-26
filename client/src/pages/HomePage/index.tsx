@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { ApiError, request, streamRecommend } from "@/api";
+import { ApiError, request, streamChat } from "@/api";
 import {
   ERROR_CODE,
   STREAM_EVENT,
   STREAM_STAGE,
-  type RecommendStreamEvent,
-  type RecommendStreamStageEvent,
+  type ChatStreamEvent,
+  type ChatStreamStageEvent,
 } from "@an-movie/contracts";
 import useAuth from "@/store/auth";
 import { toast } from "@/store/toast";
@@ -60,7 +60,7 @@ export default function HomePage() {
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [streamStage, setStreamStage] =
-    useState<RecommendStreamStageEvent | null>(null);
+    useState<ChatStreamStageEvent | null>(null);
   const [error, setError] = useState("");
 
   const token = useAuth((s) => s.token);
@@ -184,7 +184,7 @@ export default function HomePage() {
     setFile(null);
 
     try {
-      await streamRecommend(
+      await streamChat(
         {
           message: trimmedMessage,
           imageData,
@@ -192,7 +192,7 @@ export default function HomePage() {
         },
         (event) => {
           if (requestGen !== sessionGen.current) return;
-          applyRecommendStreamEvent(event, setConversationId, setMessages, setStreamStage);
+          applyChatStreamEvent(event, setConversationId, setMessages, setStreamStage);
         },
       );
     } catch (err) {
@@ -211,7 +211,7 @@ export default function HomePage() {
       setError(
         err instanceof ApiError && err.message
           ? err.message
-          : TEXT.recommend.requestFailed,
+          : TEXT.chat.requestFailed,
       );
       setMessages((prev) => [
         ...prev,
@@ -223,7 +223,7 @@ export default function HomePage() {
             message:
               err instanceof ApiError && err.message
                 ? err.message
-                : TEXT.recommend.requestFailedBubble,
+                : TEXT.chat.requestFailedBubble,
           },
         },
       ]);
@@ -488,11 +488,11 @@ export default function HomePage() {
                   <div className={styles.messageText}>
                     <div
                       className={styles.loadingStatus}
-                      aria-label={recommendStageLabel(streamStage)}
+                      aria-label={chatStageLabel(streamStage)}
                     >
                       <div className={styles.loadingDots} aria-hidden="true" />
                       <span className={styles.loadingLabel}>
-                        {recommendStageLabel(streamStage)}
+                        {chatStageLabel(streamStage)}
                       </span>
                     </div>
                   </div>
@@ -541,7 +541,7 @@ export default function HomePage() {
                   onClick={() => void sendMessage()}
                   disabled={loading}
                 >
-                  {loading ? TEXT.recommend.sending : TEXT.recommend.send}
+                  {loading ? TEXT.chat.sending : TEXT.chat.send}
                 </button>
               </div>
             </div>
@@ -560,11 +560,11 @@ export default function HomePage() {
   );
 }
 
-function applyRecommendStreamEvent(
-  event: RecommendStreamEvent,
+function applyChatStreamEvent(
+  event: ChatStreamEvent,
   setConversationId: Dispatch<SetStateAction<string | undefined>>,
   setMessages: Dispatch<SetStateAction<ChatMessage[]>>,
-  setStreamStage: Dispatch<SetStateAction<RecommendStreamStageEvent | null>>,
+  setStreamStage: Dispatch<SetStateAction<ChatStreamStageEvent | null>>,
 ) {
   switch (event.event) {
     case STREAM_EVENT.TURN:
@@ -593,10 +593,10 @@ function applyRecommendStreamEvent(
   }
 }
 
-function recommendStageLabel(stage: RecommendStreamStageEvent | null): string {
-  if (!stage) return TEXT.recommend.stagePending;
+function chatStageLabel(stage: ChatStreamStageEvent | null): string {
+  if (!stage) return TEXT.chat.stagePending;
   if (stage.stage === STREAM_STAGE.TOOL && !stage.ok) {
-    return TEXT.recommend.stageToolFailed;
+    return TEXT.chat.stageToolFailed;
   }
-  return TEXT.recommend.stages[stage.stage];
+  return TEXT.chat.stages[stage.stage];
 }

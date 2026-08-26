@@ -1,6 +1,6 @@
 import {
-  RecommendStreamEvent,
-  RecommendStreamStageEvent,
+  ChatStreamEvent,
+  ChatStreamStageEvent,
   SSE_WIRE,
   STREAM_EVENT,
   STREAM_STAGE,
@@ -28,7 +28,7 @@ export type SseReply = {
  * `{ event: "turn", conversationId: "c1", turnId: "t1" }`
  * → `"event: turn\ndata: {\"event\":\"turn\",\"conversationId\":\"c1\",\"turnId\":\"t1\"}\n\n"`
  */
-export function encodeSseFrame(event: RecommendStreamEvent): string {
+export function encodeSseFrame(event: ChatStreamEvent): string {
   const json = JSON.stringify(event);
   return (
     SSE_WIRE.EVENT_FIELD +
@@ -46,8 +46,8 @@ export function encodeSseFrame(event: RecommendStreamEvent): string {
  * 打开 SSE 响应。之后只通过 `emit` / `close` 写，避免头已发出再抛给过滤器。
  * @param res HTTP 响应
  */
-export function openRecommendSse(res: SseReply): {
-  emit: (event: RecommendStreamEvent) => void;
+export function openChatSse(res: SseReply): {
+  emit: (event: ChatStreamEvent) => void;
   close: () => void;
 } {
   res.statusCode = 200;
@@ -58,7 +58,7 @@ export function openRecommendSse(res: SseReply): {
   res.flushHeaders?.();
 
   let closed = false;
-  const emit = (event: RecommendStreamEvent) => {
+  const emit = (event: ChatStreamEvent) => {
     if (closed || res.writableEnded) {
       closed = true;
       return;
@@ -96,7 +96,7 @@ export function openRecommendSse(res: SseReply): {
  */
 export function toStreamStageEvent(
   body: TurnEventBody,
-): RecommendStreamStageEvent | null {
+): ChatStreamStageEvent | null {
   switch (body.kind) {
     case "intent":
       return {

@@ -12,10 +12,10 @@ export { AUTH_PASSWORD_MIN_LENGTH, AUTH_USERNAME_MIN_LENGTH };
 
 /** 浏览器请求路径。Vite / Docker nginx 都从站点根反代。 */
 export const API_PATH = {
-  recommend: "/api/movie/recommend",
+  chat: "/api/movie/chat",
 } as const;
 
-/** 与 axios 实例相同的等待上限，recommend 流式也用。 */
+/** 与 axios 实例相同的等待上限，chat 流式也用。 */
 export const HTTP_CONSTANTS = {
   REQUEST_TIMEOUT_MS: 1000 * 300,
 } as const;
@@ -73,14 +73,11 @@ export const TEXT = {
     reload: "刷新页面",
     requestFailed: "请求失败",
   },
-  /** 聊天角色标签 */
+  /** 聊天角色、发送与流式阶段 */
   chat: {
     userRole: "你",
     assistantRole: "智能体",
     assistantErrorRole: "智能体（异常）",
-  },
-  /** 推荐请求与流式阶段 */
-  recommend: {
     sending: "发送中...",
     send: "发送",
     stagePending: "正在处理你的请求",

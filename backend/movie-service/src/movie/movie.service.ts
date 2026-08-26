@@ -4,8 +4,8 @@ import {
   RECOMMEND_RESULT_TYPE,
   STREAM_EVENT,
   type RecommendResultType,
-  type RecommendStreamEvent,
-  type RecommendStreamFinalEvent,
+  type ChatStreamEvent,
+  type ChatStreamFinalEvent,
 } from "@an-movie/contracts";
 import { ModelProvider } from "../model/model.provider";
 import { MessageGrpcClient } from "./message.grpc";
@@ -23,14 +23,14 @@ import {
   recommendationFromParsed,
 } from "./transcript";
 import { noopTurnEventSink, TurnEventSink } from "./turn-events";
-import { toStreamStageEvent } from "./recommend-stream";
+import { toStreamStageEvent } from "./chat-stream";
 import {
   ConversationHistoryItem,
   INTENT_TYPE,
   OrchestratorResult,
 } from "./types";
 
-interface RecommendPayload {
+interface ChatPayload {
   message: string;
   imageUrl?: string;
   imageData?: string;
@@ -41,7 +41,7 @@ interface RecommendPayload {
  * 工作流结论。HTTP `type` 与 CompleteTurn 的 `status` 共用同一套取值。
  * 必须先写入再返回；写入失败不得冒充 success / reject。
  */
-type RecommendOutcome =
+type ChatOutcome =
   | { type: "success"; status: "success"; payload: RecommendationPayload }
   | { type: "reject"; status: "reject"; payload: RejectPayload }
   | { type: "error"; status: "error"; payload: ErrorPayload };
@@ -56,12 +56,12 @@ export class MovieService {
     private readonly orchestratorAgent: OrchestratorAgent,
   ) {}
 
-  async recommend(
-    payload: RecommendPayload,
-    emit: (event: RecommendStreamEvent) => void,
+  async chat(
+    payload: ChatPayload,
+    emit: (event: ChatStreamEvent) => void,
   ): Promise<void> {
     this.logger.log(
-      `recommend request received: messageLength=${payload.message?.length ?? 0}, hasImage=${Boolean(payload.imageUrl || payload.imageData)}`,
+      `chat request received: messageLength=${payload.message?.length ?? 0}, hasImage=${Boolean(payload.imageUrl || payload.imageData)}`,
     );
 
     let conversationId: string | undefined;
@@ -122,7 +122,7 @@ export class MovieService {
       );
     } catch (error) {
       this.logger.error(
-        `recommend failed: ${errorMessage(error)}`,
+        `chat failed: ${errorMessage(error)}`,
         error instanceof Error ? error : undefined,
       );
       emit({
@@ -140,8 +140,8 @@ export class MovieService {
     query: string,
     turns: ConversationHistoryItem[],
     turnId: string,
-    emit: (event: RecommendStreamEvent) => void,
-  ): Promise<RecommendOutcome> {
+    emit: (event: ChatStreamEvent) => void,
+  ): Promise<ChatOutcome> {
     try {
       const model = this.modelProvider.getModel();
       const ctx = new WorkflowContext({
@@ -176,7 +176,7 @@ export class MovieService {
 
   private outcomeFromOrchestrator(
     result: OrchestratorResult,
-  ): RecommendOutcome {
+  ): ChatOutcome {
     if (result.intent_type === INTENT_TYPE.OUT_OF_SCOPE) {
       return {
         type: "reject",
@@ -223,7 +223,7 @@ export class MovieService {
   private finalEvent(
     conversationId: string,
     body: { type: RecommendResultType; data: AssistantPayload },
-  ): RecommendStreamFinalEvent {
+  ): ChatStreamFinalEvent {
     return {
       event: STREAM_EVENT.FINAL,
       conversationId,
@@ -239,7 +239,7 @@ export class MovieService {
     return MESSAGE_CONSTANTS.START_TURN_FAILED;
   }
 
-  private async ensureConversation(payload: RecommendPayload): Promise<string> {
+  private async ensureConversation(payload: ChatPayload): Promise<string> {
     if (payload.conversationId) return payload.conversationId;
 
     const response = await this.messageGrpcClient.createConversation({
@@ -298,7 +298,7 @@ export class MovieService {
 
   private createEventSink(
     turnId: string,
-    emit: (event: RecommendStreamEvent) => void,
+    emit: (event: ChatStreamEvent) => void,
   ): TurnEventSink {
     if (!turnId) return noopTurnEventSink;
 

@@ -1,10 +1,10 @@
 import { Body, Controller, Logger, Post, Res, UseGuards } from "@nestjs/common";
 import { CurrentUser, JwtAuthGuard, type RequestUser } from "@an-movie/auth-client";
 import { STREAM_EVENT } from "@an-movie/contracts";
-import { RecommendDto } from "./dto/recommend.dto";
+import { ChatDto } from "./dto/chat.dto";
 import { MovieService } from "./movie.service";
 import { MESSAGE_CONSTANTS } from "./constants";
-import { openRecommendSse, type SseReply } from "./recommend-stream";
+import { openChatSse, type SseReply } from "./chat-stream";
 
 @UseGuards(JwtAuthGuard)
 @Controller("/movie")
@@ -13,22 +13,22 @@ export class MovieController {
 
   constructor(private readonly movieService: MovieService) {}
 
-  @Post("recommend")
-  async recommend(
-    @Body() payload: RecommendDto,
+  @Post("chat")
+  async chat(
+    @Body() payload: ChatDto,
     @CurrentUser() user: RequestUser,
     @Res() res: SseReply,
   ): Promise<void> {
     this.logger.log(
-      `recommend request: user=${user.id} messageLength=${payload.message?.length ?? 0}, hasImage=${Boolean(payload.imageUrl || payload.imageData)}`,
+      `chat request: user=${user.id} messageLength=${payload.message?.length ?? 0}, hasImage=${Boolean(payload.imageUrl || payload.imageData)}`,
     );
 
-    const stream = openRecommendSse(res);
+    const stream = openChatSse(res);
     try {
-      await this.movieService.recommend(payload, stream.emit);
+      await this.movieService.chat(payload, stream.emit);
     } catch (error) {
       this.logger.error(
-        `recommend stream failed: ${error instanceof Error ? error.message : String(error)}`,
+        `chat stream failed: ${error instanceof Error ? error.message : String(error)}`,
         error instanceof Error ? error.stack : undefined,
       );
       stream.emit({

@@ -6,7 +6,7 @@ import {
   MaxLength,
 } from "class-validator";
 
-export class RecommendDto {
+export class ChatDto {
   @IsString()
   @IsNotEmpty({ message: "message 不能为空" })
   @MaxLength(2000, { message: "message 最长 2000 字符" })

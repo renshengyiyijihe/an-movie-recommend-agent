@@ -27,6 +27,17 @@ export const HISTORY_PROJECTION = {
   synthesisMaxMessages: 6,
 } as const;
 
+/**
+ * 跨会话长期记忆的 prompt 预算。相似度下限不在这里：
+ * 它随 collection 的 metric 和 embedding 模型走，由 message-service 持有。
+ */
+export const MEMORY_CONSTANTS = {
+  /** 写进汇总 prompt 的记忆条数 */
+  MAX_ITEMS: 3,
+  /** 单条记忆截断长度 */
+  TEXT_MAX_LENGTH: 120,
+} as const;
+
 // ========== TMDB 配置 ==========
 export const TMDB_CONSTANTS = {
   /** 列表类工具未指定 max_results 时的条数。进模型的数量由 VIEW_CONSTANTS 控制。 */

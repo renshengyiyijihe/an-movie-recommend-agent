@@ -41,7 +41,20 @@ export type TurnEventBody =
       actor: WorkflowActor;
       message: string;
     }
+  | MemoryRecallTurnEvent
   | LlmUsageTurnEvent;
+
+/**
+ * 本轮跨会话记忆的召回情况。只为排查"记忆有没有起作用"，不推给浏览器。
+ */
+export interface MemoryRecallTurnEvent {
+  kind: "memory";
+  actor: "orchestrator";
+  /** 进入汇总 prompt 的记忆条数，0 表示本轮没有可用记忆 */
+  recalled: number;
+  /** 最高相似度，无命中时为 0 */
+  topScore: number;
+}
 
 /**
  * 一次 LLM 调用的用量。message-service 只存不解析。

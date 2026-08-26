@@ -18,18 +18,25 @@ import {
   TurnEventEntity,
   TurnStatus,
 } from "./entities";
-import {
-  parseJsonObject,
-  payloadText,
-  toChatItem,
-} from "./chat-item";
-import { RelatedContextItem } from "./message.grpc";
+import { parseJsonObject, toChatItem } from "./chat-item";
+import { MemoryItem } from "./message.grpc";
 import { TurnInProgressError } from "./turn-in-progress.error";
 
 /** 轮次停留在 running 超过该时长视为僵死（正常请求受 nginx 300s 超时约束）。 */
 const STALE_TURN_TIMEOUT_MS = 10 * 60 * 1000;
 /** 清扫僵死轮次的间隔。 */
 const STALE_TURN_SWEEP_INTERVAL_MS = 60 * 1000;
+/**
+ * 记忆文本写库前的字符上限。Milvus 的 VarChar(1000) 按 UTF-8 字节算，
+ * 中文一字三字节，留足余量避免模型偶发超长时整条插入失败。
+ */
+const MEMORY_TEXT_MAX_LENGTH = 300;
+/**
+ * 记忆召回的 COSINE 相似度下限。低于它的命中当作噪声丢弃。
+ * 阈值随 collection 的 metric 与 embedding 模型走，因此由本服务持有，
+ * 不放进 gRPC 契约让调用方传。
+ */
+const MEMORY_MIN_SCORE = 0.5;
 
 @Injectable()
 export class MessageService implements OnApplicationBootstrap, OnModuleDestroy {
@@ -184,15 +191,20 @@ export class MessageService implements OnApplicationBootstrap, OnModuleDestroy {
     turnId: string,
     status: string,
     assistantPayloadJson: string,
+    memoryText?: string,
   ) {
     await this.requireTurn(turnId);
-    return this.finishTurn(turnId, status, assistantPayloadJson);
+    return this.finishTurn(turnId, status, assistantPayloadJson, memoryText);
   }
 
+  /**
+   * `memoryText` 只有正常完成的轮次才会带；僵死轮次清扫不传，不写向量库。
+   */
   private async finishTurn(
     turnId: string,
     status: string,
     assistantPayloadJson: string,
+    memoryText?: string,
   ) {
     const turn = await this.turnRepository.findOne({
       where: { turn_id: turnId },
@@ -241,7 +253,7 @@ export class MessageService implements OnApplicationBootstrap, OnModuleDestroy {
       );
     });
 
-    this.indexAssistantIfNeeded(assistantMessageId, turn.conversation_id, assistantPayload);
+    this.indexMemoryIfNeeded(assistantMessageId, turn, memoryText);
     return { assistant_message_id: assistantMessageId };
   }
 
@@ -305,68 +317,45 @@ export class MessageService implements OnApplicationBootstrap, OnModuleDestroy {
     };
   }
 
-  async searchSimilarContext(
-    userInput: string,
-    conversationId: string,
-    limit: number = 5,
-  ) {
-    await this.requireConversation(conversationId);
+  /**
+   * 按语义召回当前用户在**其它会话**里的记忆。
+   * 记忆文本自包含，不回查 Postgres；按 user_id 过滤，天然只能搜到自己的。
+   */
+  async searchMemories(
+    query: string,
+    excludeConversationId: string,
+    limit: number,
+  ): Promise<{ memories: MemoryItem[] }> {
+    const userId = this.currentUserId();
     this.logger.log(
-      `searchSimilarContext start: userInput=${this.truncateText(userInput, 100)} conversationId=${conversationId} limit=${limit}`,
+      `searchMemories start: query=${this.truncateText(query, 100)} excludeConversationId=${excludeConversationId} limit=${limit}`,
     );
 
     try {
-      const userInputEmbedding =
-        await this.milvusProvider.generateEmbedding(userInput);
-      const similarSummaries =
-        await this.milvusProvider.searchBySummaryEmbedding(
-          userInputEmbedding,
-          conversationId,
-          limit,
-        );
+      const embedding = await this.milvusProvider.generateEmbedding(query);
+      const hits = await this.milvusProvider.searchMemories(embedding, {
+        userId,
+        excludeConversationId,
+        limit,
+        minScore: MEMORY_MIN_SCORE,
+      });
 
-      if (similarSummaries.length === 0) {
-        return { context_items: [] as RelatedContextItem[] };
-      }
-
-      const contextItems: RelatedContextItem[] = [];
-      for (const item of similarSummaries) {
-        try {
-          const assistantMessage = await this.messageRepository.findOne({
-            where: { id: item.message_id },
-          });
-          if (!assistantMessage) continue;
-
-          const userMessage = await this.messageRepository.findOne({
-            where: {
-              turn_id: assistantMessage.turn_id,
-              role: "user",
-            },
-          });
-          const userText = userMessage
-            ? payloadText(userMessage.content ?? {})
-            : "";
-          if (!userText) continue;
-
-          contextItems.push({ role: "user", content: userText });
-          contextItems.push({
-            role: "assistant",
-            content: item.summary,
-          });
-        } catch (error) {
-          this.logger.warn(
-            `Failed to fetch turn messages for message_id=${item.message_id}: ${(error as Error).message}`,
-          );
-        }
-      }
-
-      return { context_items: contextItems };
+      this.logger.log(
+        `searchMemories done: hits=${hits.length} topScore=${hits[0]?.score ?? 0}`,
+      );
+      return {
+        memories: hits.map((hit) => ({
+          text: hit.memory_text,
+          conversation_id: hit.conversation_id,
+          score: hit.score,
+        })),
+      };
     } catch (error) {
       this.logger.error(
-        `searchSimilarContext failed: ${(error as Error).message}`,
+        `searchMemories failed: ${(error as Error).message}`,
         error as Error,
       );
-      return { context_items: [] };
+      return { memories: [] };
     }
   }
 
@@ -424,45 +413,48 @@ export class MessageService implements OnApplicationBootstrap, OnModuleDestroy {
     );
   }
 
-  private indexAssistantIfNeeded(
+  /**
+   * 本轮记忆入向量库。异步执行，失败只记日志，绝不回滚已落库的会话消息。
+   */
+  private indexMemoryIfNeeded(
     messageId: string,
-    conversationId: string,
-    payload: Record<string, unknown>,
+    turn: TurnEntity,
+    memoryText?: string,
   ) {
-    const summary =
-      typeof payload.summary === "string" ? payload.summary.trim() : "";
-    if (!summary) return;
+    const text = memoryText?.trim();
+    if (!text) return;
 
-    const topics = Array.isArray(payload.topics)
-      ? payload.topics.filter((item): item is string => typeof item === "string")
-      : [];
-    const entities = Array.isArray(payload.entities)
-      ? payload.entities.filter((item): item is string => typeof item === "string")
-      : [];
-
-    void this.addMilvusRecord(messageId, conversationId, summary, topics, entities);
+    void this.addMemoryRecord(
+      messageId,
+      turn,
+      this.truncateText(text, MEMORY_TEXT_MAX_LENGTH),
+    );
   }
 
-  private async addMilvusRecord(
+  private async addMemoryRecord(
     messageId: string,
-    conversationId: string,
-    summary: string,
-    topics: string[],
-    entities: string[],
+    turn: TurnEntity,
+    memoryText: string,
   ) {
     try {
-      const embedding = await this.milvusProvider.generateEmbedding(summary);
-      await this.milvusProvider.addMessageRecord({
-        message_id: messageId,
-        conversation_id: conversationId,
-        summary,
-        topics,
-        entities,
-        summary_embedding: embedding,
+      const conversation = await this.conversationRepository.findOne({
+        where: { conversation_id: turn.conversation_id },
+      });
+      // 无主会话没有可用于检索隔离的 user_id，写进去也召不回来。
+      if (!conversation?.user_id) return;
+
+      const embedding = await this.milvusProvider.generateEmbedding(memoryText);
+      await this.milvusProvider.addMemory({
+        memory_id: messageId,
+        user_id: conversation.user_id,
+        conversation_id: turn.conversation_id,
+        turn_id: turn.turn_id,
+        memory_text: memoryText,
+        memory_embedding: embedding,
       });
     } catch (error) {
       this.logger.error(
-        `Failed to add message record to Milvus: ${(error as Error).message}`,
+        `Failed to index memory: ${(error as Error).message}`,
         error as Error,
       );
     }

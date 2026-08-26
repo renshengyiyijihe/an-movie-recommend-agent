@@ -12,8 +12,9 @@ import { MessageGrpcClient } from "./message.grpc";
 import { OrchestratorAgent } from "./agents/orchestrator.agent";
 import { WorkflowContext } from "./agents/workflow-context";
 import { toConversationTurns } from "./conversation-history";
+import { toConversationMemories } from "./memory";
 import { getStringValue, tryParseJson } from "./helpers";
-import { MESSAGE_CONSTANTS } from "./constants";
+import { MEMORY_CONSTANTS, MESSAGE_CONSTANTS } from "./constants";
 import {
   AssistantPayload,
   ErrorPayload,
@@ -26,6 +27,7 @@ import { noopTurnEventSink, TurnEventSink } from "./turn-events";
 import { toStreamStageEvent } from "./chat-stream";
 import {
   ConversationHistoryItem,
+  ConversationMemory,
   INTENT_TYPE,
   OrchestratorResult,
 } from "./types";
@@ -40,11 +42,14 @@ interface ChatPayload {
 /**
  * 工作流结论。HTTP `type` 与 CompleteTurn 的 `status` 共用同一套取值。
  * 必须先写入再返回；写入失败不得冒充 success / reject。
+ * `memory` 是写给以后对话的长期记忆，只随 CompleteTurn 落向量库，
+ * 不进可见气泡、不进 SSE，只有成功轮次才可能有。
  */
-type ChatOutcome =
+type ChatOutcome = { memory?: string } & (
   | { type: "success"; status: "success"; payload: RecommendationPayload }
   | { type: "reject"; status: "reject"; payload: RejectPayload }
-  | { type: "error"; status: "error"; payload: ErrorPayload };
+  | { type: "error"; status: "error"; payload: ErrorPayload }
+);
 
 @Injectable()
 export class MovieService {
@@ -67,7 +72,11 @@ export class MovieService {
     let conversationId: string | undefined;
     try {
       conversationId = await this.ensureConversation(payload);
-      const turns = await this.loadConversationHistory(conversationId);
+      // 时间序历史与跨会话记忆都不依赖 turnId，一起发起省一个来回。
+      const [turns, memories] = await Promise.all([
+        this.loadConversationHistory(conversationId),
+        this.loadMemories(payload.message, conversationId),
+      ]);
 
       let turnId: string;
       try {
@@ -94,12 +103,18 @@ export class MovieService {
       const outcome = await this.resolveOutcome(
         payload.message,
         turns,
+        memories,
         turnId,
         emit,
       );
 
       try {
-        await this.completeTurn(turnId, outcome.status, outcome.payload);
+        await this.completeTurn(
+          turnId,
+          outcome.status,
+          outcome.payload,
+          outcome.memory,
+        );
       } catch (error) {
         this.logger.error(
           `Failed to complete turn status=${outcome.status} turnId=${turnId}: ${errorMessage(error)}`,
@@ -139,6 +154,7 @@ export class MovieService {
   private async resolveOutcome(
     query: string,
     turns: ConversationHistoryItem[],
+    memories: ConversationMemory[],
     turnId: string,
     emit: (event: ChatStreamEvent) => void,
   ): Promise<ChatOutcome> {
@@ -147,7 +163,15 @@ export class MovieService {
       const ctx = new WorkflowContext({
         query,
         turns,
+        memories,
         events: this.createEventSink(turnId, emit),
+      });
+      // 固定记一条：0 条召回和"根本没召回"要能区分开。
+      await ctx.record({
+        kind: "memory",
+        actor: "orchestrator",
+        recalled: memories.length,
+        topScore: memories[0]?.score ?? 0,
       });
       const orchestratorResult = await this.orchestratorAgent.orchestrate(
         model,
@@ -212,7 +236,12 @@ export class MovieService {
       };
     }
 
-    return { type: "success", status: "success", payload: parsed };
+    return {
+      type: "success",
+      status: "success",
+      payload: parsed.payload,
+      memory: parsed.memory,
+    };
   }
 
   private errorResponse(message: string) {
@@ -258,6 +287,27 @@ export class MovieService {
     return toConversationTurns(response?.messages);
   }
 
+  /**
+   * 召回该用户其它会话里的长期记忆。位于关键路径上，
+   * 任何失败都退化成"没有记忆"，绝不让向量检索拖垮本轮回答。
+   */
+  private async loadMemories(
+    query: string,
+    conversationId: string,
+  ): Promise<ConversationMemory[]> {
+    try {
+      const response = await this.messageGrpcClient.searchMemories(
+        query,
+        conversationId,
+        MEMORY_CONSTANTS.MAX_ITEMS,
+      );
+      return toConversationMemories(response?.memories);
+    } catch (error) {
+      this.logger.warn(`loadMemories failed: ${errorMessage(error)}`);
+      return [];
+    }
+  }
+
   private async startTurn(
     conversationId: string,
     text: string,
@@ -279,6 +329,7 @@ export class MovieService {
     turnId: string,
     status: TurnStatus,
     payload: AssistantPayload,
+    memory?: string,
   ): Promise<void> {
     if (!turnId) {
       throw new Error("turnId is required to complete a turn");
@@ -287,7 +338,12 @@ export class MovieService {
     let lastError: Error | undefined;
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
-        await this.messageGrpcClient.completeTurn(turnId, status, payload);
+        await this.messageGrpcClient.completeTurn(
+          turnId,
+          status,
+          payload,
+          memory,
+        );
         return;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
@@ -326,12 +382,18 @@ export class MovieService {
     };
   }
 
-  private parseRecommendation(text: string): RecommendationPayload | null {
+  /**
+   * 汇总 JSON → 可见气泡 payload + 不可见的长期记忆。
+   * 只解析，不负责生成；`memory` 刻意不进 payload，避免出现在气泡和 SSE 里。
+   */
+  private parseRecommendation(
+    text: string,
+  ): { payload: RecommendationPayload; memory: string } | null {
     const parsed = tryParseJson<Record<string, unknown>>(text, "recommendation");
     if (!parsed) return null;
     const payload = recommendationFromParsed(parsed);
     if (!getStringValue(payload.text)) return null;
-    return payload;
+    return { payload, memory: getStringValue(parsed.memory) };
   }
 }
 

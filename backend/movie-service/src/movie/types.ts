@@ -530,3 +530,14 @@ export interface ConversationHistoryItem {
 	/** 用户为提问原文；助手为压缩后的推荐说明 */
 	content: string;
 }
+
+/**
+ * 从该用户**其它会话**里语义召回的一条长期记忆。
+ * 与 {@link ConversationHistoryItem} 是两类上下文：历史按时间序，记忆按相似度。
+ */
+export interface ConversationMemory {
+	/** 自包含的一句话记忆，可直接进 prompt */
+	text: string;
+	/** COSINE 相似度，越大越相关。已在 message-service 侧过掉低分命中 */
+	score: number;
+}

@@ -24,6 +24,7 @@ interface CompleteTurnRequest {
   turn_id: string;
   status: string;
   assistant_payload_json: string;
+  memory_text?: string;
 }
 
 interface GetConversationRequest {
@@ -34,16 +35,21 @@ interface GetTurnRequest {
   turn_id: string;
 }
 
-export interface RelatedContextItem {
-  role?: "user" | "assistant";
-  content?: string;
+/** 召回的一条跨会话记忆。 */
+export interface MemoryItem {
+  text: string;
+  conversation_id: string;
+  score: number;
 }
 
-interface SearchSimilarContextRequest {
-  user_input: string;
-  conversation_id: string;
+interface SearchMemoriesRequest {
+  query: string;
+  exclude_conversation_id?: string;
   limit?: number;
 }
+
+/** 召回条数的兜底值，正常由 movie-service 显式传入。 */
+const DEFAULT_MEMORY_LIMIT = 3;
 
 function toProtoChatItem(item: ChatItem) {
   return {
@@ -115,6 +121,7 @@ export class MessageGrpcService {
       request.turn_id,
       request.status,
       request.assistant_payload_json,
+      request.memory_text,
     );
   }
 
@@ -142,15 +149,15 @@ export class MessageGrpcService {
     };
   }
 
-  @GrpcMethod("Message", "SearchSimilarContext")
-  async searchSimilarContext(request: SearchSimilarContextRequest) {
+  @GrpcMethod("Message", "SearchMemories")
+  async searchMemories(request: SearchMemoriesRequest) {
     this.logger.log(
-      `gRPC SearchSimilarContext user_input=${request.user_input ? request.user_input.slice(0, 50) : ""}... conversation_id=${request.conversation_id} limit=${request.limit ?? 5}`,
+      `gRPC SearchMemories query=${request.query ? request.query.slice(0, 50) : ""}... exclude_conversation_id=${request.exclude_conversation_id ?? ""} limit=${request.limit ?? DEFAULT_MEMORY_LIMIT}`,
     );
-    return this.messageService.searchSimilarContext(
-      request.user_input,
-      request.conversation_id,
-      request.limit ?? 5,
+    return this.messageService.searchMemories(
+      request.query,
+      request.exclude_conversation_id ?? "",
+      request.limit || DEFAULT_MEMORY_LIMIT,
     );
   }
 }

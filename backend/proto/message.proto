@@ -9,7 +9,7 @@ service Message {
   rpc CompleteTurn(CompleteTurnRequest) returns (CompleteTurnResponse);
   rpc GetConversation(GetConversationRequest) returns (GetConversationResponse);
   rpc GetTurn(GetTurnRequest) returns (GetTurnResponse);
-  rpc SearchSimilarContext(SearchSimilarContextRequest) returns (SearchSimilarContextResponse);
+  rpc SearchMemories(SearchMemoriesRequest) returns (SearchMemoriesResponse);
 }
 
 message CreateConversationRequest {
@@ -44,6 +44,8 @@ message CompleteTurnRequest {
   string turn_id = 1;
   string status = 2;
   string assistant_payload_json = 3;
+  // 本轮的一句话跨会话记忆，空串表示本轮不写向量库。不进可见气泡。
+  string memory_text = 4;
 }
 
 message CompleteTurnResponse {
@@ -89,17 +91,19 @@ message GetTurnResponse {
   repeated TurnEventRecord events = 5;
 }
 
-message RelatedContextItem {
-  string role = 1;
-  string content = 2;
+message MemoryItem {
+  string text = 1;
+  string conversation_id = 2;
+  float score = 3;
 }
 
-message SearchSimilarContextRequest {
-  string user_input = 1;
-  string conversation_id = 2;
+// 调用身份走 metadata user-id，请求体不带 user_id。
+message SearchMemoriesRequest {
+  string query = 1;
+  string exclude_conversation_id = 2;
   int32 limit = 3;
 }
 
-message SearchSimilarContextResponse {
-  repeated RelatedContextItem context_items = 1;
+message SearchMemoriesResponse {
+  repeated MemoryItem memories = 1;
 }

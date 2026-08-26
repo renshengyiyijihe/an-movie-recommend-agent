@@ -1,8 +1,10 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { projectConversationHistory } from "../conversation-history";
+import { projectMemories } from "../memory";
 import {
   AGENT_TYPE,
   ConversationHistoryItem,
+  ConversationMemory,
   HISTORY_PROJECTION_KIND,
   HistoryProjectionKind,
   INTENT_TYPE,
@@ -28,6 +30,7 @@ export class PromptTemplateService {
     userMessage: string,
     agentEvidence: string,
     turns?: ConversationHistoryItem[],
+    memories?: ConversationMemory[],
   ): { system: string; user: string } {
     return {
       system: `# 电影领域回答汇总
@@ -45,11 +48,14 @@ export class PromptTemplateService {
 7. \`reason\` 说明这部片为什么出现在本次回答里；\`text\` 直接回应用户问题，不要写成固定的“推荐说明”。
 8. 检索结果无法回答时，\`movies\` 返回空数组，原因写在 \`text\` 里。
 9. 检索结果是精简视图，可能含 \`answer\`: \`movies\` | \`people\` | \`fact\`。按 \`answer\` 回答：事实题以 \`text\` 为主；人物题不要把人物 id 写进 \`movies\`。
-10. 只能输出纯 JSON，不要 Markdown、代码围栏或解释文字。
+10. \`memory\` 是写给以后对话的长期记忆，不会展示给用户：用第三人称一句话概括本轮用户表达的观影偏好和本轮结论，不超过 80 字，例如 "用户偏好悬疑烧脑片、能接受慢节奏；本轮推荐了《消失的爱人》《利刃出鞘》"。纯事实问答没有偏好可记时给空字符串。
+11. \`<user_memory>\` 是这个用户在**其它会话**里表现出的长期偏好，只能用来调整排序、措辞，以及避开已经推荐过的影片。它**不是**本次检索结果：里面提到的影片一律不得写进 \`movies\`。
+12. 只能输出纯 JSON，不要 Markdown、代码围栏或解释文字。
 
 ## 输出格式
 {
   "text": "针对用户问题的回答",
+  "memory": "用户偏好…；本轮推荐了…",
   "movies": [
     {
       "name": "电影名",
@@ -65,7 +71,7 @@ export class PromptTemplateService {
       user: `## 用户问题
 ${this.renderUserQuery(userMessage)}
 
-${this.renderHistorySection(turns, HISTORY_PROJECTION_KIND.SYNTHESIS)}## 检索结果
+${this.renderHistorySection(turns, HISTORY_PROJECTION_KIND.SYNTHESIS)}${this.renderMemorySection(memories)}## 检索结果
 ${agentEvidence}
 `,
     };
@@ -261,5 +267,13 @@ ${this.renderHistorySection(turns, HISTORY_PROJECTION_KIND.SEARCH)}
     const history = projectConversationHistory(turns, kind);
     if (!history) return "";
     return `## 对话历史\n<conversation_history>\n${history}\n</conversation_history>\n`;
+  }
+
+  private renderMemorySection(
+    memories: ConversationMemory[] | undefined,
+  ): string {
+    const memory = projectMemories(memories);
+    if (!memory) return "";
+    return `## 用户长期偏好\n<user_memory>\n${memory}\n</user_memory>\n`;
   }
 }

@@ -48,6 +48,16 @@ interface GetConversationResponse {
   messages?: ConversationChatItem[];
 }
 
+interface MemoryItem {
+  text?: string;
+  conversation_id?: string;
+  score?: number;
+}
+
+interface SearchMemoriesResponse {
+  memories?: MemoryItem[];
+}
+
 @Injectable()
 export class MessageGrpcClient implements OnModuleInit {
   private client: any;
@@ -104,15 +114,21 @@ export class MessageGrpcClient implements OnModuleInit {
     });
   }
 
+  /**
+   * `memoryText` 是本轮的长期记忆，只用于写向量库，不进可见气泡。
+   * 空串表示本轮不写。
+   */
   completeTurn(
     turnId: string,
     status: "success" | "reject" | "error",
     assistantPayload: AssistantPayload,
+    memoryText?: string,
   ): Promise<CompleteTurnResponse> {
     return this.rpc<CompleteTurnResponse>("CompleteTurn", {
       turn_id: turnId,
       status,
       assistant_payload_json: JSON.stringify(assistantPayload),
+      memory_text: memoryText ?? "",
     });
   }
 
@@ -124,6 +140,22 @@ export class MessageGrpcClient implements OnModuleInit {
 
   getTurn(turnId: string) {
     return this.rpc("GetTurn", { turn_id: turnId });
+  }
+
+  /**
+   * 召回当前用户在其它会话里的长期记忆。身份走 metadata `user-id`，
+   * 相似度阈值由 message-service 持有，这里只给条数上限。
+   */
+  searchMemories(
+    query: string,
+    excludeConversationId: string,
+    limit: number,
+  ): Promise<SearchMemoriesResponse> {
+    return this.rpc<SearchMemoriesResponse>("SearchMemories", {
+      query,
+      exclude_conversation_id: excludeConversationId,
+      limit,
+    });
   }
 
   private rpc<TRes>(method: string, request: object): Promise<TRes> {

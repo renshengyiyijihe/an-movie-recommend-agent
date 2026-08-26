@@ -85,7 +85,7 @@ export function openChatSse(res: SseReply): {
 }
 
 /**
- * turn_events → 前端 stage。`llm_usage` / `error` 不推。
+ * turn_events → 前端 stage。`llm_usage` / `memory` / `error` 不推。
  * @param body 写入 Postgres 的那条事件
  * @returns 可推的 stage；内部事件返回 null
  * @example

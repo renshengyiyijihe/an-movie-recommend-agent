@@ -2,6 +2,7 @@ import {
   AgentExecutionResult,
   AgentType,
   ConversationHistoryItem,
+  ConversationMemory,
   IntentClassification,
   RelationPlan,
   ResolvedEntity,
@@ -26,6 +27,8 @@ export interface SharedWorkflowState {
   readonly query: string;
   /** 已完成轮次的可见问答，按时间序。 */
   readonly turns: ConversationHistoryItem[];
+  /** 该用户其它会话里语义召回的长期记忆，按相似度序。召回失败时为空。 */
+  readonly memories: ConversationMemory[];
   intent?: IntentClassification;
   plan: AgentType[];
   relationPlan?: RelationPlan;
@@ -73,11 +76,13 @@ export class WorkflowContext {
   constructor(init: {
     query: string;
     turns?: ConversationHistoryItem[];
+    memories?: ConversationMemory[];
     events?: TurnEventSink;
   }) {
     this.shared = {
       query: init.query,
       turns: init.turns ?? [],
+      memories: init.memories ?? [],
       plan: [],
       agentOutputs: {},
     };

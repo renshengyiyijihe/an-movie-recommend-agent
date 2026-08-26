@@ -365,6 +365,7 @@ export class OrchestratorAgent {
       ctx.shared.query,
       evidence,
       ctx.shared.turns,
+      ctx.shared.memories,
     );
     const allowedMovieIds = new Set(ctx.workspace.listMovieIds());
 

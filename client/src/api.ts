@@ -45,7 +45,7 @@ export class ApiError extends Error {
 
 /**
  * 鉴权失效：需要清登录态并弹出登录框。
- * 登录接口的 401（邮箱或密码错误）不算会话过期。
+ * 登录 401「邮箱或密码错误」、改密 401「当前密码错误」都不算会话过期。
  */
 export function isSessionExpiredError(error: unknown): boolean {
   return (

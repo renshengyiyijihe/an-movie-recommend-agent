@@ -1,11 +1,7 @@
-import { useEffect, useState } from 'react';
-import { Controller, useForm, type Control, type FieldPath, type RegisterOptions } from 'react-hook-form';
+import { useEffect } from 'react';
+import { useForm } from 'react-hook-form';
 import Dialog from '@mui/material/Dialog';
-import IconButton from '@mui/material/IconButton';
-import InputAdornment from '@mui/material/InputAdornment';
-import TextField from '@mui/material/TextField';
-import Visibility from '@mui/icons-material/Visibility';
-import VisibilityOff from '@mui/icons-material/VisibilityOff';
+import AuthField from '@/components/AuthField';
 import { AUTH_PASSWORD_MIN_LENGTH, AUTH_USERNAME_MIN_LENGTH, TEXT } from '@/constant';
 import { ApiError } from '@/api';
 import useAuth from '@/store/auth';
@@ -28,98 +24,7 @@ interface AuthFormValues {
   confirmPassword: string;
 }
 
-interface AuthFieldProps<T extends FieldPath<AuthFormValues>> {
-  control: Control<AuthFormValues>;
-  name: T;
-  rules?: RegisterOptions<AuthFormValues, T>;
-  label: string;
-  type?: 'text' | 'email';
-  autoComplete?: string;
-  autoFocus?: boolean;
-  placeholder?: string;
-  passwordToggle?: boolean;
-  showPasswordLabel?: string;
-  hidePasswordLabel?: string;
-  onAfterChange?: () => void;
-}
-
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-const FIELD_SX = {
-  '& .MuiOutlinedInput-root': {
-    borderRadius: '14px',
-    backgroundColor: '#f8fafc',
-  },
-} as const;
-
-function AuthField<T extends FieldPath<AuthFormValues>>({
-  control,
-  name,
-  rules,
-  label,
-  type = 'text',
-  autoComplete,
-  autoFocus,
-  placeholder,
-  passwordToggle = false,
-  showPasswordLabel,
-  hidePasswordLabel,
-  onAfterChange,
-}: AuthFieldProps<T>) {
-  const [visible, setVisible] = useState(false);
-  const inputType = passwordToggle ? (visible ? 'text' : 'password') : type;
-
-  return (
-    <Controller
-      name={name}
-      control={control}
-      rules={rules}
-      render={({ field: { ref, onChange, ...field }, fieldState }) => (
-        <TextField
-          {...field}
-          inputRef={ref}
-          type={inputType}
-          label={label}
-          autoFocus={autoFocus}
-          placeholder={placeholder}
-          fullWidth
-          error={Boolean(fieldState.error)}
-          helperText={fieldState.error?.message}
-          sx={FIELD_SX}
-          onChange={(event) => {
-            onChange(event);
-            onAfterChange?.();
-          }}
-          slotProps={{
-            htmlInput: {
-              autoComplete,
-              spellCheck: passwordToggle ? false : undefined,
-              inputMode: type === 'email' ? 'email' : undefined,
-            },
-            input: passwordToggle
-              ? {
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        type="button"
-                        edge="end"
-                        aria-label={visible ? hidePasswordLabel : showPasswordLabel}
-                        aria-pressed={visible}
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => setVisible((open) => !open)}
-                      >
-                        {visible ? <VisibilityOff /> : <Visibility />}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }
-              : undefined,
-          }}
-        />
-      )}
-    />
-  );
-}
 
 function formatAuthError(err: unknown): string {
   if (err instanceof ApiError && err.code && err.code in TEXT.errors) {

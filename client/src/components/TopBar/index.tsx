@@ -5,14 +5,16 @@ import styles from './index.module.less';
 
 interface Props {
   onOpenConfig: () => void;
-  onOpenSidebar: () => void;
+  onToggleSidebar: () => void;
+  sidebarOpen: boolean;
   onOpenLogin: () => void;
   onOpenRegister: () => void;
 }
 
 export default function TopBar({
   onOpenConfig,
-  onOpenSidebar,
+  onToggleSidebar,
+  sidebarOpen,
   onOpenLogin,
   onOpenRegister,
 }: Props) {
@@ -24,10 +26,14 @@ export default function TopBar({
     <div className={styles.topBar}>
       <div className={styles.topBarTitle}>
         <button
-          className={styles.sidebarToggle}
+          className={`${styles.sidebarToggle} ${sidebarOpen ? styles.sidebarToggleActive : ''}`}
           type="button"
-          onClick={onOpenSidebar}
-          aria-label={TEXT.workspace.openSidebarAria}
+          onClick={onToggleSidebar}
+          aria-label={
+            sidebarOpen ? TEXT.workspace.collapseSidebarAria : TEXT.workspace.expandSidebarAria
+          }
+          aria-pressed={sidebarOpen}
+          aria-expanded={sidebarOpen}
         >
           {TEXT.workspace.title}
         </button>

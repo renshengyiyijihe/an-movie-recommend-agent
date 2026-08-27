@@ -20,6 +20,7 @@ import {
   conversationDetailPath,
   LAYOUT,
   TEXT,
+  WORKSPACE_STORAGE_KEY,
 } from "@/constant";
 import styles from "./index.module.less";
 import {
@@ -45,6 +46,27 @@ const quickPrompts = [
   "推荐几部张力强、节奏快的动作片",
 ];
 
+const NARROW_MQ = `(max-width: ${LAYOUT.NARROW_MAX_PX}px)`;
+
+function readSidebarCollapsed(): boolean {
+  try {
+    return window.localStorage.getItem(WORKSPACE_STORAGE_KEY.SIDEBAR_COLLAPSED) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeSidebarCollapsed(collapsed: boolean) {
+  try {
+    window.localStorage.setItem(
+      WORKSPACE_STORAGE_KEY.SIDEBAR_COLLAPSED,
+      collapsed ? "1" : "0",
+    );
+  } catch {
+    /* private mode / quota */
+  }
+}
+
 export default function HomePage() {
   const [message, setMessage] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -67,6 +89,10 @@ export default function HomePage() {
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [listError, setListError] = useState("");
   const [sidebarDrawerOpen, setSidebarDrawerOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
+  const [isNarrow, setIsNarrow] = useState(
+    () => window.matchMedia(NARROW_MQ).matches,
+  );
   const [loading, setLoading] = useState(false);
   const [streamStage, setStreamStage] =
     useState<ChatStreamStageEvent | null>(null);
@@ -88,7 +114,7 @@ export default function HomePage() {
 
   const fetchConversations = useCallback(
     async (requestGen = sessionGen.current, options?: { silent?: boolean }) => {
-      if (!token) return;
+      if (!useAuth.getState().token) return;
 
       if (!options?.silent) {
         setHistoryLoading(true);
@@ -121,7 +147,7 @@ export default function HomePage() {
         }
       }
     },
-    [token, handleSessionExpired],
+    [handleSessionExpired],
   );
 
   function rememberConversationIfNew(id: string, title: string) {
@@ -204,6 +230,27 @@ export default function HomePage() {
     void fetchConversations();
   }
 
+  function setDesktopCollapsed(collapsed: boolean) {
+    setSidebarCollapsed(collapsed);
+    writeSidebarCollapsed(collapsed);
+  }
+
+  function toggleSidebar() {
+    if (isNarrow) {
+      setSidebarDrawerOpen((open) => !open);
+      return;
+    }
+    setDesktopCollapsed(!sidebarCollapsed);
+  }
+
+  function collapseSidebar() {
+    if (isNarrow) {
+      setSidebarDrawerOpen(false);
+      return;
+    }
+    setDesktopCollapsed(true);
+  }
+
   function startNewConversation() {
     if (sendingRef.current) {
       toast.info(TEXT.workspace.waitUntilIdle);
@@ -241,17 +288,18 @@ export default function HomePage() {
     setStreamStage(null);
     setHistoryLoading(false);
     setDetailsLoading(false);
-    if (!token) return;
+    if (!userId) return;
     void fetchConversations(requestGen);
-  }, [userId, token, fetchConversations]);
+  }, [userId, fetchConversations]);
 
   useEffect(() => {
-    const media = window.matchMedia(`(max-width: ${LAYOUT.NARROW_MAX_PX}px)`);
-    function closeDrawerOnWideViewport(event: MediaQueryListEvent) {
+    const media = window.matchMedia(NARROW_MQ);
+    function onViewportChange(event: MediaQueryListEvent) {
+      setIsNarrow(event.matches);
       if (!event.matches) setSidebarDrawerOpen(false);
     }
-    media.addEventListener("change", closeDrawerOnWideViewport);
-    return () => media.removeEventListener("change", closeDrawerOnWideViewport);
+    media.addEventListener("change", onViewportChange);
+    return () => media.removeEventListener("change", onViewportChange);
   }, []);
 
   useEffect(() => {
@@ -492,15 +540,18 @@ export default function HomePage() {
     onSelectConversation: (id: string) => void loadConversation(id),
     onRetryList: () => void fetchConversations(),
     onLogin: () => setShowLoginModal(true),
+    onCollapse: collapseSidebar,
   };
 
   const composerDisabled = loading || detailsLoading;
+  const sidebarOpen = isNarrow ? sidebarDrawerOpen : !sidebarCollapsed;
 
   return (
     <div className={styles.appShell}>
       <TopBar
         onOpenConfig={openConfigModal}
-        onOpenSidebar={() => setSidebarDrawerOpen(true)}
+        onToggleSidebar={toggleSidebar}
+        sidebarOpen={sidebarOpen}
         onOpenLogin={() => {
           setShowLoginModal(true);
         }}
@@ -560,7 +611,9 @@ export default function HomePage() {
       </Drawer>
 
       <div className={styles.workspace}>
-        <aside className={styles.sidebarSlot}>
+        <aside
+          className={`${styles.sidebarSlot} ${sidebarCollapsed ? styles.sidebarSlotCollapsed : ""}`}
+        >
           <ConversationSidebar {...sidebarProps} />
         </aside>
 

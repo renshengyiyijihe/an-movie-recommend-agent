@@ -1,3 +1,5 @@
+import IconButton from "@mui/material/IconButton";
+import ChevronLeft from "@mui/icons-material/ChevronLeft";
 import { TEXT } from "@/constant";
 import type { ConversationSummary } from "@/types";
 import {
@@ -18,6 +20,7 @@ interface Props {
   onSelectConversation: (conversationId: string) => void;
   onRetryList: () => void;
   onLogin: () => void;
+  onCollapse: () => void;
 }
 
 export default function ConversationSidebar({
@@ -31,6 +34,7 @@ export default function ConversationSidebar({
   onSelectConversation,
   onRetryList,
   onLogin,
+  onCollapse,
 }: Props) {
   const isDraft = !activeConversationId;
   const showInitialLoading = listLoading && conversations.length === 0;
@@ -38,7 +42,18 @@ export default function ConversationSidebar({
   return (
     <div className={styles.sidebar}>
       <div className={styles.header}>
-        <h2 className={styles.title}>{TEXT.workspace.title}</h2>
+        <div className={styles.headerRow}>
+          <h2 className={styles.title}>{TEXT.workspace.title}</h2>
+          <IconButton
+            type="button"
+            size="small"
+            className={styles.collapseButton}
+            onClick={onCollapse}
+            aria-label={TEXT.workspace.collapseSidebarAria}
+          >
+            <ChevronLeft />
+          </IconButton>
+        </div>
         {isGuest ? (
           <button
             type="button"

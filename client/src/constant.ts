@@ -14,12 +14,20 @@ export { AUTH_PASSWORD_MIN_LENGTH, AUTH_USERNAME_MIN_LENGTH };
 export const API_PATH = {
   chat: "/api/movie/chat",
   conversations: "/api/message/conversations",
+  login: "/api/auth/login",
+  register: "/api/auth/register",
+  changePassword: "/api/auth/password",
 } as const;
 
 /** 工作台布局，与 HomePage / TopBar 的 `@media` 保持同一套数字。 */
 export const LAYOUT = {
   SIDEBAR_WIDTH_PX: 280,
   NARROW_MAX_PX: 760,
+} as const;
+
+/** localStorage 里工作台偏好的键。不要和 token 混在一起。 */
+export const WORKSPACE_STORAGE_KEY = {
+  SIDEBAR_COLLAPSED: "sidebarCollapsed",
 } as const;
 
 /**
@@ -83,7 +91,37 @@ export const TEXT = {
     sessionExpired: "登录已过期，请重新登录",
     userFallback: "用户",
     currentUserAria: "当前登录用户",
+    currentPassword: "当前密码",
+    newPassword: "新密码",
+    confirmNewPassword: "确认新密码",
+    currentPasswordPlaceholder: "输入当前密码",
+    confirmNewPasswordPlaceholder: "再输入一次新密码",
+    currentPasswordRequired: "请输入当前密码",
+    newPasswordRequired: "请输入新密码",
+    confirmNewPasswordRequired: "请再次输入新密码",
+    currentPasswordWrong: "当前密码错误",
+    passwordUnchanged: "新密码不能与当前密码相同",
+    showCurrentPassword: "显示当前密码",
+    hideCurrentPassword: "隐藏当前密码",
+    showNewPassword: "显示新密码",
+    hideNewPassword: "隐藏新密码",
+    showConfirmNewPassword: "显示确认新密码",
+    hideConfirmNewPassword: "隐藏确认新密码",
+    changePasswordSuccess: "密码已更新",
     closeDialog: "关闭",
+  },
+  /** 顶栏配置弹窗 */
+  config: {
+    title: "配置",
+    description: "管理账号与会话详情。",
+    account: "账号",
+    chatHistory: "会话消息",
+    closeAria: "关闭配置窗口",
+    usernameLabel: "用户名",
+    emailLabel: "邮箱",
+    changePassword: "修改密码",
+    changePasswordHint: "修改成功后仍保持登录。",
+    submitPassword: "保存新密码",
   },
   errors: {
     [ERROR_CODE.UNAUTHORIZED]: "未授权，请先登录",
@@ -125,7 +163,8 @@ export const TEXT = {
     title: "会话",
     newConversation: "新对话",
     newConversationAria: "开始新对话",
-    openSidebarAria: "打开会话列表",
+    collapseSidebarAria: "收起会话栏",
+    expandSidebarAria: "展开会话栏",
     listAria: "会话列表",
     loading: "加载会话列表中...",
     empty: "暂无会话，发送消息后会自动生成。",

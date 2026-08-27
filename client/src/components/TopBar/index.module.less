@@ -28,7 +28,8 @@
 }
 
 .sidebarToggle {
-  display: none;
+  display: inline-flex;
+  align-items: center;
   border: none;
   border-radius: 999px;
   padding: 8px 12px;
@@ -38,11 +39,9 @@
   color: #4338ca;
 }
 
-@media (max-width: 760px) {
-  .sidebarToggle {
-    display: inline-flex;
-    align-items: center;
-  }
+.sidebarToggle:hover,
+.sidebarToggleActive {
+  background: #e0e7ff;
 }
 
 .topBarActions {

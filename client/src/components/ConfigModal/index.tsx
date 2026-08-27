@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { Modal } from "@mui/material";
+import { TEXT } from "@/constant";
 import type { ConversationDetail } from "@/types";
 import { chatItemPreviewText } from "@/utils/chatUtils";
+import ChangePasswordForm from "./ChangePasswordForm";
 import styles from "./index.module.less";
 
 interface Props {
@@ -18,7 +20,15 @@ interface Props {
   detailLoading: boolean;
 }
 
-const FEATURE_LIST = [{ id: "chat-history", label: "会话消息" }];
+const FEATURE = {
+  ACCOUNT: "account",
+  CHAT_HISTORY: "chat-history",
+} as const;
+
+const FEATURE_LIST = [
+  { id: FEATURE.ACCOUNT, label: TEXT.config.account },
+  { id: FEATURE.CHAT_HISTORY, label: TEXT.config.chatHistory },
+];
 
 export default function ConfigModal({
   visible,
@@ -29,7 +39,7 @@ export default function ConfigModal({
   loading,
   detailLoading,
 }: Props) {
-  const [activeFeature, setActiveFeature] = useState("chat-history");
+  const [activeFeature, setActiveFeature] = useState<string>(FEATURE.ACCOUNT);
   const [detailOpen, setDetailOpen] = useState(false);
 
   function openConversationDetail(conversationId: string) {
@@ -59,19 +69,19 @@ export default function ConfigModal({
             <div className={styles.modalHeader}>
               <div>
                 <h3 id="config-modal-title" className={styles.modalTitle}>
-                  配置
+                  {TEXT.config.title}
                 </h3>
                 <p
                   id="config-modal-description"
                   className={styles.modalDescription}
                 >
-                  管理功能与会话详情。
+                  {TEXT.config.description}
                 </p>
               </div>
               <button
                 className={styles.closeButton}
                 onClick={handleClose}
-                aria-label="关闭配置窗口"
+                aria-label={TEXT.config.closeAria}
               >
                 ×
               </button>
@@ -90,14 +100,15 @@ export default function ConfigModal({
                 ))}
               </div>
               <div className={styles.content}>
-                {activeFeature === "chat-history" ? (
+                {visible && activeFeature === FEATURE.ACCOUNT ? (
+                  <ChangePasswordForm onClose={handleClose} />
+                ) : null}
+                {activeFeature === FEATURE.CHAT_HISTORY ? (
                   <div className={styles.historyList}>
                     {loading ? (
-                      <p className={styles.noHistory}>加载会话列表中...</p>
+                      <p className={styles.noHistory}>{TEXT.workspace.loading}</p>
                     ) : conversations.length === 0 ? (
-                      <p className={styles.noHistory}>
-                        暂无会话，发送消息后会自动生成。
-                      </p>
+                      <p className={styles.noHistory}>{TEXT.workspace.empty}</p>
                     ) : (
                       conversations.map((session) => (
                         <button

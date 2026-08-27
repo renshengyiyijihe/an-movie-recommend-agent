@@ -7,6 +7,7 @@ import { ERROR_CODE } from '@an-movie/contracts';
 import { AppHttpException } from '@an-movie/auth-client';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 function requireJwtSecret(): string {
   const secret = process.env.JWT_SECRET;
@@ -101,6 +102,45 @@ export class AuthService implements OnModuleInit {
     } catch (error) {
       if (error instanceof AppHttpException) throw error;
       this.logger.error('Login exception', error as Error);
+      throw error;
+    }
+  }
+
+  async changePassword(userId: string, dto: ChangePasswordDto) {
+    this.logger.log(`Change password attempt: id=${userId}`);
+    try {
+      if (dto.currentPassword === dto.newPassword) {
+        throw new AppHttpException(ERROR_CODE.VALIDATION_FAILED, '新密码不能与当前密码相同', 400);
+      }
+
+      const result = await pool.query(
+        'SELECT id, name, email, password_hash FROM users WHERE id = $1',
+        [userId],
+      );
+      const user = result.rows[0];
+      if (!user) {
+        this.logger.warn('Change password failed: user not found');
+        throw new AppHttpException(ERROR_CODE.UNAUTHORIZED, '未授权，请先登录', 401);
+      }
+
+      const valid = await bcrypt.compare(dto.currentPassword, user.password_hash);
+      if (!valid) {
+        this.logger.warn(`Change password failed: id=${userId}`);
+        throw new AppHttpException(ERROR_CODE.INVALID_CREDENTIALS, '当前密码错误', 401);
+      }
+
+      const passwordHash = await bcrypt.hash(dto.newPassword, 10);
+      await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [
+        passwordHash,
+        user.id,
+      ]);
+
+      const token = this.signToken(user);
+      this.logger.log(`Change password successful: id=${user.id}`);
+      return { token, user: { id: user.id, username: user.name, email: user.email } };
+    } catch (error) {
+      if (error instanceof AppHttpException) throw error;
+      this.logger.error('Change password error', error as Error);
       throw error;
     }
   }

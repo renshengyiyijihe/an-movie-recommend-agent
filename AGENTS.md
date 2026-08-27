@@ -120,7 +120,8 @@ POST /api/movie/chat   Accept: text/event-stream
 
 ### auth-service
 
-- HTTP：`POST /auth/register`、`POST /auth/login`，DTO 校验（username 2–50，password 6–128）。
+- HTTP：`POST /auth/register`、`POST /auth/login`、`POST /auth/password`（已登录改密）。DTO 校验（username 2–50，password 6–128）。
+- 改密：`LocalJwtGuard` 调本进程 `validateToken()`，不要用 `JwtAuthGuard`（会 gRPC 打回自己）。请求体只有 `currentPassword` / `newPassword`，身份从 JWT 取。确认密码仅前端。当前密码错用 `INVALID_CREDENTIALS`；新旧相同用 `VALIDATION_FAILED`。成功后更新 hash 并签发新 JWT。
 - 启动时 `CREATE TABLE IF NOT EXISTS users`。
 - gRPC `Auth.ValidateToken`（`backend/proto/auth.proto`）。
 - JWT：`JWT_SECRET`、`JWT_EXPIRES_IN`（默认 7d）。
@@ -229,15 +230,15 @@ Prompt 入口（改提示词只动这个文件）：
 ## 前端
 
 - 单页：`client/src/pages/HomePage`。路由只有 `/`。
-- 布局：TopBar + **左侧会话栏** + 右侧主聊天。桌面常驻 `ConversationSidebar`（约 280px）；窄屏（`LAYOUT.NARROW_MAX_PX` = 760）TopBar「会话」打开 MUI `Drawer`。未登录侧栏只给登录引导，不请求会话 API。
+- 布局：TopBar + **左侧会话栏** + 右侧主聊天。桌面常驻 `ConversationSidebar`（约 280px），可用顶栏「会话」或侧栏内按钮折叠；折叠状态写入 `localStorage`（`WORKSPACE_STORAGE_KEY.SIDEBAR_COLLAPSED`）。窄屏（`LAYOUT.NARROW_MAX_PX` = 760）隐藏固定栏，顶栏「会话」切换 MUI `Drawer`；抽屉里同一颗收起按钮会关掉抽屉。未登录侧栏只给登录引导，不请求会话 API。
 - 会话主入口是侧栏，不是配置弹窗。登录后 `GET /api/message/conversations` 拉列表。点选 `GET /api/message/conversations/:id`（`conversationDetailPath`）把气泡载入主聊天；详情未成功前不要改当前 `conversationId`。路径写在 `API_PATH`，不要在页面里再写死 `/api/message/...`。
 - 「新对话」只清本地 `conversationId` / `messages`，**不要**预先 `POST /message/conversations`（会留下无标题空行）。首条发送仍由 movie-service `ensureConversation` 创建（title = 用户原话）。SSE `turn` 后侧栏若没有该项则插入，再静默 refetch。
 - 发送中或正在拉详情时禁止切换/新建：断开不会取消后端轮次，SSE 仍会写入当前 `messages`。用 `conversationLoadGen` 丢掉过期的详情响应。
-- `ConfigModal` 与 TopBar「配置」**保留**（后续设置用）。点弹窗里的会话也走同一套 `loadConversation` 进主聊天，弹窗内纯文本预览仍在。不要把侧栏列表再塞回配置，也不要删掉配置入口。
+- `ConfigModal` 与 TopBar「配置」**保留**。左侧可切「账号」（改密）和「会话消息」。点弹窗里的会话也走同一套 `loadConversation` 进主聊天，弹窗内纯文本预览仍在。不要把侧栏列表再塞回配置，也不要删掉配置入口。
 - 状态：Zustand 只有 `store/auth.ts`（token 在 `localStorage`）和 toast。会话列表 / 当前对话放 `HomePage` 本地 state，不要为工作台再加全局 store。
-- HTTP：`api.ts` 的 `request()` 自动带 Bearer；`baseURL: '/'`。**只有 chat 走 `streamChat()` 读 SSE**，其它接口继续 `request()`。鉴权失效用 `isSessionExpiredError()`（登录 401「密码错误」不算过期）。Docker 下由 nginx 反代；本地 `vite` 默认 **没有** 把 `/api` 转到后端。
-- 组件：`TopBar`、`ConversationSidebar`、`AuthModal`、`ConfigModal`、`RecommendationPoster`。会话标题/时间在 `utils/conversation.ts`。界面文案进 `TEXT`（`TEXT.workspace` 是侧栏）。样式用 Less CSS Modules。
-- 登录/注册表单用 `react-hook-form` + MUI `TextField`；密码框用 `InputAdornment` 和 `@mui/icons-material` 的 Visibility，不要再手写一套校验 state 或 SVG 眼睛图标。
+- HTTP：`api.ts` 的 `request()` 自动带 Bearer；`baseURL: '/'`。**只有 chat 走 `streamChat()` 读 SSE**，其它接口继续 `request()`。鉴权失效用 `isSessionExpiredError()`（登录 401「密码错误」、改密 401「当前密码错误」都不算过期）。Docker 下由 nginx 反代；本地 `vite` 默认 **没有** 把 `/api` 转到后端。
+- 组件：`TopBar`、`ConversationSidebar`、`AuthModal`、`ConfigModal`、`RecommendationPoster`。会话标题/时间在 `utils/conversation.ts`。界面文案进 `TEXT`（`TEXT.workspace` 是侧栏，`TEXT.config` 是配置弹窗）。样式用 Less CSS Modules。
+- 登录/注册/改密表单用 `react-hook-form` + MUI `TextField`；密码框用 `AuthField`（`InputAdornment` + `@mui/icons-material` Visibility），不要再手写一套校验 state 或 SVG 眼睛图标。改密成功后换新 token，不登出。
 - UI 只用 MUI 9，不要再引入另一套组件库。
 - 发送前必须登录。后端 `/movie/chat` 无 token 或验票失败返回 `401` JSON，前端会弹出登录框。图片以 Data URL 传 `imageData`，**后端 Orchestrator 当前未使用图片**；上传预览只留在输入区，不进聊天消息。
 - 聊天列表与后端 `ChatItem` 对齐：`role` 只有 `user` | `assistant`，`kind` 为 `user_query` | `recommendation` | `reject` | `error`，一条助手消息一个气泡（`text` 下方可选 `movies` 卡片）。`final` 收成气泡；`stage` 只更新加载文案，不进消息列表。有消息时收起 hero，顶栏显示当前会话标题。
@@ -315,6 +316,7 @@ Prompt 入口（改提示词只动这个文件）：
 | 登录鉴权 | `backend/auth-service/src/auth/auth.service.ts` |
 | 前端聊天 | `client/src/pages/HomePage/index.tsx`、`client/src/api.ts` |
 | 前端会话工作台 | `client/src/components/ConversationSidebar/`、`client/src/utils/conversation.ts` |
+| 前端登录/改密 | `client/src/components/AuthModal/`、`client/src/components/ConfigModal/`、`client/src/store/auth.ts` |
 | 反代 | `client/nginx.conf`、`docker-compose.yml` |
 | 指标刮取 | `observability/prometheus.yml` |
 | Grafana 数据源与总览盘 | `observability/grafana/` |
@@ -322,7 +324,7 @@ Prompt 入口（改提示词只动这个文件）：
 
 ## 已知坑
 
-- 鉴权白名单邮箱写死在 `AuthService.validateToken`。
+- 改密会换发 JWT。前端工作台只在 `userId` 变化时重置；不要把 `token` 字符串放进这个 effect 的依赖，否则改密会清掉当前会话并关掉配置弹窗。
 - `JWT_SECRET` 必须显式配置，代码不再回退 `dev_secret`。
 - 内部 gRPC 信任 metadata 里的 `user-id`（依赖 Docker 网络隔离，message-service 不再二次验 JWT）。
 - 图片主链路仍未消费 `imageData`。

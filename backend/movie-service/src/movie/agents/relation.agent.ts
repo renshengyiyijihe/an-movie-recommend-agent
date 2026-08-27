@@ -35,6 +35,7 @@ import {
 } from "../working-set";
 import { ToolsRegistry } from "./tools/tools.registry";
 import { AgentRuntime, RelationPrivateState } from "./workflow-context";
+import { isAbortError } from "../errors/workflow-cancelled.error";
 
 /**
  * Relation Agent
@@ -97,6 +98,7 @@ export class RelationAgent {
         result: JSON.stringify(view),
       });
     } catch (error) {
+      if (isAbortError(error)) throw error;
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`[RelationAgent] ${message}`);
       runtime.local.error = message;

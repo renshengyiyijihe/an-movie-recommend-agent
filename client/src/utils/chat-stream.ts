@@ -1,14 +1,13 @@
 import {
   ChatStreamEvent,
   ChatStreamStageEvent,
-  RECOMMEND_RESULT_TYPES,
   SSE_WIRE,
   STREAM_EVENT,
   STREAM_EVENTS,
   STREAM_STAGE,
   STREAM_STAGES,
+  isFinishedTurnStatus,
   type AssistantPayload,
-  type RecommendResultType,
   type StreamEventName,
   type StreamStage,
 } from "@an-movie/contracts";
@@ -104,7 +103,7 @@ function toStreamEvent(
     case STREAM_EVENT.STAGE:
       return toStageEvent(record);
     case STREAM_EVENT.FINAL: {
-      if (!isRecommendResultType(record.type) || !isRecord(record.data)) {
+      if (!isFinishedTurnStatus(record.type) || !isRecord(record.data)) {
         return null;
       }
       return {
@@ -193,13 +192,6 @@ function isStreamStage(value: unknown): value is StreamStage {
   return (
     typeof value === "string" &&
     (STREAM_STAGES as readonly string[]).includes(value)
-  );
-}
-
-function isRecommendResultType(value: unknown): value is RecommendResultType {
-  return (
-    typeof value === "string" &&
-    (RECOMMEND_RESULT_TYPES as readonly string[]).includes(value)
   );
 }
 

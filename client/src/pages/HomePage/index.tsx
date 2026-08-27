@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import Drawer from "@mui/material/Drawer";
-import { ApiError, isSessionExpiredError, request, streamChat } from "@/api";
+import { ApiError, isChatTimeoutError, isSessionExpiredError, request, streamChat } from "@/api";
 import {
+  CANCEL_REASON,
   STREAM_EVENT,
   STREAM_STAGE,
   type ChatStreamEvent,
@@ -74,6 +75,7 @@ export default function HomePage() {
     () => window.matchMedia(NARROW_MQ).matches,
   );
   const [loading, setLoading] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [streamStage, setStreamStage] =
     useState<ChatStreamStageEvent | null>(null);
   const [error, setError] = useState("");
@@ -84,6 +86,9 @@ export default function HomePage() {
   const sidebarCollapsed = usePreferences((s) => s.sidebarCollapsed);
   const toggleSidebarCollapsed = usePreferences((s) => s.toggleSidebarCollapsed);
   const sendingRef = useRef(false);
+  const stoppingRef = useRef(false);
+  const turnIdRef = useRef<string | null>(null);
+  const stopRequestedRef = useRef(false);
   const sessionGen = useRef(0);
   const conversationLoadGen = useRef(0);
   const interactionLocked = loading || detailsLoading;
@@ -303,6 +308,10 @@ export default function HomePage() {
 
     const requestGen = sessionGen.current;
     sendingRef.current = true;
+    stoppingRef.current = false;
+    stopRequestedRef.current = false;
+    turnIdRef.current = null;
+    setStopping(false);
     setLoading(true);
     setStreamStage(null);
     setError("");
@@ -326,11 +335,19 @@ export default function HomePage() {
         },
         (event) => {
           if (requestGen !== sessionGen.current) return;
-          applyChatStreamEvent(event, setConversationId, setMessages, setStreamStage);
           if (event.event === STREAM_EVENT.TURN) {
+            turnIdRef.current = event.turnId;
             rememberConversationIfNew(event.conversationId, trimmedMessage);
             void fetchConversations(requestGen, { silent: true });
+            if (stopRequestedRef.current) {
+              void requestCancelTurn(event.turnId, CANCEL_REASON.USER).catch(
+                (cancelError: unknown) => {
+                  handleCancelFailure(cancelError);
+                },
+              );
+            }
           }
+          applyChatStreamEvent(event, setConversationId, setMessages, setStreamStage);
         },
       );
     } catch (err) {
@@ -338,6 +355,13 @@ export default function HomePage() {
       if (isSessionExpiredError(err)) {
         handleSessionExpired();
         return;
+      }
+      if (isChatTimeoutError(err) && turnIdRef.current) {
+        try {
+          await requestCancelTurn(turnIdRef.current, CANCEL_REASON.TIMEOUT);
+        } catch {
+          /* 超时气泡照样展示；收口失败则轮次仍可能 running */
+        }
       }
       setError(
         err instanceof ApiError && err.message
@@ -361,10 +385,49 @@ export default function HomePage() {
     } finally {
       if (requestGen === sessionGen.current) {
         sendingRef.current = false;
+        stoppingRef.current = false;
+        stopRequestedRef.current = false;
+        turnIdRef.current = null;
+        setStopping(false);
         setLoading(false);
         setStreamStage(null);
         setImageData("");
       }
+    }
+  }
+
+  async function requestCancelTurn(
+    turnId: string,
+    reason: typeof CANCEL_REASON.USER | typeof CANCEL_REASON.TIMEOUT,
+  ) {
+    await request({
+      method: "POST",
+      url: API_PATH.chatCancel,
+      data: { turnId, reason },
+    });
+  }
+
+  function handleCancelFailure(err: unknown) {
+    stoppingRef.current = false;
+    setStopping(false);
+    if (isSessionExpiredError(err)) {
+      handleSessionExpired();
+      return;
+    }
+    toast.error(TEXT.chat.cancelFailed);
+  }
+
+  async function stopGenerating() {
+    if (!sendingRef.current || stoppingRef.current) return;
+    stoppingRef.current = true;
+    setStopping(true);
+    stopRequestedRef.current = true;
+    const turnId = turnIdRef.current;
+    if (!turnId) return;
+    try {
+      await requestCancelTurn(turnId, CANCEL_REASON.USER);
+    } catch (err) {
+      handleCancelFailure(err);
     }
   }
 
@@ -517,6 +580,7 @@ export default function HomePage() {
   };
 
   const composerDisabled = loading || detailsLoading;
+  const sendOrStopDisabled = detailsLoading || stopping;
   const sidebarSlotSize = sidebarCollapsed
     ? LAYOUT.SIDEBAR_RAIL_WIDTH_PX
     : LAYOUT.SIDEBAR_WIDTH_PX;
@@ -723,11 +787,18 @@ export default function HomePage() {
                 <div className={styles.actionButtons}>
                   <button
                     type="button"
-                    className={styles.sendButton}
-                    onClick={() => void sendMessage()}
-                    disabled={composerDisabled}
+                    className={`${styles.sendButton} ${loading ? styles.stopButton : ""}`}
+                    onClick={() => {
+                      if (loading) void stopGenerating();
+                      else void sendMessage();
+                    }}
+                    disabled={sendOrStopDisabled}
                   >
-                    {loading ? TEXT.chat.sending : TEXT.chat.send}
+                    {stopping
+                      ? TEXT.chat.stopping
+                      : loading
+                        ? TEXT.chat.stop
+                        : TEXT.chat.send}
                   </button>
                 </div>
               </div>

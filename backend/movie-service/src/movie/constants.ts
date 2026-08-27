@@ -91,6 +91,10 @@ export const MESSAGE_CONSTANTS = {
   COMPLETE_TURN_FAILED: "结果未能保存到会话，请稍后刷新或再试一次。",
   /** 开流后的未分类失败，避免把内部异常原文推到浏览器 */
   UNEXPECTED_FAILURE: "服务暂时不可用",
+  /** 用户点「停止」 */
+  CANCELLED: "已停止生成",
+  /** 前端等待上限到了，走 cancel reason=timeout */
+  TURN_TIMEOUT: "处理超时中断，请重新发送这条消息。",
 } as const;
 
 // ========== 类型映射 ==========

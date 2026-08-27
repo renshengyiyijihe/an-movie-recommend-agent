@@ -1,4 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { AbortContext } from "../../abort-context";
+import { isAbortError } from "../../errors/workflow-cancelled.error";
 import { ITool, ToolResult } from "./tool.interface";
 import { MovieDetailTool } from "./movie-detail.tool";
 import { MovieDiscoverTool } from "./movie-discover.tool";
@@ -55,6 +57,7 @@ export class ToolsRegistry {
    * 执行指定Tool
    */
   async execute(toolName: string, input: Record<string, any>): Promise<ToolResult> {
+    AbortContext.throwIfAborted();
     const tool = this.tools.get(toolName);
     if (!tool) {
       return {
@@ -72,6 +75,7 @@ export class ToolsRegistry {
       );
       return result;
     } catch (error) {
+      if (isAbortError(error)) throw error;
       this.logger.error(
         `Error executing tool ${toolName}: ${error instanceof Error ? error.message : String(error)}`,
       );

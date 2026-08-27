@@ -1,3 +1,5 @@
+import { constValues, omitKey } from "./const-map";
+
 /** 推荐卡片上的影片字段。后端汇总 JSON 与前端展示共用，别名字段是历史兼容。 */
 export interface RecommendationItem {
   id?: number;
@@ -49,38 +51,94 @@ export type ErrorPayload = {
   message: string;
 };
 
+/** 用户点「停止」后的助手气泡。超时仍走 {@link ErrorPayload}。 */
+export type CancelledPayload = {
+  kind: "cancelled";
+  message: string;
+};
+
 export type AssistantPayload =
   | RecommendationPayload
   | RejectPayload
-  | ErrorPayload;
+  | ErrorPayload
+  | CancelledPayload;
 
 /**
- * HTTP / SSE `final` 里的业务 type。不是气泡 `kind`，也不是 SSE 的 `event`。
+ * `turns.status` 全量。已结束取值也是 SSE `final.type`，不要再平行抄一份。
  */
-export const RECOMMEND_RESULT_TYPE = {
+export const TURN_STATUS = {
+  RUNNING: "running",
   SUCCESS: "success",
   REJECT: "reject",
   ERROR: "error",
+  /** 用户主动停止；写入 CompleteTurn 后再推 `final` */
+  CANCELLED: "cancelled",
 } as const;
 
-export const RECOMMEND_RESULT_TYPES = [
-  RECOMMEND_RESULT_TYPE.SUCCESS,
-  RECOMMEND_RESULT_TYPE.REJECT,
-  RECOMMEND_RESULT_TYPE.ERROR,
-] as const;
+export type TurnStatus = (typeof TURN_STATUS)[keyof typeof TURN_STATUS];
 
-export type RecommendResultType = (typeof RECOMMEND_RESULT_TYPES)[number];
+/**
+ * 已结束轮次，也是 HTTP / SSE `final` 的业务 `type`。
+ * 不是气泡 `kind`，也不是 SSE 的 `event`。
+ */
+export type FinishedTurnStatus = Exclude<
+  TurnStatus,
+  typeof TURN_STATUS.RUNNING
+>;
+
+/** 已结束取值列表，由 {@link TURN_STATUS} 去掉 `running` 得到。 */
+export const FINISHED_TURN_STATUSES = constValues(
+  omitKey(TURN_STATUS, "RUNNING"),
+);
+
+/**
+ * 运行时收窄为 {@link FinishedTurnStatus}。
+ *
+ * @param value 未知输入（gRPC 字符串、SSE JSON 等）
+ * @returns 是否为已结束轮次取值
+ * @example
+ * isFinishedTurnStatus("success") // → true
+ * isFinishedTurnStatus("running") // → false
+ */
+export function isFinishedTurnStatus(
+  value: unknown,
+): value is FinishedTurnStatus {
+  return (
+    typeof value === "string" &&
+    (FINISHED_TURN_STATUSES as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * `POST /movie/chat/cancel` 的 reason。
+ * 断线 / 刷新不算取消；只有停止按钮和前端超时会打这个口。
+ */
+export const CANCEL_REASON = {
+  /** 用户点「停止」 */
+  USER: "user",
+  /** 前端等待上限到了 */
+  TIMEOUT: "timeout",
+} as const;
+
+/** `reason` 合法取值，给 DTO `IsIn` 用。 */
+export const CANCEL_REASONS = constValues(CANCEL_REASON);
+
+/** 取消原因。 */
+export type CancelReason = (typeof CANCEL_REASONS)[number];
 
 /**
  * 一轮对话的业务结论。
- * SSE 的 `final` 事件 JSON 与此同形（另带 `event: "final"`）；
+ * SSE 的 `final` 事件在此基础上加 `event`；
  * 鉴权 / DTO 失败仍走 `{ code, message }` JSON，不走这里。
  */
-export interface RecommendResponse {
+export type ChatTurnResult = {
+  /** 会话 id；开流后的 `final` 会带上 */
   conversationId?: string;
-  type: RecommendResultType;
+  /** 已结束轮次取值，与 `turns.status` 同一份 */
+  type: FinishedTurnStatus;
+  /** 助手气泡 payload，与写入 CompleteTurn 的同一份 */
   data: AssistantPayload;
-}
+};
 
 export interface ConversationSummary {
   conversation_id: string;

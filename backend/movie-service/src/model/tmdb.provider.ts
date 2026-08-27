@@ -1,5 +1,6 @@
 ﻿import { Injectable, Logger } from "@nestjs/common";
 import { MetricsRegistry } from "@an-movie/auth-client";
+import { AbortContext } from "../movie/abort-context";
 
 /**
  * TMDB 查询参数。undefined / null / 空串不会写进 URL。
@@ -61,6 +62,8 @@ export class TmdbProvider {
       Authorization: "Bearer " + this.requireApiKey(),
     };
     const init: RequestInit = { method, headers };
+    const signal = AbortContext.current();
+    if (signal) init.signal = signal;
     if (method === "POST" && body !== undefined) {
       headers["Content-Type"] = "application/json";
       init.body = JSON.stringify(body);

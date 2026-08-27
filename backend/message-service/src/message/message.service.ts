@@ -9,14 +9,18 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { LessThan, Repository } from "typeorm";
 import { randomUUID } from "crypto";
 import { UserContext } from "@an-movie/auth-client";
+import {
+  FINISHED_TURN_STATUSES,
+  TURN_STATUS,
+  isFinishedTurnStatus,
+  type FinishedTurnStatus,
+} from "@an-movie/contracts";
 import { MilvusProvider } from "../milvus/milvus.provider";
 import {
   ConversationEntity,
-  FINISHED_TURN_STATUSES,
   MessageEntity,
   TurnEntity,
   TurnEventEntity,
-  TurnStatus,
 } from "./entities";
 import { parseJsonObject, toChatItem } from "./chat-item";
 import { MemoryItem } from "./message.grpc";
@@ -79,7 +83,7 @@ export class MessageService implements OnApplicationBootstrap, OnModuleDestroy {
     try {
       const cutoff = new Date(Date.now() - STALE_TURN_TIMEOUT_MS);
       const staleTurns = await this.turnRepository.find({
-        where: { status: "running", created_at: LessThan(cutoff) },
+        where: { status: TURN_STATUS.RUNNING, created_at: LessThan(cutoff) },
         take: 100,
       });
 
@@ -87,7 +91,7 @@ export class MessageService implements OnApplicationBootstrap, OnModuleDestroy {
         try {
           await this.finishTurn(
             turn.turn_id,
-            "error",
+            TURN_STATUS.ERROR,
             JSON.stringify({
               kind: "error",
               message: "处理超时中断，请重新发送这条消息。",
@@ -138,7 +142,7 @@ export class MessageService implements OnApplicationBootstrap, OnModuleDestroy {
       }
 
       const running = await manager.findOne(TurnEntity, {
-        where: { conversation_id: conversationId, status: "running" },
+        where: { conversation_id: conversationId, status: TURN_STATUS.RUNNING },
       });
       if (running) {
         throw new TurnInProgressError();
@@ -149,7 +153,7 @@ export class MessageService implements OnApplicationBootstrap, OnModuleDestroy {
         manager.create(TurnEntity, {
           turn_id: turnId,
           conversation_id: conversationId,
-          status: "running",
+          status: TURN_STATUS.RUNNING,
         }),
       );
       await manager.save(
@@ -199,6 +203,7 @@ export class MessageService implements OnApplicationBootstrap, OnModuleDestroy {
 
   /**
    * `memoryText` 只有正常完成的轮次才会带；僵死轮次清扫不传，不写向量库。
+   * 用行锁保证 success 与 cancelled 并发时只有一方写入气泡。
    */
   private async finishTurn(
     turnId: string,
@@ -206,55 +211,83 @@ export class MessageService implements OnApplicationBootstrap, OnModuleDestroy {
     assistantPayloadJson: string,
     memoryText?: string,
   ) {
-    const turn = await this.turnRepository.findOne({
-      where: { turn_id: turnId },
-    });
-    if (!turn) {
-      throw new NotFoundException(`Turn not found: ${turnId}`);
-    }
-
     const finishedStatus = this.parseFinishedStatus(status);
     const assistantPayload = parseJsonObject(
       assistantPayloadJson,
       "assistant_payload_json",
     );
-    const existingAssistant = await this.messageRepository.findOne({
-      where: { turn_id: turnId, role: "assistant" },
-    });
 
-    if (turn.status !== "running" && existingAssistant) {
-      return { assistant_message_id: existingAssistant.id };
+    const result = await this.turnRepository.manager.transaction(
+      async (manager) => {
+        const turn = await manager.findOne(TurnEntity, {
+          where: { turn_id: turnId },
+          lock: { mode: "pessimistic_write" },
+        });
+        if (!turn) {
+          throw new NotFoundException(`Turn not found: ${turnId}`);
+        }
+
+        const existingAssistant = await manager.findOne(MessageEntity, {
+          where: { turn_id: turnId, role: "assistant" },
+        });
+
+        if (turn.status !== TURN_STATUS.RUNNING) {
+          return {
+            applied: false,
+            assistant_message_id: existingAssistant?.id ?? "",
+            status: turn.status,
+            payload: existingAssistant?.content ?? {},
+            turn,
+          };
+        }
+
+        const assistantMessageId = existingAssistant?.id ?? randomUUID();
+        if (!existingAssistant) {
+          await manager.save(
+            MessageEntity,
+            manager.create(MessageEntity, {
+              id: assistantMessageId,
+              conversation_id: turn.conversation_id,
+              turn_id: turnId,
+              role: "assistant",
+              content: assistantPayload,
+            }),
+          );
+        }
+
+        turn.status = finishedStatus;
+        turn.finished_at = new Date();
+        await manager.save(turn);
+
+        await manager.update(
+          ConversationEntity,
+          { conversation_id: turn.conversation_id },
+          { updated_at: new Date() },
+        );
+
+        return {
+          applied: !existingAssistant,
+          assistant_message_id: assistantMessageId,
+          status: finishedStatus,
+          payload: existingAssistant?.content ?? assistantPayload,
+          turn,
+        };
+      },
+    );
+
+    if (result.applied) {
+      this.indexMemoryIfNeeded(
+        result.assistant_message_id,
+        result.turn,
+        memoryText,
+      );
     }
 
-    const assistantMessageId = existingAssistant?.id ?? randomUUID();
-
-    await this.turnRepository.manager.transaction(async (manager) => {
-      if (!existingAssistant) {
-        await manager.save(
-          MessageEntity,
-          manager.create(MessageEntity, {
-            id: assistantMessageId,
-            conversation_id: turn.conversation_id,
-            turn_id: turnId,
-            role: "assistant",
-            content: assistantPayload,
-          }),
-        );
-      }
-
-      turn.status = finishedStatus;
-      turn.finished_at = new Date();
-      await manager.save(turn);
-
-      await manager.update(
-        ConversationEntity,
-        { conversation_id: turn.conversation_id },
-        { updated_at: new Date() },
-      );
-    });
-
-    this.indexMemoryIfNeeded(assistantMessageId, turn, memoryText);
-    return { assistant_message_id: assistantMessageId };
+    return {
+      assistant_message_id: result.assistant_message_id,
+      status: result.status,
+      payload: result.payload,
+    };
   }
 
   async listConversations() {
@@ -404,12 +437,12 @@ export class MessageService implements OnApplicationBootstrap, OnModuleDestroy {
     return Number(raw?.max ?? 0) + 1;
   }
 
-  private parseFinishedStatus(status: string): TurnStatus {
-    if (status === "success" || status === "reject" || status === "error") {
+  private parseFinishedStatus(status: string): FinishedTurnStatus {
+    if (isFinishedTurnStatus(status)) {
       return status;
     }
     throw new Error(
-      `Invalid turn status "${status}". Expected one of: success, reject, error`,
+      `Invalid turn status "${status}". Expected one of: ${FINISHED_TURN_STATUSES.join(", ")}`,
     );
   }
 

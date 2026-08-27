@@ -1,5 +1,6 @@
 export type {
   AssistantPayload,
+  CancelledPayload,
   ConversationChatItem,
   ConversationDetail,
   ConversationSummary,
@@ -8,7 +9,7 @@ export type {
   ErrorResponseBody,
   RecommendationItem,
   RecommendationPayload,
-  RecommendResponse,
+  ChatTurnResult,
   RejectPayload,
   UserMessagePayload,
 } from "@an-movie/contracts";
@@ -17,6 +18,7 @@ import type {
   ErrorPayload,
   RecommendationPayload,
   RejectPayload,
+  CancelledPayload,
   UserMessagePayload,
 } from "@an-movie/contracts";
 
@@ -24,4 +26,5 @@ export type ChatMessage =
   | { role: "user"; kind: "user_query"; payload: UserMessagePayload }
   | { role: "assistant"; kind: "recommendation"; payload: RecommendationPayload }
   | { role: "assistant"; kind: "reject"; payload: RejectPayload }
-  | { role: "assistant"; kind: "error"; payload: ErrorPayload };
+  | { role: "assistant"; kind: "error"; payload: ErrorPayload }
+  | { role: "assistant"; kind: "cancelled"; payload: CancelledPayload };

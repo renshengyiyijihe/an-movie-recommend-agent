@@ -8,6 +8,7 @@ import {
   UserContext,
   resolveProtoFile,
 } from "@an-movie/auth-client";
+import type { FinishedTurnStatus } from "@an-movie/contracts";
 import { AssistantPayload, UserMessagePayload } from "./transcript";
 
 interface CreateConversationRequest {
@@ -30,6 +31,8 @@ interface AppendTurnEventResponse {
 
 interface CompleteTurnResponse {
   assistant_message_id: string;
+  status?: string;
+  assistant_payload_json?: string;
 }
 
 export interface ConversationChatItem {
@@ -120,7 +123,7 @@ export class MessageGrpcClient implements OnModuleInit {
    */
   completeTurn(
     turnId: string,
-    status: "success" | "reject" | "error",
+    status: FinishedTurnStatus,
     assistantPayload: AssistantPayload,
     memoryText?: string,
   ): Promise<CompleteTurnResponse> {

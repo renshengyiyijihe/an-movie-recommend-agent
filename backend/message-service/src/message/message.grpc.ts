@@ -1,4 +1,4 @@
-import { Controller, Logger, UseGuards } from "@nestjs/common";
+import { Controller, Logger, NotFoundException, UseGuards } from "@nestjs/common";
 import { GrpcMethod, RpcException } from "@nestjs/microservices";
 import { status } from "@grpc/grpc-js";
 import { GrpcUserGuard } from "../auth/grpc-user.guard";
@@ -117,12 +117,27 @@ export class MessageGrpcService {
     this.logger.log(
       `gRPC CompleteTurn turn_id=${request.turn_id} status=${request.status}`,
     );
-    return this.messageService.completeTurn(
-      request.turn_id,
-      request.status,
-      request.assistant_payload_json,
-      request.memory_text,
-    );
+    try {
+      const result = await this.messageService.completeTurn(
+        request.turn_id,
+        request.status,
+        request.assistant_payload_json,
+        request.memory_text,
+      );
+      return {
+        assistant_message_id: result.assistant_message_id,
+        status: result.status,
+        assistant_payload_json: JSON.stringify(result.payload ?? {}),
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw new RpcException({
+          code: status.NOT_FOUND,
+          message: error.message,
+        });
+      }
+      throw error;
+    }
   }
 
   @GrpcMethod("Message", "GetConversation")

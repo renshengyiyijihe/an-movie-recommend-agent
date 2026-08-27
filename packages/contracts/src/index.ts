@@ -1,6 +1,8 @@
 export { ERROR_CODE } from "./error-codes";
 export type { ErrorCode, ErrorResponseBody } from "./error-codes";
 
+export { constValues, omitKey } from "./const-map";
+
 export {
   AUTH_PASSWORD_MAX_LENGTH,
   AUTH_PASSWORD_MIN_LENGTH,
@@ -9,20 +11,26 @@ export {
 } from "./auth-rules";
 
 export {
-  RECOMMEND_RESULT_TYPE,
-  RECOMMEND_RESULT_TYPES,
+  CANCEL_REASON,
+  CANCEL_REASONS,
+  FINISHED_TURN_STATUSES,
+  TURN_STATUS,
+  isFinishedTurnStatus,
 } from "./chat";
 export type {
   AssistantPayload,
+  CancelledPayload,
+  CancelReason,
+  ChatTurnResult,
   ConversationChatItem,
   ConversationDetail,
   ConversationSummary,
   ErrorPayload,
+  FinishedTurnStatus,
   RecommendationItem,
   RecommendationPayload,
-  RecommendResponse,
-  RecommendResultType,
   RejectPayload,
+  TurnStatus,
   UserMessagePayload,
 } from "./chat";
 

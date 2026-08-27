@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { PromptTemplateService } from "../services/prompt-template.service";
 import { RetryableFormatError } from "../errors/retryable-format.error";
+import { isAbortError } from "../errors/workflow-cancelled.error";
 import {
   asRecord,
   executeWithRetry,
@@ -139,6 +140,7 @@ export class OrchestratorAgent {
         agent_results: ctx.getPublicResults(),
       };
     } catch (error) {
+      if (isAbortError(error)) throw error;
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`[Orchestrator] Error: ${message}`);
       ctx.shared.finalResult = `处理失败: ${message}`;
@@ -205,6 +207,7 @@ export class OrchestratorAgent {
         };
       });
     } catch (error) {
+      if (isAbortError(error)) throw error;
       if (error instanceof RetryableFormatError) {
         return {
           type: INTENT_TYPE.UNKNOWN,
@@ -262,6 +265,7 @@ export class OrchestratorAgent {
         }
       });
     } catch (error) {
+      if (isAbortError(error)) throw error;
       this.logger.warn(
         `Task planning failed after retries: ${error instanceof Error ? error.message : String(error)}`,
       );
@@ -335,6 +339,7 @@ export class OrchestratorAgent {
           }
         }
       } catch (error) {
+        if (isAbortError(error)) throw error;
         ctx.publish(agentType, {
           success: false,
           result: error instanceof Error ? error.message : String(error),
@@ -413,6 +418,7 @@ export class OrchestratorAgent {
         return JSON.stringify({ ...parsed, text, movies });
       });
     } catch (error) {
+      if (isAbortError(error)) throw error;
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(`[Orchestrator] Result synthesis failed: ${message}`);
       throw error;

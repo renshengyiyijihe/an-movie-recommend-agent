@@ -4,6 +4,7 @@ import {
   CompatibleModel,
   LlmStage,
 } from "./types";
+import { AbortContext } from "./abort-context";
 import { TurnEventBody, WorkflowActor } from "./turn-events";
 
 /**
@@ -24,6 +25,7 @@ export async function invokeLlm(
     record?: (body: TurnEventBody) => Promise<void>;
   },
 ): Promise<unknown> {
+  AbortContext.throwIfAborted();
   const started = Date.now();
   try {
     const response = await model.invoke(messages, { stage: options.stage });

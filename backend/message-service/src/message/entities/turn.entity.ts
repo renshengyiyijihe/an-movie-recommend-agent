@@ -7,17 +7,10 @@ import {
   OneToMany,
   PrimaryGeneratedColumn,
 } from "typeorm";
+import type { TurnStatus } from "@an-movie/contracts";
 import { ConversationEntity } from "./conversation.entity";
 import { MessageEntity } from "./message.entity";
 import { TurnEventEntity } from "./turn-event.entity";
-
-export const TURN_STATUSES = ["running", "success", "reject", "error"] as const;
-export type TurnStatus = (typeof TURN_STATUSES)[number];
-export const FINISHED_TURN_STATUSES: TurnStatus[] = [
-  "success",
-  "reject",
-  "error",
-];
 
 @Entity({ name: "turns" })
 export class TurnEntity {

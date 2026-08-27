@@ -2,7 +2,8 @@
  * `POST /movie/chat` 的 SSE 契约。
  * 鉴权 / DTO 失败仍走 JSON 错误体；开流之后只推这些事件。
  */
-import type { AssistantPayload, RecommendResultType } from "./chat";
+import type { ChatTurnResult } from "./chat";
+import { constValues } from "./const-map";
 
 /** SSE 帧里的 `event:` 名，也写在 JSON 的 `event` 字段上，丢了帧头仍能认。 */
 export const STREAM_EVENT = {
@@ -16,13 +17,8 @@ export const STREAM_EVENT = {
   ERROR: "error",
 } as const;
 
-/** SSE 事件名元组，供 `includes` 校验。 */
-export const STREAM_EVENTS = [
-  STREAM_EVENT.TURN,
-  STREAM_EVENT.STAGE,
-  STREAM_EVENT.FINAL,
-  STREAM_EVENT.ERROR,
-] as const;
+/** SSE 事件名列表，供 `includes` 校验。 */
+export const STREAM_EVENTS = constValues(STREAM_EVENT);
 
 /** SSE 事件名。 */
 export type StreamEventName = (typeof STREAM_EVENTS)[number];
@@ -42,13 +38,8 @@ export const STREAM_STAGE = {
   AGENT: "agent",
 } as const;
 
-/** 阶段名元组。 */
-export const STREAM_STAGES = [
-  STREAM_STAGE.INTENT,
-  STREAM_STAGE.PLAN,
-  STREAM_STAGE.TOOL,
-  STREAM_STAGE.AGENT,
-] as const;
+/** 阶段名列表。 */
+export const STREAM_STAGES = constValues(STREAM_STAGE);
 
 /** 阶段名。 */
 export type StreamStage = (typeof STREAM_STAGES)[number];
@@ -116,14 +107,11 @@ export type ChatStreamStageEvent =
   | ChatStreamAgentStage;
 
 /**
- * 业务结论。`type` / `data` 与改流式之前的 JSON 成功体相同。
+ * 业务结论。`type` / `data` 与 {@link ChatTurnResult} 同一份，只多 `event`。
  */
 export type ChatStreamFinalEvent = {
   event: typeof STREAM_EVENT.FINAL;
-  conversationId?: string;
-  type: RecommendResultType;
-  data: AssistantPayload;
-};
+} & ChatTurnResult;
 
 /** 未能收成 `final`。 */
 export type ChatStreamErrorEvent = {

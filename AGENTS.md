@@ -4,7 +4,7 @@
 
 ## 项目是什么
 
-自然语言电影推荐系统。用户描述类型、心情、演员、时长、评分等偏好（前端还可上传图片），后端用 LLM 做意图识别与任务规划，再通过 TMDB 工具检索，返回结构化推荐。
+面向电影领域的自然语言 Agent。用户可以用自然语言提问、检索、查人物关系、要推荐（前端还可上传图片）；后端用 LLM 做意图识别与任务规划，再通过 TMDB 工具检索，返回结构化结果。
 
 技术栈：React 18 + Vite 前端；三个独立 NestJS 10 服务；PostgreSQL；Milvus 向量检索；LangChain / SiliconFlow；TMDB。包管理器统一为 **pnpm 10.15.0**。
 
@@ -105,6 +105,8 @@ POST /api/movie/chat   Accept: text/event-stream
 | `final` | **先** `CompleteTurn` **再**推 | `type` + `data` 与写入 payload 同一份 | 收成一条助手气泡 |
 | `error` | 开流后未收成 `final` | `message`（`UNEXPECTED_FAILURE`） | 错误气泡 |
 
+`final.type` 为 `success` / `reject` / `error` / `cancelled`（`TURN_STATUS` 去掉 `running`，即 `FinishedTurnStatus`）。用户点「停止」走 `POST /api/movie/chat/cancel`（JSON，不是 SSE），`reason` 为 `user` 或 `timeout`。取消令牌用 movie-service 的 `AbortContext`（ALS），不要把 `signal` 从 Orchestrator 传到 Tool。断线 / 刷新**不**取消工作流；只有停止按钮和前端超时会 abort + CAS 收口。汇总已经算出可写结果时，仍按成功落库（与 cancel 并发由 `finishTurn` 行锁决定）。写入失败不得推 `success` / `reject` / `cancelled`。不要用 `EventSource`（它只支持 GET）；前端用 `fetch` + `streamChat()`。停止时不要 `abort()` 那条 SSE，等原来的 `final`。
+
 `stage` 由 `turn_events.kind` 精简而来，不是 kind 全集：
 
 | `stage` | 来自 | 不推 |
@@ -114,7 +116,7 @@ POST /api/movie/chat   Accept: text/event-stream
 | `tool` | `tool_call`（每个 tool 返回后立刻 record） | 汇总开始（没有单独 stage） |
 | `agent` | `agent_result` | |
 
-`final.type` 为 `success` / `reject` / `error`（`RECOMMEND_RESULT_TYPE`），与气泡 `kind`、SSE `event` 不是同一套字。写入失败不得推 `success` / `reject`。不要用 `EventSource`（它只支持 GET）；前端用 `fetch` + `streamChat()`。
+`final.type` 与气泡 `kind`、SSE `event` 不是同一套字。
 
 ## 后端服务
 
@@ -134,10 +136,11 @@ POST /api/movie/chat   Accept: text/event-stream
 
 | 层 | 路径 | 做什么 |
 | --- | --- | --- |
-| HTTP 入口 | `movie/movie.controller.ts` | 仅 `/movie/chat`：鉴权过了就开 SSE；DTO 在 `movie/dto/chat.dto.ts` |
+| HTTP 入口 | `movie/movie.controller.ts` | `/movie/chat` 开 SSE；`/movie/chat/cancel` 收口轮次。DTO：`chat.dto.ts` / `cancel-chat.dto.ts` |
 | SSE 编解码 | `movie/chat-stream.ts` | 开流、写帧、`turn_events` → `stage` |
 | 鉴权上下文 | `auth/` | `JwtAuthGuard`、`UserContext`、gRPC metadata `user-id` |
-| 编排门面 | `movie/movie.service.ts` | 会话、调 Orchestrator、`emit` 流事件 |
+| 编排门面 | `movie/movie.service.ts` | 会话、调 Orchestrator、`emit` 流事件、`cancelTurn` |
+| 取消令牌 | `movie/abort-context.ts`、`movie/turn-abort.registry.ts` | ALS `AbortSignal`；不要往 Agent/Tool 传 `signal` |
 | Agent | `movie/agents/` | 意图、规划、搜索、关系 |
 | 工作副本 | `movie/working-set.ts` | 本轮内存数据；Tool 完整结果只进这里 |
 | 规划校验 | `movie/task-plan.ts` | Zod 收口 `TaskPlan`；relation 不可用则改 search |
@@ -157,8 +160,8 @@ LLM：只读 `LLM_API_KEY`（缺了就起不来）和可选 `LLM_BASE_URL`（默
 - REST（`JwtAuthGuard`）：`POST /message/conversations`、`GET /message/conversations`、`GET /message/conversations/:id`。
 - gRPC：`CreateConversation`、`StartTurn`、`AppendTurnEvent`、`CompleteTurn`、`GetConversation`、`GetTurn`、`SearchSimilarContext`。调用身份走 metadata `user-id`（`GrpcUserGuard`），proto 请求体不带 `user_id`。只允许会话主人，无主会话和越权一律按「不存在」处理。内部清扫僵死轮次走 `finishTurn`，不经过用户上下文。
 - TypeORM `synchronize: true`，表 `conversations` / `turns` / `messages` / `turn_events`。
-- `turns` 只管一轮的 `running | success | reject | error`，不存问答正文。
-- `messages.content` 是可见气泡的 JSONB（`user_query` / `recommendation` / `reject` / `error`）。`GetConversation` 返回已完成轮次的全部气泡 + running 轮次的用户消息（刷新后能看到未回答的提问），扁平 `ChatItem` 给前端直接展示。
+- `turns` 只管一轮的 `running | success | reject | error | cancelled`，不存问答正文。
+- `messages.content` 是可见气泡的 JSONB（`user_query` / `recommendation` / `reject` / `error` / `cancelled`）。`GetConversation` 返回已完成轮次的全部气泡 + running 轮次的用户消息（刷新后能看到未回答的提问），扁平 `ChatItem` 给前端直接展示。
 - 停留在 `running` 超过 10 分钟的轮次由 `MessageService.sweepStaleTurns`（启动即清一次，之后每分钟）复用 `finishTurn` 收尾成 `error`，并写入一条 assistant error 气泡。
 - `turn_events.body` 是 Agent 内部时间线 JSONB；message-service 不解析 `kind`。`seq` 由服务端按轮次递增。
 - 推荐成功且 payload 含 `summary` 时异步写入 Milvus collection `message_summary_embeddings`（维度 1024，embedding 默认 `BAAI/bge-m3`）。Milvus 失败不阻断主流程。
@@ -233,7 +236,7 @@ Prompt 入口（改提示词只动这个文件）：
 - 布局：TopBar + **左侧会话栏** + 右侧主聊天。桌面常驻 `ConversationSidebar`（展开约 280px，收起约 56px 图标轨，宽度有过渡）。展开/收起只在侧栏轨上操作，状态是用户本地偏好，走 `store/preferences.ts`（localStorage 整包 JSON，键 `PREFERENCES_STORAGE_KEY.ALL`）。窄屏（`LAYOUT.NARROW_MAX_PX` = 760）隐藏固定栏，顶栏用菜单图标切换 MUI `Drawer`（不持久化）；抽屉里同一颗收起按钮会关掉抽屉。未登录侧栏只给登录引导，不请求会话 API。
 - 会话主入口是侧栏，不是配置弹窗。登录后 `GET /api/message/conversations` 拉列表。点选 `GET /api/message/conversations/:id`（`conversationDetailPath`）把气泡载入主聊天；详情未成功前不要改当前 `conversationId`。路径写在 `API_PATH`，不要在页面里再写死 `/api/message/...`。
 - 「新对话」只清本地 `conversationId` / `messages`，**不要**预先 `POST /message/conversations`（会留下无标题空行）。首条发送仍由 movie-service `ensureConversation` 创建（title = 用户原话）。SSE `turn` 后侧栏若没有该项则插入，再静默 refetch。
-- 发送中或正在拉详情时禁止切换/新建：断开不会取消后端轮次，SSE 仍会写入当前 `messages`。用 `conversationLoadGen` 丢掉过期的详情响应。
+- 发送中或正在拉详情时禁止切换/新建：断开 SSE **不会**取消后端轮次，工作流会继续并 `CompleteTurn`。点「停止」走 `POST /api/movie/chat/cancel`，不要 abort 那条 chat 流。用 `conversationLoadGen` 丢掉过期的详情响应。
 - `ConfigModal` 与 TopBar「配置」**保留**。左侧可切「账号」和「会话消息」。账号页只展示资料和「修改用户名 / 修改密码」入口，点按钮再开独立弹窗填表，不要把表单直接铺在账号页。点弹窗里的会话也走同一套 `loadConversation` 进主聊天，弹窗内纯文本预览仍在。不要把侧栏列表再塞回配置，也不要删掉配置入口。
 - 状态：Zustand 为 `store/auth.ts`（token 在 `localStorage`）、toast、`store/preferences.ts`（用户本地偏好，本机持久化，不跟账号走，也不只限界面开关）。会话列表 / 当前对话放 `HomePage` 本地 state，不要为工作台数据再加全局 store。
 - HTTP：`api.ts` 的 `request()` 自动带 Bearer；`baseURL: '/'`。**只有 chat 走 `streamChat()` 读 SSE**，其它接口继续 `request()`。鉴权失效用 `isSessionExpiredError()`（登录 401「密码错误」、改密 401「当前密码错误」都不算过期）。Docker 下由 nginx 反代；本地 `vite` 默认 **没有** 把 `/api` 转到后端。
@@ -284,7 +287,7 @@ Prompt 入口（改提示词只动这个文件）：
 - 会话历史投影：用 `conversation-history.ts`。`error` / `reject` 气泡不要进 prompt。用户正文用 `<user_query>` / `<conversation_history>` 包起来。
 - 工作副本读写：用 `WorkingSet` / `buildEvidenceView`，不要把 Tool `data` 整包 `JSON.stringify` 进汇总 prompt。人物/影片加**标量**字段：改 `PersonRecord` / `MovieRecord`，并只在 `readPersonRecord` / `readMovieRecord` 取值；不要再给 `upsert*` 手写一遍赋值。只有需要去重合并的数组才进 `PERSON_COLLECTIONS` / `MOVIE_COLLECTIONS`。
 - 类型：Agent / 规划 / 视图合同在 `types.ts`；工作副本记录类型在 `working-set.ts`。genre 映射在 `constants.ts`。不要在 agent 文件里再声明一份公用联合类型。公共类型用 **TSDoc**（即 JSDoc 的 `/** */`）：常量对象、联合类型、接口以及**每个字段**都要写清含义；函数写 `@param` / `@returns`。**工具函数**（把一种数据收成另一种）必须写 `@example`：**一条业务数据就够**，但要看得出从哪来、中间丢掉了什么、输出字段写全（不要 `{ id: 1 }` 或 `...`）。编排、Agent、HTTP 入口不必硬凑示例。
-- **禁止硬编码封闭取值。** `AGENT_TYPE`、`INTENT_TYPE`、`RELATION_STRATEGY`、`RELATION_ROLE`、`TOOL_NAME`、`VIEW_ANSWER`、`HISTORY_PROJECTION_KIND`、`LLM_STAGE` 等已在 `types.ts` 定义的常量，以及 contracts 里的 `STREAM_EVENT` / `STREAM_STAGE` / `RECOMMEND_RESULT_TYPE`，业务代码、Zod、prompt 插值一律引用常量，不要写 `"search"` / `"relation"` / `"final"` 这种字面量。新增封闭集合时先加常量对象，再导出 `as const` 数组给 Zod `z.enum`。TMDB 响应字段名（如 JSON 里的 `cast` 属性）和 HTTP 对外 JSON 字段（如汇总里的 `movies` 数组）属于外部契约，不在此列。
+- **禁止硬编码封闭取值。** `AGENT_TYPE`、`INTENT_TYPE`、`RELATION_STRATEGY`、`RELATION_ROLE`、`TOOL_NAME`、`VIEW_ANSWER`、`HISTORY_PROJECTION_KIND`、`LLM_STAGE` 等已在 `types.ts` 定义的常量，以及 contracts 里的 `STREAM_EVENT` / `STREAM_STAGE` / `TURN_STATUS`，业务代码、Zod、prompt 插值一律引用常量，不要写 `"search"` / `"relation"` / `"final"` 这种字面量。新增封闭集合时先加常量对象，值列表用 `constValues` 从对象导出，不要再手抄一份。TMDB 响应字段名（如 JSON 里的 `cast` 属性）和 HTTP 对外 JSON 字段（如汇总里的 `movies` 数组）属于外部契约，不在此列。
 - LLM 结构化输出必须可被 `tryParseJson` 解析；成功回复的可见字段是 `text` + `movies`，拒绝/失败是 `message`。视图的 `answer` 为 `people` / `fact` 时，不要把人物 id 写进 `movies`。
 - 跨服务契约先改 `backend/proto/*.proto`，再改 client/server 实现。
 - 日志用 `Logger`，关键路径已有 `query` / `intent` / `tool` 日志，保持同风格。
@@ -305,6 +308,7 @@ Prompt 入口（改提示词只动这个文件）：
 | 业务错误 | `backend/movie-service/src/movie/errors/` |
 | 历史投影 | `backend/movie-service/src/movie/conversation-history.ts` |
 | 可见消息 / 事件类型 | `packages/contracts/`（`chat.ts` / `stream.ts`）、`backend/movie-service/src/movie/transcript.ts`、`turn-events.ts` |
+| 轮次状态 | `packages/contracts` 的 `TURN_STATUS`；已结束取值是 `FinishedTurnStatus` / `FINISHED_TURN_STATUSES`（去掉 `running`），不要在 entity 里再抄一份 |
 | 会话 gRPC | `backend/movie-service/src/movie/message.grpc.ts`、`backend/proto/message.proto` |
 | 意图与调度 | `backend/movie-service/src/movie/agents/orchestrator.agent.ts` |
 | 工具规划与执行 | `backend/movie-service/src/movie/agents/search.agent.ts` |
@@ -315,6 +319,7 @@ Prompt 入口（改提示词只动这个文件）：
 | 会话与向量 | `backend/message-service/src/message/message.service.ts` |
 | 登录鉴权 | `backend/auth-service/src/auth/auth.service.ts` |
 | 前端聊天 | `client/src/pages/HomePage/index.tsx`、`client/src/api.ts` |
+| 前端停止生成 | `POST /api/movie/chat/cancel`；`AbortContext` / `TurnAbortRegistry` |
 | 前端会话工作台 | `client/src/components/ConversationSidebar/`、`client/src/utils/conversation.ts`、`client/src/store/preferences.ts` |
 | 前端登录/改密/改用户名 | `client/src/components/AuthModal/`、`client/src/components/ConfigModal/`、`client/src/store/auth.ts` |
 | 反代 | `client/nginx.conf`、`docker-compose.yml` |
@@ -328,7 +333,7 @@ Prompt 入口（改提示词只动这个文件）：
 - `JWT_SECRET` 必须显式配置，代码不再回退 `dev_secret`。
 - 内部 gRPC 信任 metadata 里的 `user-id`（依赖 Docker 网络隔离，message-service 不再二次验 JWT）。
 - 图片主链路仍未消费 `imageData`。
-- chat 开流后客户端超时/断开不会取消工作流；轮次仍是 `running`，立刻重发会撞「上一轮还在处理」。因此前端发送中会锁侧栏切换；配置弹窗里的会话项本身未 disable，但 `loadConversation` 会拒绝并 toast。
+- chat 开流后客户端断开不会取消工作流；轮次会一直跑到 `CompleteTurn`。立刻重发仍可能撞「上一轮还在处理」。前端发送中锁侧栏；点「停止」或等待超时会 `POST /movie/chat/cancel` 解开 `running`。配置弹窗里的会话项本身未 disable，但 `loadConversation` 会拒绝并 toast。
 - Relation 未做：计数/排名、多跳路径、公司/系列。规划应标 `unsupported` 或直接 `search`，不要假装能算。
 - 工作副本不跨请求保留；指代「刚才那批结果再筛」目前只能靠历史文本 + 重新取数。
 - 共享包由 `packages/Dockerfile` 编一次，各服务 `FROM an-movie-packages AS packages` 再 `COPY --from=packages`。不要用 `additional_contexts`（旧 BuildKit 没有 named context）。须先 `docker compose build packages` 再 `up --build`。`packages` 服务只产镜像，启动后立刻退出，`compose ps` 里 Exited 是正常的。

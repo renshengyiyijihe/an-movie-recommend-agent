@@ -55,6 +55,12 @@ export function isSessionExpiredError(error: unknown): boolean {
   );
 }
 
+const CHAT_TIMEOUT_NAME = "ChatTimeoutError";
+
+export function isChatTimeoutError(error: unknown): boolean {
+  return error instanceof ApiError && error.name === CHAT_TIMEOUT_NAME;
+}
+
 export async function request<T = unknown>(config: AxiosRequestConfig): Promise<T> {
   const token = readToken();
   if (!config.headers) config.headers = {};
@@ -113,7 +119,9 @@ export async function streamChat(
   } catch (error: unknown) {
     if (error instanceof ApiError) throw error;
     if (isAbortError(error)) {
-      throw new ApiError(TEXT.chat.timeout, 0);
+      const timeoutError = new ApiError(TEXT.chat.timeout, 0);
+      timeoutError.name = CHAT_TIMEOUT_NAME;
+      throw timeoutError;
     }
     throw toApiError(error);
   } finally {

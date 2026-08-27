@@ -6,6 +6,11 @@ import { Logger } from "@nestjs/common";
 import { clamp, isArray, isPlainObject, keyBy, take, uniq, values } from "lodash-es";
 import { WORKFLOW_CONSTANTS } from "./constants";
 import { RetryableFormatError } from "./errors/retryable-format.error";
+import {
+  isAbortError,
+  WorkflowCancelledError,
+} from "./errors/workflow-cancelled.error";
+import { AbortContext } from "./abort-context";
 
 const jsonLogger = new Logger("tryParseJson");
 
@@ -271,7 +276,7 @@ export function yearFromReleaseDate(
 
 /**
  * 只重试 {@link RetryableFormatError}（JSON / Zod 格式）。
- * 网络、超时直接抛出，避免和 SDK 重试相乘。
+ * 网络、超时、取消直接抛出，避免和 SDK 重试相乘。
  * @param operation 要执行的异步操作
  * @param maxRetries 格式错误的最大尝试次数（含第一次）
  * @param backoffMs 重试间隔（毫秒）
@@ -282,20 +287,41 @@ export async function executeWithRetry<T>(
   maxRetries: number = WORKFLOW_CONSTANTS.MAX_RETRIES,
   backoffMs: number = WORKFLOW_CONSTANTS.RETRY_BACKOFF_MS,
 ): Promise<T> {
+  const signal = AbortContext.current();
   let lastError: Error | undefined;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    AbortContext.throwIfAborted();
     try {
       return await operation();
     } catch (error) {
+      if (isAbortError(error)) throw error;
       lastError = error instanceof Error ? error : new Error(String(error));
       const retryable = lastError instanceof RetryableFormatError;
       if (!retryable || attempt >= maxRetries) {
         throw lastError;
       }
-      await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      await abortableSleep(backoffMs, signal);
     }
   }
 
   throw lastError || new Error("Operation failed after retries");
+}
+
+function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new WorkflowCancelledError());
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new WorkflowCancelledError());
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }

@@ -3,6 +3,7 @@ import { AIMessage, HumanMessage, SystemMessage } from "@langchain/core/messages
 import { ChatOpenAI } from "@langchain/openai";
 import { MetricsRegistry } from "@an-movie/auth-client";
 import { asRecord, readFiniteNumber } from "../movie/helpers";
+import { AbortContext } from "../movie/abort-context";
 import type {
   ChatMessage,
   CompatibleModel,
@@ -155,7 +156,9 @@ export class ModelProvider {
       async invoke(messages: ChatMessage[], options: { stage: LlmStage }) {
         const started = Date.now();
         try {
-          const response = await client.invoke(toLangChainMessages(messages));
+          const response = await client.invoke(toLangChainMessages(messages), {
+            signal: AbortContext.current(),
+          });
           const durationMs = Date.now() - started;
           const tokens = readTokenUsage(response);
           const usage: LlmUsage = {

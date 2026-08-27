@@ -4,6 +4,7 @@ import { MovieController } from './movie.controller';
 import { MovieService } from './movie.service';
 import { ModelProvider } from '../model/model.provider';
 import { MessageGrpcClient } from './message.grpc';
+import { TurnAbortRegistry } from './turn-abort.registry';
 import { AgentsModule } from './agents/agents.module';
 import { ServicesModule } from './services/services.module';
 
@@ -12,6 +13,7 @@ import { ServicesModule } from './services/services.module';
   controllers: [MovieController],
   providers: [
     MovieService,
+    TurnAbortRegistry,
     ModelProvider,
     AuthGrpcClient,
     MessageGrpcClient,

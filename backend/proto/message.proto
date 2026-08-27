@@ -50,6 +50,10 @@ message CompleteTurnRequest {
 
 message CompleteTurnResponse {
   string assistant_message_id = 1;
+  // 实际落库的 status（CAS 输了则是对方写入的值，不是本次请求想写的）
+  string status = 2;
+  // 实际落库的助手气泡；给 movie-service 按落库结果推 SSE `final`
+  string assistant_payload_json = 3;
 }
 
 message ChatItem {

@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ToolsRegistry } from "./tools/tools.registry";
 import { PromptTemplateService } from "../services/prompt-template.service";
 import { RetryableFormatError } from "../errors/retryable-format.error";
+import { isAbortError } from "../errors/workflow-cancelled.error";
 import { executeWithRetry, tryParseJson } from "../helpers";
 import { AGENT_TYPE, CompatibleModel, ConversationHistoryItem, LLM_STAGE, SearchAgentResult, VIEW_ANSWER, ViewSpec } from "../types";
 import { invokeLlm, SEARCH_ACTOR } from "../invoke-llm";
@@ -181,6 +182,7 @@ export class SearchAgent {
         reasoning: plan.reasoning,
       };
     } catch (error) {
+      if (isAbortError(error)) throw error;
       this.logger.error(`[SearchAgent] Error: ${error instanceof Error ? error.message : String(error)}`);
       return {
         success: false,

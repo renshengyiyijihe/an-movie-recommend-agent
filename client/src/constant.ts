@@ -14,6 +14,7 @@ export { AUTH_PASSWORD_MIN_LENGTH, AUTH_USERNAME_MAX_LENGTH, AUTH_USERNAME_MIN_L
 /** 浏览器请求路径。Vite / Docker nginx 都从站点根反代。 */
 export const API_PATH = {
   chat: "/api/movie/chat",
+  chatCancel: "/api/movie/chat/cancel",
   conversations: "/api/message/conversations",
   login: "/api/auth/login",
   register: "/api/auth/register",
@@ -161,8 +162,11 @@ export const TEXT = {
     userRole: "你",
     assistantRole: "智能体",
     assistantErrorRole: "智能体（异常）",
-    sending: "发送中...",
     send: "发送",
+    stop: "停止",
+    stopping: "正在停止...",
+    cancelFailed: "无法停止生成，请稍后重试。",
+    cancelled: "已停止生成",
     stagePending: "正在处理你的请求",
     stageToolFailed: "检索未成功，继续处理",
     stages: {

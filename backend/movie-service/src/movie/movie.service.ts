@@ -1,11 +1,16 @@
-﻿import { Injectable, Logger } from "@nestjs/common";
+﻿import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { status as GrpcStatus } from "@grpc/grpc-js";
 import {
-  RECOMMEND_RESULT_TYPE,
+  CANCEL_REASON,
   STREAM_EVENT,
-  type RecommendResultType,
+  TURN_STATUS,
+  isFinishedTurnStatus,
+  type CancelReason,
+  type CancelledPayload,
   type ChatStreamEvent,
   type ChatStreamFinalEvent,
+  type ChatTurnResult,
+  type FinishedTurnStatus,
 } from "@an-movie/contracts";
 import { ModelProvider } from "../model/model.provider";
 import { MessageGrpcClient } from "./message.grpc";
@@ -20,11 +25,13 @@ import {
   ErrorPayload,
   RecommendationPayload,
   RejectPayload,
-  TurnStatus,
   recommendationFromParsed,
 } from "./transcript";
 import { noopTurnEventSink, TurnEventSink } from "./turn-events";
 import { toStreamStageEvent } from "./chat-stream";
+import { AbortContext } from "./abort-context";
+import { isAbortError } from "./errors/workflow-cancelled.error";
+import { TurnAbortRegistry } from "./turn-abort.registry";
 import {
   ConversationHistoryItem,
   ConversationMemory,
@@ -40,15 +47,16 @@ interface ChatPayload {
 }
 
 /**
- * 工作流结论。HTTP `type` 与 CompleteTurn 的 `status` 共用同一套取值。
+ * 工作流结论。CompleteTurn 的 `status` 与 SSE `final.type` 共用 {@link FinishedTurnStatus}。
  * 必须先写入再返回；写入失败不得冒充 success / reject。
  * `memory` 是写给以后对话的长期记忆，只随 CompleteTurn 落向量库，
  * 不进可见气泡、不进 SSE，只有成功轮次才可能有。
  */
 type ChatOutcome = { memory?: string } & (
-  | { type: "success"; status: "success"; payload: RecommendationPayload }
-  | { type: "reject"; status: "reject"; payload: RejectPayload }
-  | { type: "error"; status: "error"; payload: ErrorPayload }
+  | { status: typeof TURN_STATUS.SUCCESS; payload: RecommendationPayload }
+  | { status: typeof TURN_STATUS.REJECT; payload: RejectPayload }
+  | { status: typeof TURN_STATUS.ERROR; payload: ErrorPayload }
+  | { status: typeof TURN_STATUS.CANCELLED; payload: CancelledPayload }
 );
 
 @Injectable()
@@ -59,26 +67,60 @@ export class MovieService {
     private readonly modelProvider: ModelProvider,
     private readonly messageGrpcClient: MessageGrpcClient,
     private readonly orchestratorAgent: OrchestratorAgent,
+    private readonly abortRegistry: TurnAbortRegistry,
   ) {}
 
   async chat(
     payload: ChatPayload,
     emit: (event: ChatStreamEvent) => void,
   ): Promise<void> {
+    const ac = new AbortController();
+    return AbortContext.run(ac.signal, () => this.runChat(payload, emit, ac));
+  }
+
+  /**
+   * 停止按钮或前端超时。断线不要走这里。
+   * 先 abort 本机工作流，再 CAS CompleteTurn；和正在跑的 chat() 谁先写入由行锁决定。
+   */
+  async cancelTurn(
+    turnId: string,
+    reason: CancelReason = CANCEL_REASON.USER,
+  ): Promise<void> {
+    const outcome =
+      reason === CANCEL_REASON.TIMEOUT
+        ? this.timeoutOutcome()
+        : this.cancelledOutcome();
+    try {
+      // 先 CAS 收口，再 abort：避免 chat() 在 abort 后抢先写成 cancelled，把 timeout 的 error 盖掉。
+      await this.completeTurn(turnId, outcome.status, outcome.payload);
+    } catch (error) {
+      if (grpcCode(error) === GrpcStatus.NOT_FOUND) {
+        throw new NotFoundException(`Turn not found: ${turnId}`);
+      }
+      throw error;
+    } finally {
+      this.abortRegistry.abort(turnId);
+    }
+  }
+
+  private async runChat(
+    payload: ChatPayload,
+    emit: (event: ChatStreamEvent) => void,
+    ac: AbortController,
+  ): Promise<void> {
     this.logger.log(
       `chat request received: messageLength=${payload.message?.length ?? 0}, hasImage=${Boolean(payload.imageUrl || payload.imageData)}`,
     );
 
     let conversationId: string | undefined;
+    let turnId: string | undefined;
     try {
       conversationId = await this.ensureConversation(payload);
-      // 时间序历史与跨会话记忆都不依赖 turnId，一起发起省一个来回。
       const [turns, memories] = await Promise.all([
         this.loadConversationHistory(conversationId),
         this.loadMemories(payload.message, conversationId),
       ]);
 
-      let turnId: string;
       try {
         turnId = await this.startTurn(conversationId, payload.message);
       } catch (error) {
@@ -94,27 +136,36 @@ export class MovieService {
         return;
       }
 
+      this.abortRegistry.register(turnId, ac);
       emit({
         event: STREAM_EVENT.TURN,
         conversationId,
         turnId,
       });
 
-      const outcome = await this.resolveOutcome(
-        payload.message,
-        turns,
-        memories,
-        turnId,
-        emit,
-      );
+      let outcome: ChatOutcome;
+      try {
+        outcome = await this.resolveOutcome(
+          payload.message,
+          turns,
+          memories,
+          turnId,
+          emit,
+        );
+      } catch (error) {
+        if (!isAbortError(error)) throw error;
+        // 汇总还没出来才写成 cancelled。已经有可写结果则走下面的 CompleteTurn(success)。
+        outcome = this.cancelledOutcome();
+      }
 
       try {
-        await this.completeTurn(
+        const landed = await this.completeTurn(
           turnId,
           outcome.status,
           outcome.payload,
           outcome.memory,
         );
+        emit(this.finalEvent(conversationId, landed));
       } catch (error) {
         this.logger.error(
           `Failed to complete turn status=${outcome.status} turnId=${turnId}: ${errorMessage(error)}`,
@@ -126,15 +177,7 @@ export class MovieService {
             this.errorResponse(MESSAGE_CONSTANTS.COMPLETE_TURN_FAILED),
           ),
         );
-        return;
       }
-
-      emit(
-        this.finalEvent(conversationId, {
-          type: outcome.type,
-          data: outcome.payload,
-        }),
-      );
     } catch (error) {
       this.logger.error(
         `chat failed: ${errorMessage(error)}`,
@@ -145,6 +188,8 @@ export class MovieService {
         conversationId,
         message: MESSAGE_CONSTANTS.UNEXPECTED_FAILURE,
       });
+    } finally {
+      if (turnId) this.abortRegistry.unregister(turnId);
     }
   }
 
@@ -182,14 +227,14 @@ export class MovieService {
       );
       return this.outcomeFromOrchestrator(orchestratorResult);
     } catch (error) {
+      if (isAbortError(error)) throw error;
       const workflowError = error as Error & { stage?: string };
       this.logger.error(
         `Orchestrator workflow failed: stage=${workflowError.stage ?? "unknown"} message=${workflowError.message}`,
         workflowError,
       );
       return {
-        type: "error",
-        status: "error",
+        status: TURN_STATUS.ERROR,
         payload: {
           kind: "error",
           message: workflowError.message ?? "Agent 工作流执行失败",
@@ -203,8 +248,7 @@ export class MovieService {
   ): ChatOutcome {
     if (result.intent_type === INTENT_TYPE.OUT_OF_SCOPE) {
       return {
-        type: "reject",
-        status: "reject",
+        status: TURN_STATUS.REJECT,
         payload: {
           kind: "reject",
           message:
@@ -215,8 +259,7 @@ export class MovieService {
 
     if (!result.success) {
       return {
-        type: "error",
-        status: "error",
+        status: TURN_STATUS.ERROR,
         payload: {
           kind: "error",
           message: result.result || "Agent 工作流执行失败",
@@ -227,8 +270,7 @@ export class MovieService {
     const parsed = this.parseRecommendation(result.result);
     if (!parsed) {
       return {
-        type: "error",
-        status: "error",
+        status: TURN_STATUS.ERROR,
         payload: {
           kind: "error",
           message: "无法根据检索结果生成推荐。",
@@ -237,21 +279,42 @@ export class MovieService {
     }
 
     return {
-      type: "success",
-      status: "success",
+      status: TURN_STATUS.SUCCESS,
       payload: parsed.payload,
       memory: parsed.memory,
     };
   }
 
-  private errorResponse(message: string) {
+  private cancelledOutcome(): ChatOutcome {
+    const payload: CancelledPayload = {
+      kind: TURN_STATUS.CANCELLED,
+      message: MESSAGE_CONSTANTS.CANCELLED,
+    };
+    return {
+      status: TURN_STATUS.CANCELLED,
+      payload,
+    };
+  }
+
+  private timeoutOutcome(): ChatOutcome {
+    const payload: ErrorPayload = {
+      kind: "error",
+      message: MESSAGE_CONSTANTS.TURN_TIMEOUT,
+    };
+    return {
+      status: TURN_STATUS.ERROR,
+      payload,
+    };
+  }
+
+  private errorResponse(message: string): Pick<ChatTurnResult, "type" | "data"> {
     const payload: ErrorPayload = { kind: "error", message };
-    return { type: RECOMMEND_RESULT_TYPE.ERROR, data: payload };
+    return { type: TURN_STATUS.ERROR, data: payload };
   }
 
   private finalEvent(
     conversationId: string,
-    body: { type: RecommendResultType; data: AssistantPayload },
+    body: Pick<ChatTurnResult, "type" | "data">,
   ): ChatStreamFinalEvent {
     return {
       event: STREAM_EVENT.FINAL,
@@ -323,14 +386,14 @@ export class MovieService {
   }
 
   /**
-   * 写入失败必须抛出。调用方不得在写入前把 outcome 当成已落库。
+   * 写入失败必须抛出。调用方按返回值推 `final`（CAS 输了则是对方写入的气泡）。
    */
   private async completeTurn(
     turnId: string,
-    status: TurnStatus,
+    status: FinishedTurnStatus,
     payload: AssistantPayload,
     memory?: string,
-  ): Promise<void> {
+  ): Promise<Pick<ChatTurnResult, "type" | "data">> {
     if (!turnId) {
       throw new Error("turnId is required to complete a turn");
     }
@@ -338,14 +401,22 @@ export class MovieService {
     let lastError: Error | undefined;
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
-        await this.messageGrpcClient.completeTurn(
+        const response = await this.messageGrpcClient.completeTurn(
           turnId,
           status,
           payload,
           memory,
         );
-        return;
+        const landedType = isFinishedTurnStatus(response.status)
+          ? response.status
+          : status;
+        const landedPayload = assistantPayloadFromJson(
+          response.assistant_payload_json,
+          payload,
+        );
+        return { type: landedType, data: landedPayload };
       } catch (error) {
+        if (grpcCode(error) === GrpcStatus.NOT_FOUND) throw error;
         lastError = error instanceof Error ? error : new Error(String(error));
       }
     }
@@ -413,4 +484,16 @@ function grpcDetails(error: unknown): string {
     return "";
   }
   return typeof error.details === "string" ? error.details.trim() : "";
+}
+
+function assistantPayloadFromJson(
+  json: string | undefined,
+  fallback: AssistantPayload,
+): AssistantPayload {
+  if (!json) return fallback;
+  const parsed = tryParseJson<AssistantPayload>(json);
+  if (!parsed || typeof parsed !== "object" || !("kind" in parsed)) {
+    return fallback;
+  }
+  return parsed;
 }

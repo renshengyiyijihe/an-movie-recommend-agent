@@ -4,6 +4,8 @@ import {
   ConversationChatItem,
   RecommendationPayload,
 } from '@/types';
+import { TURN_STATUS } from '@an-movie/contracts';
+import { TEXT } from '@/constant';
 
 const TMDB_GENRE_MAP: Record<number, string> = {
   28: '动作',
@@ -105,6 +107,17 @@ export function toChatMessage(item: ConversationChatItem): ChatMessage {
     };
   }
 
+  if (kind === TURN_STATUS.CANCELLED) {
+    return {
+      role: 'assistant',
+      kind: TURN_STATUS.CANCELLED,
+      payload: {
+        kind: TURN_STATUS.CANCELLED,
+        message: readString(payload, 'message') || TEXT.chat.cancelled,
+      },
+    };
+  }
+
   return {
     role: 'assistant',
     kind: 'recommendation',
@@ -145,6 +158,17 @@ export function toAssistantMessage(result: {
       payload: {
         kind: 'error',
         message: readString(data, 'message') || '推荐流程执行失败',
+      },
+    };
+  }
+
+  if (kind === TURN_STATUS.CANCELLED || result?.type === TURN_STATUS.CANCELLED) {
+    return {
+      role: 'assistant',
+      kind: TURN_STATUS.CANCELLED,
+      payload: {
+        kind: TURN_STATUS.CANCELLED,
+        message: readString(data, 'message') || TEXT.chat.cancelled,
       },
     };
   }

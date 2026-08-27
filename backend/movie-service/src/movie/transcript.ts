@@ -7,13 +7,12 @@ import { getStringValue } from "./helpers";
 
 export type {
   AssistantPayload,
+  CancelledPayload,
   ErrorPayload,
   RecommendationPayload,
   RejectPayload,
   UserMessagePayload,
 } from "@an-movie/contracts";
-
-export type TurnStatus = "success" | "reject" | "error";
 
 /**
  * LLM 汇总 JSON → 写入 CompleteTurn / 返回 HTTP 的推荐 payload。

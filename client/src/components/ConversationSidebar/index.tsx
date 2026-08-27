@@ -1,4 +1,6 @@
 import { useEffect, useRef } from "react";
+import classNames from "classnames";
+import Button from "@mui/material/Button";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
 import Add from "@mui/icons-material/Add";
@@ -61,7 +63,9 @@ export default function ConversationSidebar({
 
   return (
     <div
-      className={styles.sidebar}
+      className={classNames(styles.sidebar, {
+        [styles.isCollapsed]: collapsed,
+      })}
       style={{
         width: LAYOUT.SIDEBAR_WIDTH_PX,
         minWidth: LAYOUT.SIDEBAR_WIDTH_PX,
@@ -86,59 +90,67 @@ export default function ConversationSidebar({
             {collapsed ? <ChevronRight /> : <ChevronLeft />}
           </IconButton>
         </Tooltip>
-        {isGuest ? (
-          <Tooltip title={TEXT.workspace.loginToView}>
-            <IconButton
-              type="button"
-              size="small"
-              className={styles.railButton}
-              onClick={onLogin}
-              aria-label={TEXT.workspace.loginToView}
-            >
-              <Login />
-            </IconButton>
-          </Tooltip>
-        ) : (
-          <Tooltip title={TEXT.workspace.newConversation}>
-            <span>
+        {collapsed ? (
+          isGuest ? (
+            <Tooltip title={TEXT.workspace.loginToView}>
               <IconButton
                 type="button"
                 size="small"
-                className={`${styles.railButton} ${isDraft ? styles.railButtonActive : ""}`}
-                onClick={onNewConversation}
-                disabled={interactionLocked}
-                aria-label={TEXT.workspace.newConversationAria}
-                aria-pressed={isDraft}
+                className={styles.railButton}
+                onClick={onLogin}
+                aria-label={TEXT.workspace.loginToView}
               >
-                <Add />
+                <Login />
               </IconButton>
-            </span>
-          </Tooltip>
-        )}
+            </Tooltip>
+          ) : (
+            <Tooltip title={TEXT.workspace.newConversation}>
+              <span>
+                <IconButton
+                  type="button"
+                  size="small"
+                  className={classNames(styles.railButton, {
+                    [styles.railButtonActive]: isDraft,
+                  })}
+                  onClick={onNewConversation}
+                  disabled={interactionLocked}
+                  aria-label={TEXT.workspace.newConversationAria}
+                  aria-pressed={isDraft}
+                >
+                  <Add />
+                </IconButton>
+              </span>
+            </Tooltip>
+          )
+        ) : null}
       </div>
 
       <div ref={mainRef} className={styles.main} aria-hidden={collapsed}>
         <div className={styles.header}>
           <h2 className={styles.title}>{TEXT.workspace.title}</h2>
           {isGuest ? (
-            <button
+            <Button
               type="button"
               className={styles.loginButton}
               onClick={onLogin}
+              startIcon={<Login />}
             >
               {TEXT.workspace.loginToView}
-            </button>
+            </Button>
           ) : (
-            <button
+            <Button
               type="button"
-              className={`${styles.newButton} ${isDraft ? styles.newButtonActive : ""}`}
+              className={classNames(styles.newButton, {
+                [styles.newButtonActive]: isDraft,
+              })}
               onClick={onNewConversation}
               disabled={interactionLocked}
               aria-label={TEXT.workspace.newConversationAria}
               aria-pressed={isDraft}
+              startIcon={<Add />}
             >
               {TEXT.workspace.newConversation}
-            </button>
+            </Button>
           )}
         </div>
 
@@ -168,7 +180,9 @@ export default function ConversationSidebar({
                     <li key={conversation.conversation_id}>
                       <button
                         type="button"
-                        className={`${styles.item} ${selected ? styles.itemActive : ""}`}
+                        className={classNames(styles.item, {
+                          [styles.itemActive]: selected,
+                        })}
                         disabled={interactionLocked}
                         aria-current={selected ? "page" : undefined}
                         onClick={() =>

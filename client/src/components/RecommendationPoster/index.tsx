@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import classNames from 'classnames';
 import styles from './index.module.less';
 
 interface Props {
@@ -17,7 +18,7 @@ export default function RecommendationPoster({ src, alt }: Props) {
 
   if (!src || failed) {
     return (
-      <div className={`${styles.posterPlaceholder}`} aria-label="海报加载中">
+      <div className={styles.posterPlaceholder} aria-label="海报加载中">
         <span className={styles.spinner} />
       </div>
     );
@@ -33,7 +34,7 @@ export default function RecommendationPoster({ src, alt }: Props) {
       <img
         src={src}
         alt={alt}
-        className={`${styles.poster} ${loaded ? '' : styles.hidden}`}
+        className={classNames(styles.poster, { [styles.hidden]: !loaded })}
         onLoad={() => setLoaded(true)}
         onError={() => setFailed(true)}
       />

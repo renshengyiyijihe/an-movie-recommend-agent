@@ -233,7 +233,7 @@ Prompt 入口（改提示词只动这个文件）：
 ## 前端
 
 - 单页：`client/src/pages/HomePage`。路由只有 `/`。
-- 布局：TopBar + **左侧会话栏** + 右侧主聊天。桌面常驻 `ConversationSidebar`（展开约 280px，收起约 56px 图标轨，宽度有过渡）。展开/收起只在侧栏轨上操作，状态是用户本地偏好，走 `store/preferences.ts`（localStorage 整包 JSON，键 `PREFERENCES_STORAGE_KEY.ALL`）。窄屏（`LAYOUT.NARROW_MAX_PX` = 760）隐藏固定栏，顶栏用菜单图标切换 MUI `Drawer`（不持久化）；抽屉里同一颗收起按钮会关掉抽屉。未登录侧栏只给登录引导，不请求会话 API。
+- 布局：TopBar + **左侧会话栏** + 右侧主聊天。桌面常驻 `ConversationSidebar`（展开约 280px，收起约 56px 图标轨，宽度有过渡）。展开/收起只在侧栏轨上操作，状态是用户本地偏好，走 `store/preferences.ts`（localStorage 整包 JSON，键 `PREFERENCES_STORAGE_KEY.ALL`）。窄屏（`LAYOUT.NARROW_MAX_PX` = 760）隐藏固定栏，顶栏用菜单图标切换 MUI `Drawer`（不持久化）；抽屉里同一颗收起按钮会关掉抽屉。未登录侧栏只给登录引导，不请求会话 API。「新对话」只渲染一处：展开时在面板标题区，收起时才出现在图标轨；登录引导同理。不要轨上图标和标题区按钮同时出现。
 - 会话主入口是侧栏，不是配置弹窗。登录后 `GET /api/message/conversations` 拉列表。点选 `GET /api/message/conversations/:id`（`conversationDetailPath`）把气泡载入主聊天；详情未成功前不要改当前 `conversationId`。路径写在 `API_PATH`，不要在页面里再写死 `/api/message/...`。
 - 「新对话」只清本地 `conversationId` / `messages`，**不要**预先 `POST /message/conversations`（会留下无标题空行）。首条发送仍由 movie-service `ensureConversation` 创建（title = 用户原话）。SSE `turn` 后侧栏若没有该项则插入，再静默 refetch。
 - 发送中或正在拉详情时禁止切换/新建：断开 SSE **不会**取消后端轮次，工作流会继续并 `CompleteTurn`。点「停止」走 `POST /api/movie/chat/cancel`，不要 abort 那条 chat 流。用 `conversationLoadGen` 丢掉过期的详情响应。

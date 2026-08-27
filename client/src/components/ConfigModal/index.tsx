@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import classNames from "classnames";
 import { Modal } from "@mui/material";
 import { TEXT } from "@/constant";
 import type { ConversationDetail } from "@/types";
@@ -153,7 +154,9 @@ export default function ConfigModal({
                   <button
                     key={feature.id}
                     type="button"
-                    className={`${styles.sidebarItem} ${activeFeature === feature.id ? styles.sidebarItemActive : ""}`}
+                    className={classNames(styles.sidebarItem, {
+                      [styles.sidebarItemActive]: activeFeature === feature.id,
+                    })}
                     onClick={() => setActiveFeature(feature.id)}
                   >
                     {feature.label}
@@ -274,7 +277,10 @@ export default function ConfigModal({
                       return (
                         <div
                           key={item.id}
-                          className={`${styles.message} ${item.role === "user" ? styles.userMessage : styles.assistantMessage}`}
+                          className={classNames(styles.message, {
+                            [styles.userMessage]: item.role === "user",
+                            [styles.assistantMessage]: item.role !== "user",
+                          })}
                         >
                           <div className={styles.messageRole}>
                             {item.role === "user" ? "你" : "智能体"}

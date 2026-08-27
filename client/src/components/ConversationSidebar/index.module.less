@@ -55,13 +55,27 @@
   padding: 10px 14px;
   cursor: pointer;
   font-weight: 700;
+  text-transform: none;
+  box-shadow: none;
+  justify-content: flex-start;
   transition: background-color 0.15s ease, transform 0.15s ease;
 }
 
 .newButton,
 .loginButton {
+  width: 100%;
   background: #eef2ff;
   color: #4338ca;
+}
+
+.isCollapsed .newButton,
+.isCollapsed .loginButton {
+  visibility: hidden;
+}
+
+.newButton:hover,
+.loginButton:hover {
+  box-shadow: none;
 }
 
 .newButtonActive,

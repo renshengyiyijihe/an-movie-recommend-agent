@@ -1,3 +1,4 @@
+import classNames from 'classnames';
 import useAuth from '@/store/auth';
 import AppLogo from '@/components/AppLogo';
 import { TEXT } from '@/constant';
@@ -36,7 +37,9 @@ export default function TopBar({
         {showSidebarToggle ? (
           <Tooltip title={sidebarToggleLabel}>
             <button
-              className={`${styles.sidebarToggle} ${sidebarOpen ? styles.sidebarToggleActive : ''}`}
+              className={classNames(styles.sidebarToggle, {
+                [styles.sidebarToggleActive]: sidebarOpen,
+              })}
               type="button"
               onClick={onToggleSidebar}
               aria-label={sidebarToggleLabel}

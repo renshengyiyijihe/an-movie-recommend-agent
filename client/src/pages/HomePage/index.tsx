@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import classNames from "classnames";
 import Drawer from "@mui/material/Drawer";
 import { ApiError, isChatTimeoutError, isSessionExpiredError, request, streamChat } from "@/api";
 import {
@@ -707,13 +708,13 @@ export default function HomePage() {
                   return (
                     <div
                       key={`${item.role}-${item.kind}-${index}`}
-                      className={`${styles.message} ${
-                        item.role === "user"
-                          ? styles.userMessage
-                          : failed
-                            ? styles.assistantErrorMessage
-                            : styles.assistantMessage
-                      }`}
+                      className={classNames(styles.message, {
+                        [styles.userMessage]: item.role === "user",
+                        [styles.assistantErrorMessage]:
+                          item.role !== "user" && failed,
+                        [styles.assistantMessage]:
+                          item.role !== "user" && !failed,
+                      })}
                     >
                       <div className={styles.messageRole}>
                         {item.role === "user"
@@ -737,7 +738,12 @@ export default function HomePage() {
                   );
                 })}
                 {loading ? (
-                  <div className={`${styles.message} ${styles.assistantMessage}`}>
+                  <div
+                    className={classNames(
+                      styles.message,
+                      styles.assistantMessage,
+                    )}
+                  >
                     <div className={styles.messageRole}>
                       {TEXT.chat.assistantRole}
                     </div>
@@ -787,7 +793,9 @@ export default function HomePage() {
                 <div className={styles.actionButtons}>
                   <button
                     type="button"
-                    className={`${styles.sendButton} ${loading ? styles.stopButton : ""}`}
+                    className={classNames(styles.sendButton, {
+                      [styles.stopButton]: loading,
+                    })}
                     onClick={() => {
                       if (loading) void stopGenerating();
                       else void sendMessage();

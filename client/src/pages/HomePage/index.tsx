@@ -8,6 +8,7 @@ import {
   type ChatStreamStageEvent,
 } from "@an-movie/contracts";
 import useAuth from "@/store/auth";
+import { usePreferences } from "@/store/preferences";
 import { toast } from "@/store/toast";
 import AuthModal from "@/components/AuthModal";
 import AppLogo from "@/components/AppLogo";
@@ -20,7 +21,6 @@ import {
   conversationDetailPath,
   LAYOUT,
   TEXT,
-  WORKSPACE_STORAGE_KEY,
 } from "@/constant";
 import styles from "./index.module.less";
 import {
@@ -48,25 +48,6 @@ const quickPrompts = [
 
 const NARROW_MQ = `(max-width: ${LAYOUT.NARROW_MAX_PX}px)`;
 
-function readSidebarCollapsed(): boolean {
-  try {
-    return window.localStorage.getItem(WORKSPACE_STORAGE_KEY.SIDEBAR_COLLAPSED) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function writeSidebarCollapsed(collapsed: boolean) {
-  try {
-    window.localStorage.setItem(
-      WORKSPACE_STORAGE_KEY.SIDEBAR_COLLAPSED,
-      collapsed ? "1" : "0",
-    );
-  } catch {
-    /* private mode / quota */
-  }
-}
-
 export default function HomePage() {
   const [message, setMessage] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -89,7 +70,6 @@ export default function HomePage() {
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [listError, setListError] = useState("");
   const [sidebarDrawerOpen, setSidebarDrawerOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
   const [isNarrow, setIsNarrow] = useState(
     () => window.matchMedia(NARROW_MQ).matches,
   );
@@ -101,6 +81,8 @@ export default function HomePage() {
   const token = useAuth((s) => s.token);
   const userId = useAuth((s) => s.user?.id ?? null);
   const logout = useAuth((s) => s.logout);
+  const sidebarCollapsed = usePreferences((s) => s.sidebarCollapsed);
+  const toggleSidebarCollapsed = usePreferences((s) => s.toggleSidebarCollapsed);
   const sendingRef = useRef(false);
   const sessionGen = useRef(0);
   const conversationLoadGen = useRef(0);
@@ -230,25 +212,16 @@ export default function HomePage() {
     void fetchConversations();
   }
 
-  function setDesktopCollapsed(collapsed: boolean) {
-    setSidebarCollapsed(collapsed);
-    writeSidebarCollapsed(collapsed);
-  }
-
   function toggleSidebar() {
-    if (isNarrow) {
-      setSidebarDrawerOpen((open) => !open);
-      return;
-    }
-    setDesktopCollapsed(!sidebarCollapsed);
+    setSidebarDrawerOpen((open) => !open);
   }
 
-  function collapseSidebar() {
+  function toggleSidebarInPanel() {
     if (isNarrow) {
       setSidebarDrawerOpen(false);
       return;
     }
-    setDesktopCollapsed(true);
+    toggleSidebarCollapsed();
   }
 
   function startNewConversation() {
@@ -540,18 +513,21 @@ export default function HomePage() {
     onSelectConversation: (id: string) => void loadConversation(id),
     onRetryList: () => void fetchConversations(),
     onLogin: () => setShowLoginModal(true),
-    onCollapse: collapseSidebar,
+    onToggleCollapse: toggleSidebarInPanel,
   };
 
   const composerDisabled = loading || detailsLoading;
-  const sidebarOpen = isNarrow ? sidebarDrawerOpen : !sidebarCollapsed;
+  const sidebarSlotSize = sidebarCollapsed
+    ? LAYOUT.SIDEBAR_RAIL_WIDTH_PX
+    : LAYOUT.SIDEBAR_WIDTH_PX;
 
   return (
     <div className={styles.appShell}>
       <TopBar
         onOpenConfig={openConfigModal}
         onToggleSidebar={toggleSidebar}
-        sidebarOpen={sidebarOpen}
+        sidebarOpen={sidebarDrawerOpen}
+        showSidebarToggle={isNarrow}
         onOpenLogin={() => {
           setShowLoginModal(true);
         }}
@@ -607,14 +583,15 @@ export default function HomePage() {
           },
         }}
       >
-        <ConversationSidebar {...sidebarProps} />
+        <ConversationSidebar {...sidebarProps} collapsed={false} />
       </Drawer>
 
       <div className={styles.workspace}>
         <aside
-          className={`${styles.sidebarSlot} ${sidebarCollapsed ? styles.sidebarSlotCollapsed : ""}`}
+          className={styles.sidebarSlot}
+          style={{ width: sidebarSlotSize, flexBasis: sidebarSlotSize }}
         >
-          <ConversationSidebar {...sidebarProps} />
+          <ConversationSidebar {...sidebarProps} collapsed={sidebarCollapsed} />
         </aside>
 
         <section className={styles.chatPanel}>

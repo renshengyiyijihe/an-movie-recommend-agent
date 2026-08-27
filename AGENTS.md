@@ -230,12 +230,12 @@ Prompt 入口（改提示词只动这个文件）：
 ## 前端
 
 - 单页：`client/src/pages/HomePage`。路由只有 `/`。
-- 布局：TopBar + **左侧会话栏** + 右侧主聊天。桌面常驻 `ConversationSidebar`（约 280px），可用顶栏「会话」或侧栏内按钮折叠；折叠状态写入 `localStorage`（`WORKSPACE_STORAGE_KEY.SIDEBAR_COLLAPSED`）。窄屏（`LAYOUT.NARROW_MAX_PX` = 760）隐藏固定栏，顶栏「会话」切换 MUI `Drawer`；抽屉里同一颗收起按钮会关掉抽屉。未登录侧栏只给登录引导，不请求会话 API。
+- 布局：TopBar + **左侧会话栏** + 右侧主聊天。桌面常驻 `ConversationSidebar`（展开约 280px，收起约 56px 图标轨，宽度有过渡）。展开/收起只在侧栏轨上操作，状态是用户本地偏好，走 `store/preferences.ts`（localStorage 整包 JSON，键 `PREFERENCES_STORAGE_KEY.ALL`）。窄屏（`LAYOUT.NARROW_MAX_PX` = 760）隐藏固定栏，顶栏用菜单图标切换 MUI `Drawer`（不持久化）；抽屉里同一颗收起按钮会关掉抽屉。未登录侧栏只给登录引导，不请求会话 API。
 - 会话主入口是侧栏，不是配置弹窗。登录后 `GET /api/message/conversations` 拉列表。点选 `GET /api/message/conversations/:id`（`conversationDetailPath`）把气泡载入主聊天；详情未成功前不要改当前 `conversationId`。路径写在 `API_PATH`，不要在页面里再写死 `/api/message/...`。
 - 「新对话」只清本地 `conversationId` / `messages`，**不要**预先 `POST /message/conversations`（会留下无标题空行）。首条发送仍由 movie-service `ensureConversation` 创建（title = 用户原话）。SSE `turn` 后侧栏若没有该项则插入，再静默 refetch。
 - 发送中或正在拉详情时禁止切换/新建：断开不会取消后端轮次，SSE 仍会写入当前 `messages`。用 `conversationLoadGen` 丢掉过期的详情响应。
 - `ConfigModal` 与 TopBar「配置」**保留**。左侧可切「账号」和「会话消息」。账号页只展示资料和「修改用户名 / 修改密码」入口，点按钮再开独立弹窗填表，不要把表单直接铺在账号页。点弹窗里的会话也走同一套 `loadConversation` 进主聊天，弹窗内纯文本预览仍在。不要把侧栏列表再塞回配置，也不要删掉配置入口。
-- 状态：Zustand 只有 `store/auth.ts`（token 在 `localStorage`）和 toast。会话列表 / 当前对话放 `HomePage` 本地 state，不要为工作台再加全局 store。
+- 状态：Zustand 为 `store/auth.ts`（token 在 `localStorage`）、toast、`store/preferences.ts`（用户本地偏好，本机持久化，不跟账号走，也不只限界面开关）。会话列表 / 当前对话放 `HomePage` 本地 state，不要为工作台数据再加全局 store。
 - HTTP：`api.ts` 的 `request()` 自动带 Bearer；`baseURL: '/'`。**只有 chat 走 `streamChat()` 读 SSE**，其它接口继续 `request()`。鉴权失效用 `isSessionExpiredError()`（登录 401「密码错误」、改密 401「当前密码错误」都不算过期）。Docker 下由 nginx 反代；本地 `vite` 默认 **没有** 把 `/api` 转到后端。
 - 组件：`TopBar`、`ConversationSidebar`、`AuthModal`、`ConfigModal`、`RecommendationPoster`。会话标题/时间在 `utils/conversation.ts`。界面文案进 `TEXT`（`TEXT.workspace` 是侧栏，`TEXT.config` 是配置弹窗）。样式用 Less CSS Modules。
 - 登录/注册/改密/改用户名表单用 `react-hook-form` + MUI `TextField`；密码框用 `AuthField`（`InputAdornment` + `@mui/icons-material` Visibility），不要再手写一套校验 state 或 SVG 眼睛图标。改密、改用户名成功后换新 token，不登出。
@@ -315,7 +315,7 @@ Prompt 入口（改提示词只动这个文件）：
 | 会话与向量 | `backend/message-service/src/message/message.service.ts` |
 | 登录鉴权 | `backend/auth-service/src/auth/auth.service.ts` |
 | 前端聊天 | `client/src/pages/HomePage/index.tsx`、`client/src/api.ts` |
-| 前端会话工作台 | `client/src/components/ConversationSidebar/`、`client/src/utils/conversation.ts` |
+| 前端会话工作台 | `client/src/components/ConversationSidebar/`、`client/src/utils/conversation.ts`、`client/src/store/preferences.ts` |
 | 前端登录/改密/改用户名 | `client/src/components/AuthModal/`、`client/src/components/ConfigModal/`、`client/src/store/auth.ts` |
 | 反代 | `client/nginx.conf`、`docker-compose.yml` |
 | 指标刮取 | `observability/prometheus.yml` |

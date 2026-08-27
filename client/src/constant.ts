@@ -24,12 +24,14 @@ export const API_PATH = {
 /** 工作台布局，与 HomePage / TopBar 的 `@media` 保持同一套数字。 */
 export const LAYOUT = {
   SIDEBAR_WIDTH_PX: 280,
+  /** 桌面收起后的图标轨宽度，须能完整露出轨上的 IconButton。 */
+  SIDEBAR_RAIL_WIDTH_PX: 56,
   NARROW_MAX_PX: 760,
 } as const;
 
-/** localStorage 里工作台偏好的键。不要和 token 混在一起。 */
-export const WORKSPACE_STORAGE_KEY = {
-  SIDEBAR_COLLAPSED: "sidebarCollapsed",
+/** 用户本地偏好 JSON 的 localStorage 键。不要和 token 混在一起。 */
+export const PREFERENCES_STORAGE_KEY = {
+  ALL: "an-movie-preferences",
 } as const;
 
 /**
@@ -179,8 +181,10 @@ export const TEXT = {
     title: "会话",
     newConversation: "新对话",
     newConversationAria: "开始新对话",
-    collapseSidebarAria: "收起会话栏",
-    expandSidebarAria: "展开会话栏",
+    collapseSidebar: "收起侧栏",
+    expandSidebar: "展开侧栏",
+    openSidebar: "打开会话列表",
+    closeSidebar: "关闭会话列表",
     listAria: "会话列表",
     loading: "加载会话列表中...",
     empty: "暂无会话，发送消息后会自动生成。",

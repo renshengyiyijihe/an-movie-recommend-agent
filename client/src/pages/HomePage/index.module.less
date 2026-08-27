@@ -16,15 +16,20 @@
 }
 
 .sidebarSlot {
-  flex: 0 0 280px;
-  width: 280px;
+  box-sizing: border-box;
+  flex-grow: 0;
+  flex-shrink: 0;
   min-height: 0;
+  overflow: hidden;
   border-right: 1px solid #e5e7eb;
   background: #f8fafc;
+  transition: width 0.22s ease, flex-basis 0.22s ease;
 }
 
-.sidebarSlotCollapsed {
-  display: none;
+@media (prefers-reduced-motion: reduce) {
+  .sidebarSlot {
+    transition: none;
+  }
 }
 
 .drawerPaper {

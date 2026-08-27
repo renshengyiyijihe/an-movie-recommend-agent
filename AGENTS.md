@@ -292,7 +292,7 @@ Prompt 入口（改提示词只动这个文件）：
 - 跨服务契约先改 `backend/proto/*.proto`，再改 client/server 实现。
 - 日志用 `Logger`，关键路径已有 `query` / `intent` / `tool` 日志，保持同风格。
 - 不要提交 `.env`、密钥、`node_modules`、`dist`。
-- commit message 用 Conventional Commits：`type(scope): subject`。允许的 `type` 写在 `commitlint.config.mjs` 的 `COMMIT_TYPES`（`feat` / `fix` / `docs` / `style` / `refactor` / `perf` / `test` / `build` / `ci` / `chore` / `revert`）；husky `commit-msg` 会拦截不合规说明。改允许列表只改那份配置。
+- commit message 用 Conventional Commits：`type: subject`，不要写 `type(scope)`，模块写进 subject。允许的 `type` 写在 `commitlint.config.mjs` 的 `COMMIT_TYPES`（`feat` / `fix` / `docs` / `style` / `refactor` / `perf` / `test` / `build` / `ci` / `chore` / `revert`）；husky `commit-msg` 会拦截不合规说明。改允许列表只改那份配置。
 - 用户要求用简体中文回复；代码标识符保持英文。
 
 ## 改动时优先读的文件

@@ -1,6 +1,6 @@
 /**
  * husky `commit-msg` 允许的 Conventional Commits type。
- * 格式：`type(scope): subject`，例如 `feat: 增加会话列表`。
+ * 格式：`type: subject`，例如 `feat: 增加会话列表`。不要写 `type(scope)`，模块写进 subject。
  */
 const COMMIT_TYPES = [
   "feat", // 新功能
@@ -20,5 +20,6 @@ export default {
   extends: ["@commitlint/config-conventional"],
   rules: {
     "type-enum": [2, "always", COMMIT_TYPES],
+    "scope-empty": [2, "always"],
   },
 };

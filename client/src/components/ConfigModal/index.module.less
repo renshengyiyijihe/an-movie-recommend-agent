@@ -173,17 +173,29 @@
   word-break: break-all;
 }
 
-.accountSectionTitle {
-  margin: 8px 0 0;
-  font-size: 1rem;
-  font-weight: 700;
-  color: #111827;
+.accountActions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.accountHint {
-  margin: 0;
-  color: #4b5563;
-  font-size: 0.9rem;
+.accountAction {
+  width: 100%;
+  text-align: left;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #111827;
+  padding: 14px 16px;
+  border-radius: 14px;
+  cursor: pointer;
+  font-weight: 700;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.accountAction:hover,
+.accountAction:focus-visible {
+  border-color: #c7d2fe;
+  background: #eef2ff;
 }
 
 .passwordForm {
@@ -239,6 +251,19 @@
   padding: 24px;
   box-shadow: 0 30px 80px rgba(15, 23, 42, 0.18);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.accountDialog {
+  width: min(520px, 96%);
+  max-width: 520px;
+  max-height: min(90vh, 760px);
+  background: #ffffff;
+  border-radius: 24px;
+  padding: 24px;
+  box-shadow: 0 30px 80px rgba(15, 23, 42, 0.18);
+  overflow: auto;
   display: flex;
   flex-direction: column;
 }

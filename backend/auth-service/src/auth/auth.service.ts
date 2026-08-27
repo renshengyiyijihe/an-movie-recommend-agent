@@ -8,6 +8,7 @@ import { AppHttpException } from '@an-movie/auth-client';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { ChangeUsernameDto } from './dto/change-username.dto';
 
 function requireJwtSecret(): string {
   const secret = process.env.JWT_SECRET;
@@ -141,6 +142,36 @@ export class AuthService implements OnModuleInit {
     } catch (error) {
       if (error instanceof AppHttpException) throw error;
       this.logger.error('Change password error', error as Error);
+      throw error;
+    }
+  }
+
+  async changeUsername(userId: string, dto: ChangeUsernameDto) {
+    this.logger.log(`Change username attempt: id=${userId}`);
+    try {
+      const result = await pool.query(
+        'SELECT id, name, email FROM users WHERE id = $1',
+        [userId],
+      );
+      const user = result.rows[0];
+      if (!user) {
+        this.logger.warn('Change username failed: user not found');
+        throw new AppHttpException(ERROR_CODE.UNAUTHORIZED, '未授权，请先登录', 401);
+      }
+
+      if (user.name === dto.username) {
+        throw new AppHttpException(ERROR_CODE.VALIDATION_FAILED, '新用户名不能与当前用户名相同', 400);
+      }
+
+      await pool.query('UPDATE users SET name = $1 WHERE id = $2', [dto.username, user.id]);
+
+      const updated = { id: user.id, name: dto.username, email: user.email };
+      const token = this.signToken(updated);
+      this.logger.log(`Change username successful: id=${user.id}`);
+      return { token, user: { id: updated.id, username: updated.name, email: updated.email } };
+    } catch (error) {
+      if (error instanceof AppHttpException) throw error;
+      this.logger.error('Change username error', error as Error);
       throw error;
     }
   }

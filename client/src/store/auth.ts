@@ -49,6 +49,7 @@ interface AuthState {
   login: (email: string, password: string) => Promise<void>;
   register: (username: string, email: string, password: string) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  changeUsername: (username: string) => Promise<void>;
   /**
    * @param options.silent 为 true 时不弹出登出成功提示（例如 token 失效被强制清登录态）。
    */
@@ -90,6 +91,23 @@ export const useAuth = create<AuthState>((set, get) => {
         });
         applyAuthSession(get(), res);
         toast.success(TEXT.auth.changePasswordSuccess);
+      } catch (error) {
+        if (isSessionExpiredError(error)) {
+          get().logout({ silent: true });
+          toast.info(TEXT.auth.sessionExpired);
+        }
+        throw error;
+      }
+    },
+    changeUsername: async (username) => {
+      try {
+        const res = await request<AuthSessionResponse>({
+          method: 'POST',
+          url: API_PATH.changeUsername,
+          data: { username },
+        });
+        applyAuthSession(get(), res);
+        toast.success(TEXT.auth.changeUsernameSuccess);
       } catch (error) {
         if (isSessionExpiredError(error)) {
           get().logout({ silent: true });

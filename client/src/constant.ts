@@ -3,12 +3,13 @@
  */
 import {
   AUTH_PASSWORD_MIN_LENGTH,
+  AUTH_USERNAME_MAX_LENGTH,
   AUTH_USERNAME_MIN_LENGTH,
   ERROR_CODE,
   STREAM_STAGE,
 } from "@an-movie/contracts";
 
-export { AUTH_PASSWORD_MIN_LENGTH, AUTH_USERNAME_MIN_LENGTH };
+export { AUTH_PASSWORD_MIN_LENGTH, AUTH_USERNAME_MAX_LENGTH, AUTH_USERNAME_MIN_LENGTH };
 
 /** 浏览器请求路径。Vite / Docker nginx 都从站点根反代。 */
 export const API_PATH = {
@@ -17,6 +18,7 @@ export const API_PATH = {
   login: "/api/auth/login",
   register: "/api/auth/register",
   changePassword: "/api/auth/password",
+  changeUsername: "/api/auth/username",
 } as const;
 
 /** 工作台布局，与 HomePage / TopBar 的 `@media` 保持同一套数字。 */
@@ -75,6 +77,7 @@ export const TEXT = {
     emailInvalid: "请输入有效的邮箱格式",
     usernameRequired: "请输入用户名",
     usernameMin: `用户名至少 ${AUTH_USERNAME_MIN_LENGTH} 个字符`,
+    usernameMax: `用户名最多 ${AUTH_USERNAME_MAX_LENGTH} 个字符`,
     passwordRequired: "请输入密码",
     passwordMin: `密码至少 ${AUTH_PASSWORD_MIN_LENGTH} 位`,
     confirmPasswordRequired: "请再次输入密码",
@@ -108,6 +111,14 @@ export const TEXT = {
     showConfirmNewPassword: "显示确认新密码",
     hideConfirmNewPassword: "隐藏确认新密码",
     changePasswordSuccess: "密码已更新",
+    changeUsernameSuccess: "用户名已更新",
+    newUsername: "新用户名",
+    confirmNewUsername: "确认新用户名",
+    confirmNewUsernamePlaceholder: "再输入一次新用户名",
+    newUsernameRequired: "请输入新用户名",
+    confirmNewUsernameRequired: "请再次输入新用户名",
+    usernameUnchanged: "新用户名不能与当前用户名相同",
+    usernameMismatch: "两次输入的用户名不一致",
     closeDialog: "关闭",
   },
   /** 顶栏配置弹窗 */
@@ -122,6 +133,11 @@ export const TEXT = {
     changePassword: "修改密码",
     changePasswordHint: "修改成功后仍保持登录。",
     submitPassword: "保存新密码",
+    changeUsername: "修改用户名",
+    changeUsernameHint: "修改成功后仍保持登录。",
+    submitUsername: "保存用户名",
+    closeChangePasswordAria: "关闭修改密码",
+    closeChangeUsernameAria: "关闭修改用户名",
   },
   errors: {
     [ERROR_CODE.UNAUTHORIZED]: "未授权，请先登录",

@@ -1,8 +1,25 @@
-**/node_modules
-**/dist
+# Context is repo root. Only paths COPY'd by Dockerfiles need to be sent.
+# Root-only names are anchored with / so they do not hide packages/*/package.json.
 .git
+.github
+.cursor
+.husky
+.planning
+/observability
+/scripts
+/*.md
+/.gitignore
+/.gitattributes
+/.last-deploy-sha
+/commitlint.config.mjs
+/eslint.config.mjs
+/package.json
+/pnpm-lock.yaml
+/docker-compose.yml
+/.prettierignore
 **/.env
 **/.env.*
-.husky
-.github
+**/node_modules
+**/dist
+**/.eslintcache
 **/pnpm-workspace.yaml

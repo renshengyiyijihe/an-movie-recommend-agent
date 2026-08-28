@@ -1,4 +1,5 @@
 **/node_modules/
+.last-deploy-sha
 .env
 **/dist/
 **/.env

@@ -24,6 +24,7 @@ an-movie-agent/
 │   ├── movie-service/           # 推荐工作流 / Agent / TMDB
 │   └── message-service/         # 会话消息 + Milvus 相似上下文
 ├── docker-compose.yml           # 镜像 context 为仓库根
+├── scripts/deploy-images.sh     # 服务器上按 diff 编镜像再 up -d
 ├── observability/               # Prometheus 刮取 + Grafana 数据源 / 总览仪表盘
 └── .github/workflows/
     ├── quality.yml              # lint + 四包 build（可复用）
@@ -338,7 +339,7 @@ Prompt 入口（改提示词只动这个文件）：
 - Relation 未做：计数/排名、多跳路径、公司/系列。规划应标 `unsupported` 或直接 `search`，不要假装能算。
 - 工作副本不跨请求保留；指代「刚才那批结果再筛」目前只能靠历史文本 + 重新取数。
 - 共享包由 `packages/Dockerfile` 编一次，各服务 `FROM an-movie-packages AS packages` 再 `COPY --from=packages`。不要用 `additional_contexts`（旧 BuildKit 没有 named context）。须先 `docker compose build packages` 再 `up --build`。`packages` 的 `pull_policy` 是 `never`（本地镜像，禁止 Hub 拉取，也避免 `up -d` 再编一次）。`packages` 服务只产镜像，启动后立刻退出，`compose ps` 里 Exited 是正常的。
-- 部署不再 `compose down` / `rm -f` 整栈；编完应用镜像后用 commit sha 打本地 tag，再 `up -d`。密钥仍写服务器 `.env`。热构建时 Milvus / Grafana 仍占内存，所以一次只编一个服务。`deploy.yml` 的 deploy job 用 `concurrency` 排队，**不要**改成 `cancel-in-progress: true`（会掐断服务器上的 docker build）。排队的 run 若 `origin/main` 已不是该次 sha 则跳过构建。
+- 部署不再 `compose down` / `rm -f` 整栈；密钥仍写服务器 `.env`。镜像构建在 `scripts/deploy-images.sh`：对照 `.last-deploy-sha`（上次 **成功** `up -d` 的 commit，gitignore）用 `git diff` pathspec 决定编谁；没改 `packages/`、`backend/`、`client/`、`.dockerignore`、`docker-compose.yml` 就只 `up -d`。`packages/` / `.dockerignore` / `docker-compose.yml` 一变仍会带上四个应用。真正要编时仍然 **一次只编一个服务**（Milvus / Grafana 占内存），并且只给本次编过的镜像打 12 位 sha tag。**不要**改成一次传入多个服务、不要打开 `COMPOSE_BAKE`（旧 BuildKit；Bake 关着时合并 build 仍会按服务传 context，还可能并行打满内存）。**不要**用镜像 tag 反推上次 sha。`deploy.yml` 的 deploy job 用 `concurrency` 排队，**不要**改成 `cancel-in-progress: true`（会掐断服务器上的 docker build）。排队的 run 若 `origin/main` 已不是该次 sha 则跳过构建（仍会 `git reset`，但不会写 `.last-deploy-sha`）。
 - Compose 的 movie-service `env_file` 是 `backend/movie-service/.env`，auth/message 用 `backend/.env`。
 - auth-service 用原始 `pg` Pool，message-service 用 TypeORM。`users` 表只归 auth-service，message 不要碰。
 - Prometheus 不映射宿主机端口；看指标走 Grafana。总览盘会预置进去，网页里改完点保存会留下；只有仓库里那份仪表盘 JSON 以后又改了并重新部署，出厂布局才会再盖过来。删 `grafana_data` volume 会丢网页上改过的盘和密码。默认 admin/admin，公网 3000 务必立刻改密。

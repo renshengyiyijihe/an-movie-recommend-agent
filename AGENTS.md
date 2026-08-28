@@ -124,7 +124,7 @@ POST /api/movie/chat   Accept: text/event-stream
 ### auth-service
 
 - HTTP：`POST /auth/register`、`POST /auth/login`、`POST /auth/password`（已登录改密）、`POST /auth/username`（已登录改用户名）。DTO 校验（username 2–50，password 6–128）。
-- 改密 / 改用户名：`LocalJwtGuard` 调本进程 `validateToken()`，不要用 `JwtAuthGuard`（会 gRPC 打回自己）。身份从 JWT 取。改密请求体只有 `currentPassword` / `newPassword`，确认密码仅前端；当前密码错用 `INVALID_CREDENTIALS`，新旧相同用 `VALIDATION_FAILED`。改用户名请求体只有 `username`，确认用户名仅前端；与当前相同用 `VALIDATION_FAILED`。成功后更新并签发新 JWT，不登出。
+- 改密 / 改用户名：`LocalJwtGuard` 调本进程 `validateToken()`，不要用 `JwtAuthGuard`（会 gRPC 打回自己）。身份从 JWT 取。改密请求体只有 `currentPassword` / `newPassword`，确认密码仅前端；当前密码错用 `INVALID_CREDENTIALS`，新旧相同用 `VALIDATION_FAILED`。改用户名请求体只有 `username`，不要确认用户名；与当前相同用 `VALIDATION_FAILED`。成功后更新并签发新 JWT，不登出。
 - 启动时 `CREATE TABLE IF NOT EXISTS users`。
 - gRPC `Auth.ValidateToken`（`backend/proto/auth.proto`）。
 - JWT：`JWT_SECRET`、`JWT_EXPIRES_IN`（默认 7d）。
@@ -234,15 +234,15 @@ Prompt 入口（改提示词只动这个文件）：
 ## 前端
 
 - 单页：`client/src/pages/HomePage`。路由只有 `/`。
-- 布局：TopBar + 全宽主聊天。登录后顶栏为「历史」「配置」。点「历史」打开 `HistoryModal`：左会话列表、右消息详情（与主聊天同款气泡）。点列表某条才 `GET` 该条详情填右栏；空闲时同时把主聊天切过去，生成中只预览不改 `conversationId`。弹窗不关。窄屏同一弹窗：先列表，点选后全屏详情，有返回。不要常驻左侧会话栏、不要汉堡 Drawer。未登录不渲染历史/配置，不请求会话 API。「新对话」只在有消息时的会话顶栏右侧出现一次（发送中禁用该按钮），不要放进历史弹窗，也不要放进应用 TopBar。左侧标题可点按编辑；回车或失焦先出 MUI `Popover` 二次确认，确认才 `PATCH`，取消或点空白处恢复原标题。超出单行省略，悬停用 MUI `Tooltip` 看全文，不要自封装 tooltip。成功后只改本地列表 / 当前详情，不要为此再拉列表。
+- 布局：TopBar + 全宽主聊天。登录后顶栏为「历史」「配置」。点「历史」打开 `HistoryModal`：左会话列表、右消息详情（与主聊天同款气泡）。点列表某条才 `GET` 该条详情填右栏；空闲时同时把主聊天切过去，生成中只预览不改 `conversationId`。弹窗不关。窄屏同一弹窗：先列表，点选后全屏详情，有返回。不要常驻左侧会话栏、不要汉堡 Drawer。未登录不渲染历史/配置，不请求会话 API。「新对话」只在有消息时的会话顶栏右侧出现一次（发送中禁用该按钮），不要放进历史弹窗，也不要放进应用 TopBar。左侧标题可点按编辑；回车或点标题外先出 MUI `Popover` 二次确认，确认才 `PATCH`，取消或点空白处恢复原标题。不要靠输入框 `onBlur` 收口。超出单行省略，悬停用 MUI `Tooltip` 看全文，不要自封装 tooltip。成功后只改本地列表 / 当前详情，不要为此再拉列表。
 - 会话目录不是配置弹窗。打开历史弹窗才 `GET /api/message/conversations` 拉列表；内存里已有则先展示再 silent 刷新。点选 `GET /api/message/conversations/:id`（`conversationDetailPath`）填右栏；同一条已打开过则用内存详情，不必再打。详情未成功前不要改当前 `conversationId`。路径写在 `API_PATH`，不要在页面里再写死 `/api/message/...`。发送和 SSE **不要**拉列表或详情。
 - 「新对话」只清本地 `conversationId` / `messages`，**不要**预先 `POST /message/conversations`（会留下无标题空行）。首条发送仍由 movie-service `ensureConversation` 创建（title = 用户原话）。SSE `turn` 后若列表没有该项则本地插入，**不要**为此再拉列表。
 - 发送中禁止新建对话；历史弹窗仍可打开、点选预览。断开 SSE **不会**取消后端轮次，工作流会继续并 `CompleteTurn`。点「停止」走 `POST /api/movie/chat/cancel`，不要 abort 那条 chat 流。
-- `ConfigModal` 与 TopBar「配置」**保留**，只管家账号：资料和「修改用户名 / 修改密码」入口，点按钮再开独立弹窗填表。不要在配置里再放会话列表或消息预览。
+- `ConfigModal` 与 TopBar「配置」**保留**，只管家账号。弹窗两栏：左目录右详情，打开时选中第一项并展示其详情；目前目录只有「帐户」，窄屏也保持两栏。用户名在右侧资料行内编辑（右侧编辑按钮，回车 / 点空白 `Popover` 确认后再请求），不要第二层弹窗，也不要确认用户名。改密码仍是帐户详情里的按钮，点了再开独立表单弹窗。不要在配置里再放会话列表或消息预览。
 - 状态：Zustand 为 `store/auth.ts`（token 在 `localStorage`）、toast、`store/preferences.ts`（用户本地偏好预留，当前无界面字段）。会话列表 / 当前对话放 `HomePage` 本地 state，不要为历史数据再加全局 store。
 - HTTP：`api.ts` 的 `request()` 自动带 Bearer；`baseURL: '/'`。**只有 chat 走 `streamChat()` 读 SSE**，其它接口继续 `request()`。鉴权失效用 `isSessionExpiredError()`（登录 401「密码错误」、改密 401「当前密码错误」都不算过期）。Docker 下由 nginx 反代；本地 `vite` 默认 **没有** 把 `/api` 转到后端。
-- 组件：`TopBar`、`HistoryModal`、`ChatTranscript`、`ConversationTitle`、`AuthModal`、`ConfigModal`、`RecommendationPoster`。会话标题/时间在 `utils/conversation.ts`。界面文案进 `TEXT`（`TEXT.workspace` 是历史弹窗、新对话与改标题，`TEXT.config` 是配置弹窗）。样式用 Less CSS Modules。
-- 登录/注册/改密/改用户名表单用 `react-hook-form` + MUI `TextField`；密码框用 `AuthField`（`InputAdornment` + `@mui/icons-material` Visibility），不要再手写一套校验 state 或 SVG 眼睛图标。改密、改用户名成功后换新 token，不登出。
+- 组件：`TopBar`、`HistoryModal`、`ChatTranscript`、`ConversationTitle`、`AuthModal`、`ConfigModal`、`ConfirmPopover`、`RecommendationPoster`。会话标题/时间在 `utils/conversation.ts`。行内二次确认编辑用 `useConfirmableEdit` + `ConfirmPopover`（会话标题、配置用户名）。界面文案进 `TEXT`（`TEXT.workspace` 是历史弹窗、新对话与改标题，`TEXT.config` 是配置弹窗）。样式用 Less CSS Modules。
+- 登录/注册/改密表单用 `react-hook-form` + MUI `TextField`；密码框用 `AuthField`（`InputAdornment` + `@mui/icons-material` Visibility），不要再手写一套校验 state 或 SVG 眼睛图标。改用户名在配置帐户详情就地编辑，不要再做确认用户名表单。改密、改用户名成功后换新 token，不登出。
 - UI 只用 MUI 9，不要再引入另一套组件库。
 - 发送前必须登录。后端 `/movie/chat` 无 token 或验票失败返回 `401` JSON，前端会弹出登录框。图片以 Data URL 传 `imageData`，**后端 Orchestrator 当前未使用图片**；上传预览只留在输入区，不进聊天消息。
 - 聊天列表与后端 `ChatItem` 对齐：`role` 只有 `user` | `assistant`，`kind` 为 `user_query` | `recommendation` | `reject` | `error`，一条助手消息一个气泡（`text` 下方可选 `movies` 卡片）。`final` 收成气泡；`stage` 只更新加载文案，不进消息列表。有消息时收起 hero，会话顶栏左侧显示当前会话标题（可点按编辑）、右侧「新对话」。
@@ -280,7 +280,7 @@ Prompt 入口（改提示词只动这个文件）：
 - 新增 **Agent**：扩展 `AGENT_TYPE` / `AGENT_TYPES`，在 `OrchestratorAgent` 的 `agentExecutors` 用 `AGENT_TYPE.*` 注册，不要改执行循环本身。
 - 新增 **工作流事件**：扩展 `TurnEventBody`，在 Agent 里 `runtime.record()` / `ctx.record()`。message-service 只存 JSONB，不要在那边 switch kind。要推到浏览器再改 `toStreamStageEvent`（默认不推 `llm_usage` / `error`）。
 - 新增 **SSE 事件 / stage**：先改 `packages/contracts/src/stream.ts` 的 `STREAM_EVENT` / `STREAM_STAGE`，再改 `chat-stream.ts` 编码和 `client/src/utils/chat-stream.ts` 解码。不要在 controller 里手写帧格式。
-- 前端会话列表 UI 放 `HistoryModal`，拉取列表 / 打开弹窗 / 空闲时切主聊天放 `HomePage`。「新对话」只放会话顶栏右侧，不要写进 `HistoryModal`、`ConfigModal` 或应用 TopBar，也不要为切换会话预先 POST 空会话。气泡渲染用 `ChatTranscript`。会话顶栏标题用 `ConversationTitle`：点按编辑，回车 / 失焦用 MUI `Popover` 确认后再 `PATCH`；超出用 MUI `Tooltip`，不要自封装 tooltip。
+- 前端会话列表 UI 放 `HistoryModal`，拉取列表 / 打开弹窗 / 空闲时切主聊天放 `HomePage`。「新对话」只放会话顶栏右侧，不要写进 `HistoryModal`、`ConfigModal` 或应用 TopBar，也不要为切换会话预先 POST 空会话。气泡渲染用 `ChatTranscript`。会话顶栏标题用 `ConversationTitle`：点按编辑，回车 / 点标题外用 MUI `Popover` 确认后再 `PATCH`；不要靠 input `onBlur` 收口。超出用 MUI `Tooltip`，不要自封装 tooltip。
 - 可见聊天消息只走 `StartTurn` / `CompleteTurn`，payload 类型在 `transcript.ts`。SSE `final` 的 `data` 与写入 payload 同一份。
 - 新增 **Tool**：实现 `ITool`，在 `ToolsRegistry.registerTools()` 注册。SearchAgent 会自动拿到 schema，不要在 Agent 里再写一份参数定义。调 TMDB 用 `TmdbProvider.get` / `post`，不要在 Tool 里 `fetch`。
 - 新增 / 修改 **Prompt**：只改 `PromptTemplateService`。对话历史在 prompt 内按阶段投影，不要在 service 里先拼成字符串。关系计划只改 `getTaskPlanningPrompt`，不要再加一层分析 prompt。
@@ -323,6 +323,7 @@ Prompt 入口（改提示词只动这个文件）：
 | 前端停止生成 | `POST /api/movie/chat/cancel`；`AbortContext` / `TurnAbortRegistry` |
 | 前端历史记录 | `client/src/components/HistoryModal/`、`client/src/components/ChatTranscript/`、`client/src/utils/conversation.ts` |
 | 前端会话标题 | `client/src/components/ConversationTitle/`；`PATCH /message/conversations/:id` |
+| 行内二次确认编辑 | `client/src/hooks/useConfirmableEdit.ts`、`client/src/components/ConfirmPopover/` |
 | 前端登录/改密/改用户名 | `client/src/components/AuthModal/`、`client/src/components/ConfigModal/`、`client/src/store/auth.ts` |
 | 反代 | `client/nginx.conf`、`docker-compose.yml` |
 | 指标刮取 | `observability/prometheus.yml` |

@@ -8,34 +8,35 @@
   z-index: 1200;
 }
 
-.modal {
-  width: min(720px, 96%);
-  max-width: 720px;
-  max-height: min(90vh, 760px);
+.dialog {
+  width: min(880px, 96%);
+  height: min(70vh, 520px);
   background: #ffffff;
   border-radius: 24px;
-  padding: 24px;
+  padding: 20px 20px 16px;
   box-shadow: 0 30px 80px rgba(15, 23, 42, 0.18);
-  overflow: hidden;
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 
-.modalHeader {
+.header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
-  margin-bottom: 18px;
+  margin-bottom: 12px;
+  flex-shrink: 0;
 }
 
-.modalTitle {
+.title {
   margin: 0;
-  font-size: 1.25rem;
+  font-size: 1.2rem;
   line-height: 1.2;
 }
 
-.modalDescription {
+.description {
   margin: 6px 0 0;
   color: #4b5563;
   font-size: 0.95rem;
@@ -50,62 +51,159 @@
   cursor: pointer;
 }
 
+.body {
+  display: grid;
+  grid-template-columns: 168px 1fr;
+  gap: 16px;
+  min-height: 0;
+  flex: 1;
+}
+
+.navPane,
+.detailPane {
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  background: #f8fafc;
+  overflow: hidden;
+}
+
+.detailPane {
+  background: #ffffff;
+  padding: 16px 18px 18px;
+}
+
+.navList {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.navItem {
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+  border: none;
+  background: transparent;
+  border-radius: 14px;
+  padding: 12px 14px;
+  cursor: pointer;
+  color: #111827;
+  font-weight: 700;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  transition: background-color 0.15s ease;
+}
+
+.navItem:hover {
+  background: #eef2ff;
+}
+
+.navItemActive {
+  background: #e0e7ff;
+}
+
+.navItemActive:hover {
+  background: #e0e7ff;
+}
+
+.detailTitle {
+  margin: 0 0 16px;
+  font-size: 1rem;
+  line-height: 1.35;
+  color: #111827;
+}
+
 .accountPane {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  min-height: 320px;
+  min-height: 0;
+  overflow: auto;
 }
 
-.accountIdentity {
+.profileList {
   margin: 0;
   display: grid;
-  gap: 10px;
-  padding: 16px;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 18px;
+  gap: 16px;
 }
 
-.accountIdentity div {
+.profileRow {
   display: grid;
-  gap: 4px;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
 }
 
-.accountIdentity dt {
+.profileRow dt {
   margin: 0;
   font-size: 0.8rem;
   color: #64748b;
 }
 
-.accountIdentity dd {
+.profileRow dd {
   margin: 0;
+  min-width: 0;
   font-size: 0.95rem;
   color: #111827;
-  word-break: break-all;
 }
 
-.accountActions {
+.usernameSlot {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
 }
 
-.accountAction {
-  width: 100%;
-  text-align: left;
+.usernameValue {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editButton {
+  flex-shrink: 0;
+}
+
+.emailValue {
+  overflow-wrap: anywhere;
+}
+
+.usernameField {
+  flex: 1;
+  min-width: 0;
+
+  :global(.MuiInput-root) {
+    font-size: 0.95rem;
+    color: #111827;
+  }
+
+  :global(.MuiInput-input) {
+    padding: 2px 0;
+  }
+}
+
+.passwordButton {
   border: 1px solid #e2e8f0;
   background: #fff;
   color: #111827;
-  padding: 14px 16px;
-  border-radius: 14px;
+  padding: 8px 14px;
+  border-radius: 999px;
   cursor: pointer;
   font-weight: 700;
+  font-size: 0.85rem;
   transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
-.accountAction:hover,
-.accountAction:focus-visible {
+.passwordButton:hover,
+.passwordButton:focus-visible {
   border-color: #c7d2fe;
   background: #eef2ff;
 }
@@ -195,9 +293,19 @@
     padding: 12px;
   }
 
-  .modal {
-    max-height: min(95vh, 90vh);
-    padding: 18px;
+  .dialog {
     width: min(100%, 96vw);
+    height: min(88vh, 520px);
+    padding: 16px;
+  }
+
+  .body {
+    grid-template-columns: 112px 1fr;
+    gap: 10px;
+  }
+
+  .profileRow {
+    grid-template-columns: 56px minmax(0, 1fr);
+    gap: 8px;
   }
 }

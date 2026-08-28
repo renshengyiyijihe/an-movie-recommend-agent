@@ -5,6 +5,13 @@
   align-items: center;
 }
 
+.titleTooltipWrap {
+  display: block;
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
 .titleButton,
 .titleText {
   display: block;
@@ -53,25 +60,4 @@
   :global(.MuiInput-input) {
     padding: 2px 0;
   }
-}
-
-.confirmPaper {
-  padding: 12px 14px 10px;
-  display: grid;
-  gap: 10px;
-  min-width: 220px;
-}
-
-.confirmMessage {
-  margin: 0;
-  font-size: 0.875rem;
-  line-height: 1.4;
-  color: #374151;
-}
-
-.confirmActions {
-  display: flex;
-  flex-direction: row-reverse;
-  justify-content: flex-start;
-  gap: 8px;
 }

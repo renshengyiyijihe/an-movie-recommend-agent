@@ -5,11 +5,17 @@ import {
   AUTH_PASSWORD_MIN_LENGTH,
   AUTH_USERNAME_MAX_LENGTH,
   AUTH_USERNAME_MIN_LENGTH,
+  CONVERSATION_TITLE_MAX_LENGTH,
   ERROR_CODE,
   STREAM_STAGE,
 } from "@an-movie/contracts";
 
-export { AUTH_PASSWORD_MIN_LENGTH, AUTH_USERNAME_MAX_LENGTH, AUTH_USERNAME_MIN_LENGTH };
+export {
+  AUTH_PASSWORD_MIN_LENGTH,
+  AUTH_USERNAME_MAX_LENGTH,
+  AUTH_USERNAME_MIN_LENGTH,
+  CONVERSATION_TITLE_MAX_LENGTH,
+};
 
 /** 浏览器请求路径。Vite / Docker nginx 都从站点根反代。 */
 export const API_PATH = {
@@ -197,5 +203,11 @@ export const TEXT = {
     backToList: "返回列表",
     currentConversation: "当前",
     waitUntilIdle: "请等待当前回复完成后再开始新对话。",
+    editTitleAria: "编辑会话标题",
+    titleTooLong: `标题最多 ${CONVERSATION_TITLE_MAX_LENGTH} 个字符`,
+    titleSaveFailed: "无法保存标题，请稍后重试。",
+    confirmRename: "确定修改会话标题？",
+    confirmRenameAction: "确认",
+    cancelRename: "取消",
   },
 } as const;

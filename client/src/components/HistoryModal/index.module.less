@@ -81,6 +81,7 @@
 
 .item {
   width: 100%;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -112,9 +113,20 @@
   font-size: 0.9rem;
   line-height: 1.35;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+  width: 100%;
+}
+
+.itemTitleText {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1;
 }
 
 .itemMeta {
@@ -123,6 +135,7 @@
 }
 
 .currentBadge {
+  flex-shrink: 0;
   font-size: 0.7rem;
   font-weight: 700;
   color: #4338ca;
@@ -182,6 +195,9 @@
   color: #111827;
   flex: 1;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .detailToolbar .detailTitle {

@@ -1,6 +1,15 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from "@nestjs/common";
 import { JwtAuthGuard } from "@an-movie/auth-client";
 import { CreateConversationDto } from "./dto/create-conversation.dto";
+import { UpdateConversationDto } from "./dto/update-conversation.dto";
 import { MessageService } from "./message.service";
 
 @UseGuards(JwtAuthGuard)
@@ -21,5 +30,13 @@ export class MessageController {
   @Get("conversations/:id")
   async getConversation(@Param("id") id: string) {
     return this.messageService.getConversation(id);
+  }
+
+  @Patch("conversations/:id")
+  async updateConversation(
+    @Param("id") id: string,
+    @Body() body: UpdateConversationDto,
+  ) {
+    return this.messageService.updateConversationTitle(id, body.title);
   }
 }

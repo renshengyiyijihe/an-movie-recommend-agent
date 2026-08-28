@@ -98,12 +98,13 @@ export default function HistoryModal({
     : convertConversationToMessages(previewDetail?.messages ?? []);
   const previewTitle = previewId
     ? conversationDisplayTitle(
-        previewDetail?.conversation_id === previewId
-          ? previewDetail
-          : (conversations.find((item) => item.conversation_id === previewId) ?? {
-              conversation_id: previewId,
-              title: null,
-            }),
+        conversations.find((item) => item.conversation_id === previewId) ??
+          (previewDetail?.conversation_id === previewId
+            ? previewDetail
+            : {
+                conversation_id: previewId,
+                title: null,
+              }),
       )
     : "";
   const showDetailPane = Boolean(previewId);
@@ -219,6 +220,7 @@ export default function HistoryModal({
                         conversation.conversation_id === highlightedId;
                       const isLive =
                         conversation.conversation_id === activeConversationId;
+                      const itemTitle = conversationDisplayTitle(conversation);
                       return (
                         <li key={conversation.conversation_id}>
                           <button
@@ -232,7 +234,16 @@ export default function HistoryModal({
                             }
                           >
                             <span className={styles.itemTitle}>
-                              {conversationDisplayTitle(conversation)}
+                              <Tooltip
+                                title={itemTitle}
+                                placement="bottom-start"
+                                enterDelay={400}
+                                disableInteractive
+                              >
+                                <span className={styles.itemTitleText}>
+                                  {itemTitle}
+                                </span>
+                              </Tooltip>
                               {isLive ? (
                                 <span className={styles.currentBadge}>
                                   {TEXT.workspace.currentConversation}
@@ -265,7 +276,13 @@ export default function HistoryModal({
                         <ArrowBack />
                       </IconButton>
                     </Tooltip>
-                    <h4 className={styles.detailTitle}>{previewTitle}</h4>
+                    <Tooltip
+                      title={previewTitle}
+                      placement="bottom-start"
+                      enterDelay={400}
+                    >
+                      <h4 className={styles.detailTitle}>{previewTitle}</h4>
+                    </Tooltip>
                   </div>
                 ) : null}
 
@@ -289,7 +306,13 @@ export default function HistoryModal({
                 ) : (
                   <>
                     {!isNarrow ? (
-                      <h4 className={styles.detailTitle}>{previewTitle}</h4>
+                      <Tooltip
+                        title={previewTitle}
+                        placement="bottom-start"
+                        enterDelay={400}
+                      >
+                        <h4 className={styles.detailTitle}>{previewTitle}</h4>
+                      </Tooltip>
                     ) : null}
                     {previewMessages.length === 0 ? (
                       <p className={styles.hint}>{TEXT.workspace.emptyMessages}</p>

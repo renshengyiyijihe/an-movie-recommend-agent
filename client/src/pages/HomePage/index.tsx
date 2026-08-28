@@ -15,6 +15,7 @@ import AuthModal from "@/components/AuthModal";
 import AppLogo from "@/components/AppLogo";
 import ChatTranscript from "@/components/ChatTranscript";
 import ConfigModal from "@/components/ConfigModal";
+import ConversationTitle from "@/components/ConversationTitle";
 import HistoryModal from "@/components/HistoryModal";
 import TopBar from "@/components/TopBar";
 import {
@@ -131,6 +132,17 @@ export default function HomePage() {
         ...prev,
       ];
     });
+  }
+
+  function applyConversationTitle(id: string, title: string) {
+    setConversationList((prev) =>
+      prev.map((item) =>
+        item.conversation_id === id ? { ...item, title } : item,
+      ),
+    );
+    setSelectedConversation((prev) =>
+      prev && prev.conversation_id === id ? { ...prev, title } : prev,
+    );
   }
 
   function activateConversation(detail: ConversationDetail) {
@@ -440,7 +452,13 @@ export default function HomePage() {
             </header>
           ) : (
             <header className={styles.chatHeader}>
-              <h2>{activeConversationTitle}</h2>
+              <ConversationTitle
+                title={activeConversationTitle}
+                conversationId={conversationId}
+                editable={Boolean(token && conversationId)}
+                onRenamed={applyConversationTitle}
+                onSessionExpired={handleSessionExpired}
+              />
               {token ? (
                 <button
                   type="button"

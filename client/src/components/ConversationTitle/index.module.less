@@ -1,0 +1,77 @@
+.slot {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.titleButton,
+.titleText {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.35;
+  color: #111827;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.titleButton {
+  cursor: text;
+  border-radius: 6px;
+}
+
+.titleButton:hover {
+  background: rgba(15, 23, 42, 0.04);
+}
+
+.titleButton:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+}
+
+.titleField {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+
+  :global(.MuiInput-root) {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #111827;
+  }
+
+  :global(.MuiInput-input) {
+    padding: 2px 0;
+  }
+}
+
+.confirmPaper {
+  padding: 12px 14px 10px;
+  display: grid;
+  gap: 10px;
+  min-width: 220px;
+}
+
+.confirmMessage {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: #374151;
+}
+
+.confirmActions {
+  display: flex;
+  flex-direction: row-reverse;
+  justify-content: flex-start;
+  gap: 8px;
+}

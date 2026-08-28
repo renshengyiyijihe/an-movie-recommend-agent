@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   Logger,
   NotFoundException,
@@ -10,6 +11,7 @@ import { LessThan, Repository } from "typeorm";
 import { randomUUID } from "crypto";
 import { UserContext } from "@an-movie/auth-client";
 import {
+  CONVERSATION_TITLE_MAX_LENGTH,
   FINISHED_TURN_STATUSES,
   TURN_STATUS,
   isFinishedTurnStatus,
@@ -121,6 +123,33 @@ export class MessageService implements OnApplicationBootstrap, OnModuleDestroy {
       title: title ?? null,
     });
     return this.conversationRepository.save(conversation);
+  }
+
+  /**
+   * 会话主人改标题。空串按校验失败处理；越权 / 无主仍走「不存在」。
+   */
+  async updateConversationTitle(conversationId: string, title: string) {
+    const conversation = await this.requireConversation(conversationId);
+    const next = title.trim();
+    if (!next) {
+      throw new BadRequestException("title must not be empty");
+    }
+    if (next.length > CONVERSATION_TITLE_MAX_LENGTH) {
+      throw new BadRequestException("title is too long");
+    }
+    if (conversation.title === next) {
+      return {
+        conversation_id: conversation.conversation_id,
+        title: conversation.title,
+      };
+    }
+
+    conversation.title = next;
+    await this.conversationRepository.save(conversation);
+    return {
+      conversation_id: conversation.conversation_id,
+      title: conversation.title,
+    };
   }
 
   /**

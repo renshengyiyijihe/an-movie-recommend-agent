@@ -10,6 +10,8 @@ export {
   AUTH_USERNAME_MIN_LENGTH,
 } from "./auth-rules";
 
+export { CONVERSATION_TITLE_MAX_LENGTH } from "./conversation-rules";
+
 export {
   CANCEL_REASON,
   CANCEL_REASONS,

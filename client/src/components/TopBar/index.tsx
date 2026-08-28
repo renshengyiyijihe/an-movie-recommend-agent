@@ -1,63 +1,51 @@
-import classNames from 'classnames';
 import useAuth from '@/store/auth';
 import AppLogo from '@/components/AppLogo';
 import { TEXT } from '@/constant';
-import Menu from '@mui/icons-material/Menu';
-import Tooltip from '@mui/material/Tooltip';
+import History from '@mui/icons-material/History';
 import styles from './index.module.less';
 
 interface Props {
+  onOpenHistory: () => void;
   onOpenConfig: () => void;
-  /** 仅窄屏渲染顶栏入口时会用到。 */
-  onToggleSidebar: () => void;
-  sidebarOpen: boolean;
-  showSidebarToggle: boolean;
   onOpenLogin: () => void;
   onOpenRegister: () => void;
 }
 
 export default function TopBar({
+  onOpenHistory,
   onOpenConfig,
-  onToggleSidebar,
-  sidebarOpen,
-  showSidebarToggle,
   onOpenLogin,
   onOpenRegister,
 }: Props) {
   const token = useAuth((s) => s.token);
   const user = useAuth((s) => s.user);
   const logout = useAuth((s) => s.logout);
-  const sidebarToggleLabel = sidebarOpen
-    ? TEXT.workspace.closeSidebar
-    : TEXT.workspace.openSidebar;
 
   return (
     <div className={styles.topBar}>
       <div className={styles.topBarTitle}>
-        {showSidebarToggle ? (
-          <Tooltip title={sidebarToggleLabel}>
-            <button
-              className={classNames(styles.sidebarToggle, {
-                [styles.sidebarToggleActive]: sidebarOpen,
-              })}
-              type="button"
-              onClick={onToggleSidebar}
-              aria-label={sidebarToggleLabel}
-              aria-pressed={sidebarOpen}
-              aria-expanded={sidebarOpen}
-            >
-              <Menu />
-            </button>
-          </Tooltip>
-        ) : null}
         <AppLogo className={styles.topBarIcon} size={24} />
         <span>An-movie</span>
       </div>
       <div className={styles.topBarActions} role="toolbar">
         {token ? (
           <>
-            <button className={styles.btnSecondary} type="button" onClick={onOpenConfig} aria-label="打开配置">
-              ⚙ 配置
+            <button
+              className={styles.btnSecondary}
+              type="button"
+              onClick={onOpenHistory}
+              aria-label={TEXT.workspace.openHistory}
+            >
+              <History className={styles.actionIcon} fontSize="small" />
+              {TEXT.workspace.historyTitle}
+            </button>
+            <button
+              className={styles.btnSecondary}
+              type="button"
+              onClick={onOpenConfig}
+              aria-label={TEXT.config.openAria}
+            >
+              {TEXT.config.open}
             </button>
             <div className={styles.userPill} aria-label={TEXT.auth.currentUserAria}>
               <span className={styles.userPillName}>{user?.username ?? TEXT.auth.userFallback}</span>

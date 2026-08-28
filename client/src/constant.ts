@@ -22,11 +22,8 @@ export const API_PATH = {
   changeUsername: "/api/auth/username",
 } as const;
 
-/** 工作台布局，与 HomePage / TopBar 的 `@media` 保持同一套数字。 */
+/** 窄屏断点，与历史弹窗 / 主聊天 `@media` 保持同一套数字。 */
 export const LAYOUT = {
-  SIDEBAR_WIDTH_PX: 280,
-  /** 桌面收起后的图标轨宽度，须能完整露出轨上的 IconButton。 */
-  SIDEBAR_RAIL_WIDTH_PX: 56,
   NARROW_MAX_PX: 760,
 } as const;
 
@@ -127,9 +124,9 @@ export const TEXT = {
   /** 顶栏配置弹窗 */
   config: {
     title: "配置",
-    description: "管理账号与会话详情。",
-    account: "账号",
-    chatHistory: "会话消息",
+    open: "⚙ 配置",
+    openAria: "打开配置",
+    description: "管理账号资料。",
     closeAria: "关闭配置窗口",
     usernameLabel: "用户名",
     emailLabel: "邮箱",
@@ -180,25 +177,25 @@ export const TEXT = {
     streamIncomplete: "连接中断，请稍后重试。",
     timeout: "请求超时，请稍后重试。",
   },
-  /** 左侧会话工作台 */
+  /** 历史弹窗与「新对话」相关文案 */
   workspace: {
-    title: "会话",
+    historyTitle: "历史记录",
+    openHistory: "打开历史记录",
+    closeHistory: "关闭历史记录",
     newConversation: "新对话",
     newConversationAria: "开始新对话",
-    collapseSidebar: "收起侧栏",
-    expandSidebar: "展开侧栏",
-    openSidebar: "打开会话列表",
-    closeSidebar: "关闭会话列表",
     listAria: "会话列表",
     loading: "加载会话列表中...",
     empty: "暂无会话，发送消息后会自动生成。",
     untitled: "会话",
-    guestHint: "登录后可查看和切换历史会话。",
-    loginToView: "登录后查看会话",
     retry: "重试",
     loadFailed: "会话列表加载失败",
     detailFailed: "无法打开该会话，请稍后重试。",
-    waitUntilIdle: "请等待当前回复完成后再切换会话。",
-    switching: "正在加载会话...",
+    detailLoading: "加载会话详情中...",
+    pickHint: "选择一条会话查看消息",
+    emptyMessages: "该会话还没有消息。",
+    backToList: "返回列表",
+    currentConversation: "当前",
+    waitUntilIdle: "请等待当前回复完成后再开始新对话。",
   },
 } as const;

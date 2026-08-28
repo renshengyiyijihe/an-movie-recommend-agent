@@ -186,7 +186,7 @@ docker compose up --build
 
 ```text
 an-movie-agent/
-├── client/                 # 单页：聊天、海报卡片、会话列表
+├── client/                 # 单页：聊天、海报卡片、历史弹窗
 ├── backend/
 │   ├── proto/              # 跨服务 .proto
 │   ├── auth-service/       # 注册登录 + JWT + 验票

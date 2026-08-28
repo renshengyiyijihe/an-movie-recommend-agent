@@ -27,28 +27,17 @@
   flex-shrink: 0;
 }
 
-.sidebarToggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 10px;
-  padding: 6px;
-  cursor: pointer;
-  background: #eef2ff;
-  color: #4338ca;
-  line-height: 0;
-}
-
-.sidebarToggle:hover,
-.sidebarToggleActive {
-  background: #e0e7ff;
-}
-
 .topBarActions {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.actionIcon {
+  margin-right: 4px;
+  vertical-align: middle;
 }
 
 .userPill {
@@ -77,13 +66,21 @@
 }
 
 .btnSecondary {
+  display: inline-flex;
+  align-items: center;
   background: #eef2ff;
   color: #4338ca;
 }
 
-.btnSecondary:hover {
+.btnSecondary:hover:not(:disabled) {
   transform: translateY(-1px);
   background: #e0e7ff;
+}
+
+.btnSecondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .btnOutline {

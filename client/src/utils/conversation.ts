@@ -5,7 +5,7 @@ import { chatMessageText } from "@/utils/chatUtils";
 const TITLE_ID_PREFIX_LENGTH = 8;
 
 /**
- * 侧栏 / 聊天标题用的会话名。空 title 时用 id 前缀，避免多条都叫「未命名」。
+ * 历史列表 / 聊天标题用的会话名。空 title 时用 id 前缀，避免多条都叫「未命名」。
  *
  * @param conversation 列表或详情里的会话摘要
  * @returns 去掉首尾空白后的 title，或「会话」+ id 前 8 位

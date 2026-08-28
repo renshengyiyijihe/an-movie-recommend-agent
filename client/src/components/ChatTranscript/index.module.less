@@ -1,0 +1,191 @@
+.transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.message {
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.userMessage {
+  background: #ede9fe;
+  color: #1f1f23;
+  align-self: flex-end;
+  max-width: 60%;
+}
+
+.assistantMessage {
+  background: #f0f4f8;
+  color: #1f1f23;
+  max-width: 60%;
+}
+
+.assistantErrorMessage {
+  background: #fef2f2;
+  color: #7f1d1d;
+  border-color: #f8c1c5;
+}
+
+.messageRole {
+  font-size: 12px;
+  color: #4b5563;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.messageText {
+  line-height: 1.4;
+  font-size: 14px;
+}
+
+.assistantBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.recommendationList {
+  display: flex;
+  gap: 18px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+.recommendationCard {
+  border-radius: 16px;
+  overflow: hidden;
+  background: #ffffff;
+  box-shadow: 0 14px 38px rgba(15, 23, 42, 0.08);
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  max-width: 320px;
+  width: 260px;
+}
+
+.recommendationCardMedia {
+  overflow: hidden;
+  border-bottom: 1px solid #e5e7eb;
+  height: 360px;
+}
+
+.recommendationCardBody {
+  padding: 14px 16px;
+  display: grid;
+  gap: 12px;
+  flex: 1 1 auto;
+}
+
+.recommendationCardHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.recommendationCardSubtitle,
+.recommendationCardReason,
+.recommendationCardMetaRow {
+  margin: 0;
+}
+
+.recommendationCardLink {
+  color: #4f46e5;
+  text-decoration: none;
+  font-size: 0.86rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.recommendationCardReason {
+  margin: 0;
+  color: #334155;
+  line-height: 1.55;
+  max-height: 300px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: help;
+  position: relative;
+}
+
+.recommendationCardReason::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  max-width: min(280px, 80vw);
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.95);
+  color: #ffffff;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.2);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
+  z-index: 20;
+}
+
+.recommendationCardReason:hover::after {
+  opacity: 1;
+}
+
+.recommendationCardMetaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 2px;
+}
+
+.recommendationCardChip,
+.recommendationCardMetaRow span {
+  display: inline-flex;
+  align-items: center;
+  white-space: normal;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 0.78rem;
+}
+
+.recommendationCardChipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.recommendationCardChipLabel {
+  font-weight: 700;
+}
+
+.recommendationCardLinkWrap {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+}
+
+.recommendationList::-webkit-scrollbar {
+  height: 8px;
+}
+
+.recommendationList::-webkit-scrollbar-thumb {
+  background: rgba(107, 114, 128, 0.3);
+  border-radius: 4px;
+}

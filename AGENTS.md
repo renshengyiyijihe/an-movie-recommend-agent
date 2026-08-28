@@ -100,7 +100,7 @@ POST /api/movie/chat   Accept: text/event-stream
 
 | `event` | 何时推 | 载荷要点 | 前端 |
 | --- | --- | --- | --- |
-| `turn` | `StartTurn` 成功 | `conversationId`、`turnId` | 记下会话 id，后续提问带上；侧栏没有该项则插入并静默 refetch 列表 |
+| `turn` | `StartTurn` 成功 | `conversationId`、`turnId` | 记下会话 id，后续提问带上；历史列表没有该项则本地插入，不为此 refetch |
 | `stage` | `ctx.record()` 且 `toStreamStageEvent` 能映射 | 见下表；不含 Tool 完整结果 | 只改加载文案，**不进**消息列表 |
 | `final` | **先** `CompleteTurn` **再**推 | `type` + `data` 与写入 payload 同一份 | 收成一条助手气泡 |
 | `error` | 开流后未收成 `final` | `message`（`UNEXPECTED_FAILURE`） | 错误气泡 |
@@ -233,18 +233,18 @@ Prompt 入口（改提示词只动这个文件）：
 ## 前端
 
 - 单页：`client/src/pages/HomePage`。路由只有 `/`。
-- 布局：TopBar + **左侧会话栏** + 右侧主聊天。桌面常驻 `ConversationSidebar`（展开约 280px，收起约 56px 图标轨，宽度有过渡）。展开/收起只在侧栏轨上操作，状态是用户本地偏好，走 `store/preferences.ts`（localStorage 整包 JSON，键 `PREFERENCES_STORAGE_KEY.ALL`）。窄屏（`LAYOUT.NARROW_MAX_PX` = 760）隐藏固定栏，顶栏用菜单图标切换 MUI `Drawer`（不持久化）；抽屉里同一颗收起按钮会关掉抽屉。未登录侧栏只给登录引导，不请求会话 API。「新对话」只渲染一处：展开时在面板标题区，收起时才出现在图标轨；登录引导同理。不要轨上图标和标题区按钮同时出现。
-- 会话主入口是侧栏，不是配置弹窗。登录后 `GET /api/message/conversations` 拉列表。点选 `GET /api/message/conversations/:id`（`conversationDetailPath`）把气泡载入主聊天；详情未成功前不要改当前 `conversationId`。路径写在 `API_PATH`，不要在页面里再写死 `/api/message/...`。
-- 「新对话」只清本地 `conversationId` / `messages`，**不要**预先 `POST /message/conversations`（会留下无标题空行）。首条发送仍由 movie-service `ensureConversation` 创建（title = 用户原话）。SSE `turn` 后侧栏若没有该项则插入，再静默 refetch。
-- 发送中或正在拉详情时禁止切换/新建：断开 SSE **不会**取消后端轮次，工作流会继续并 `CompleteTurn`。点「停止」走 `POST /api/movie/chat/cancel`，不要 abort 那条 chat 流。用 `conversationLoadGen` 丢掉过期的详情响应。
-- `ConfigModal` 与 TopBar「配置」**保留**。左侧可切「账号」和「会话消息」。账号页只展示资料和「修改用户名 / 修改密码」入口，点按钮再开独立弹窗填表，不要把表单直接铺在账号页。点弹窗里的会话也走同一套 `loadConversation` 进主聊天，弹窗内纯文本预览仍在。不要把侧栏列表再塞回配置，也不要删掉配置入口。
-- 状态：Zustand 为 `store/auth.ts`（token 在 `localStorage`）、toast、`store/preferences.ts`（用户本地偏好，本机持久化，不跟账号走，也不只限界面开关）。会话列表 / 当前对话放 `HomePage` 本地 state，不要为工作台数据再加全局 store。
+- 布局：TopBar + 全宽主聊天。登录后顶栏为「历史」「配置」。点「历史」打开 `HistoryModal`：左会话列表、右消息详情（与主聊天同款气泡）。点列表某条才 `GET` 该条详情填右栏；空闲时同时把主聊天切过去，生成中只预览不改 `conversationId`。弹窗不关。窄屏同一弹窗：先列表，点选后全屏详情，有返回。不要常驻左侧会话栏、不要汉堡 Drawer。未登录不渲染历史/配置，不请求会话 API。「新对话」只在有消息时的会话顶栏右侧出现一次（左侧为标题，发送中禁用），不要放进历史弹窗，也不要放进应用 TopBar。
+- 会话目录不是配置弹窗。打开历史弹窗才 `GET /api/message/conversations` 拉列表；内存里已有则先展示再 silent 刷新。点选 `GET /api/message/conversations/:id`（`conversationDetailPath`）填右栏；同一条已打开过则用内存详情，不必再打。详情未成功前不要改当前 `conversationId`。路径写在 `API_PATH`，不要在页面里再写死 `/api/message/...`。发送和 SSE **不要**拉列表或详情。
+- 「新对话」只清本地 `conversationId` / `messages`，**不要**预先 `POST /message/conversations`（会留下无标题空行）。首条发送仍由 movie-service `ensureConversation` 创建（title = 用户原话）。SSE `turn` 后若列表没有该项则本地插入，**不要**为此再拉列表。
+- 发送中禁止新建对话；历史弹窗仍可打开、点选预览。断开 SSE **不会**取消后端轮次，工作流会继续并 `CompleteTurn`。点「停止」走 `POST /api/movie/chat/cancel`，不要 abort 那条 chat 流。
+- `ConfigModal` 与 TopBar「配置」**保留**，只管家账号：资料和「修改用户名 / 修改密码」入口，点按钮再开独立弹窗填表。不要在配置里再放会话列表或消息预览。
+- 状态：Zustand 为 `store/auth.ts`（token 在 `localStorage`）、toast、`store/preferences.ts`（用户本地偏好预留，当前无界面字段）。会话列表 / 当前对话放 `HomePage` 本地 state，不要为历史数据再加全局 store。
 - HTTP：`api.ts` 的 `request()` 自动带 Bearer；`baseURL: '/'`。**只有 chat 走 `streamChat()` 读 SSE**，其它接口继续 `request()`。鉴权失效用 `isSessionExpiredError()`（登录 401「密码错误」、改密 401「当前密码错误」都不算过期）。Docker 下由 nginx 反代；本地 `vite` 默认 **没有** 把 `/api` 转到后端。
-- 组件：`TopBar`、`ConversationSidebar`、`AuthModal`、`ConfigModal`、`RecommendationPoster`。会话标题/时间在 `utils/conversation.ts`。界面文案进 `TEXT`（`TEXT.workspace` 是侧栏，`TEXT.config` 是配置弹窗）。样式用 Less CSS Modules。
+- 组件：`TopBar`、`HistoryModal`、`ChatTranscript`、`AuthModal`、`ConfigModal`、`RecommendationPoster`。会话标题/时间在 `utils/conversation.ts`。界面文案进 `TEXT`（`TEXT.workspace` 是历史弹窗与新对话，`TEXT.config` 是配置弹窗）。样式用 Less CSS Modules。
 - 登录/注册/改密/改用户名表单用 `react-hook-form` + MUI `TextField`；密码框用 `AuthField`（`InputAdornment` + `@mui/icons-material` Visibility），不要再手写一套校验 state 或 SVG 眼睛图标。改密、改用户名成功后换新 token，不登出。
 - UI 只用 MUI 9，不要再引入另一套组件库。
 - 发送前必须登录。后端 `/movie/chat` 无 token 或验票失败返回 `401` JSON，前端会弹出登录框。图片以 Data URL 传 `imageData`，**后端 Orchestrator 当前未使用图片**；上传预览只留在输入区，不进聊天消息。
-- 聊天列表与后端 `ChatItem` 对齐：`role` 只有 `user` | `assistant`，`kind` 为 `user_query` | `recommendation` | `reject` | `error`，一条助手消息一个气泡（`text` 下方可选 `movies` 卡片）。`final` 收成气泡；`stage` 只更新加载文案，不进消息列表。有消息时收起 hero，顶栏显示当前会话标题。
+- 聊天列表与后端 `ChatItem` 对齐：`role` 只有 `user` | `assistant`，`kind` 为 `user_query` | `recommendation` | `reject` | `error`，一条助手消息一个气泡（`text` 下方可选 `movies` 卡片）。`final` 收成气泡；`stage` 只更新加载文案，不进消息列表。有消息时收起 hero，会话顶栏左侧显示当前会话标题、右侧「新对话」。
 - nginx：`/api/movie/chat` 关缓冲；movie / message 代理超时 300s，与 `HTTP_CONSTANTS.REQUEST_TIMEOUT_MS`（5min，axios 与 chat 流式共用）对齐。
 
 ## 环境变量（不要提交 .env）
@@ -279,7 +279,7 @@ Prompt 入口（改提示词只动这个文件）：
 - 新增 **Agent**：扩展 `AGENT_TYPE` / `AGENT_TYPES`，在 `OrchestratorAgent` 的 `agentExecutors` 用 `AGENT_TYPE.*` 注册，不要改执行循环本身。
 - 新增 **工作流事件**：扩展 `TurnEventBody`，在 Agent 里 `runtime.record()` / `ctx.record()`。message-service 只存 JSONB，不要在那边 switch kind。要推到浏览器再改 `toStreamStageEvent`（默认不推 `llm_usage` / `error`）。
 - 新增 **SSE 事件 / stage**：先改 `packages/contracts/src/stream.ts` 的 `STREAM_EVENT` / `STREAM_STAGE`，再改 `chat-stream.ts` 编码和 `client/src/utils/chat-stream.ts` 解码。不要在 controller 里手写帧格式。
-- 前端会话列表 UI 放 `ConversationSidebar`，拉取/切换/锁定放 `HomePage`。不要把列表逻辑写进 `ConfigModal`，也不要为切换会话预先 POST 空会话。
+- 前端会话列表 UI 放 `HistoryModal`，拉取列表 / 打开弹窗 / 空闲时切主聊天放 `HomePage`。「新对话」只放会话顶栏右侧，不要写进 `HistoryModal`、`ConfigModal` 或应用 TopBar，也不要为切换会话预先 POST 空会话。气泡渲染用 `ChatTranscript`。
 - 可见聊天消息只走 `StartTurn` / `CompleteTurn`，payload 类型在 `transcript.ts`。SSE `final` 的 `data` 与写入 payload 同一份。
 - 新增 **Tool**：实现 `ITool`，在 `ToolsRegistry.registerTools()` 注册。SearchAgent 会自动拿到 schema，不要在 Agent 里再写一份参数定义。调 TMDB 用 `TmdbProvider.get` / `post`，不要在 Tool 里 `fetch`。
 - 新增 / 修改 **Prompt**：只改 `PromptTemplateService`。对话历史在 prompt 内按阶段投影，不要在 service 里先拼成字符串。关系计划只改 `getTaskPlanningPrompt`，不要再加一层分析 prompt。
@@ -320,7 +320,7 @@ Prompt 入口（改提示词只动这个文件）：
 | 登录鉴权 | `backend/auth-service/src/auth/auth.service.ts` |
 | 前端聊天 | `client/src/pages/HomePage/index.tsx`、`client/src/api.ts` |
 | 前端停止生成 | `POST /api/movie/chat/cancel`；`AbortContext` / `TurnAbortRegistry` |
-| 前端会话工作台 | `client/src/components/ConversationSidebar/`、`client/src/utils/conversation.ts`、`client/src/store/preferences.ts` |
+| 前端历史记录 | `client/src/components/HistoryModal/`、`client/src/components/ChatTranscript/`、`client/src/utils/conversation.ts` |
 | 前端登录/改密/改用户名 | `client/src/components/AuthModal/`、`client/src/components/ConfigModal/`、`client/src/store/auth.ts` |
 | 反代 | `client/nginx.conf`、`docker-compose.yml` |
 | 指标刮取 | `observability/prometheus.yml` |
@@ -333,7 +333,7 @@ Prompt 入口（改提示词只动这个文件）：
 - `JWT_SECRET` 必须显式配置，代码不再回退 `dev_secret`。
 - 内部 gRPC 信任 metadata 里的 `user-id`（依赖 Docker 网络隔离，message-service 不再二次验 JWT）。
 - 图片主链路仍未消费 `imageData`。
-- chat 开流后客户端断开不会取消工作流；轮次会一直跑到 `CompleteTurn`。立刻重发仍可能撞「上一轮还在处理」。前端发送中锁侧栏；点「停止」或等待超时会 `POST /movie/chat/cancel` 解开 `running`。配置弹窗里的会话项本身未 disable，但 `loadConversation` 会拒绝并 toast。
+- chat 开流后客户端断开不会取消工作流；轮次会一直跑到 `CompleteTurn`。立刻重发仍可能撞「上一轮还在处理」。前端发送中禁用「新对话」；历史弹窗仍可预览其它会话，但不切换当前 `conversationId`。点「停止」或等待超时会 `POST /movie/chat/cancel` 解开 `running`。
 - Relation 未做：计数/排名、多跳路径、公司/系列。规划应标 `unsupported` 或直接 `search`，不要假装能算。
 - 工作副本不跨请求保留；指代「刚才那批结果再筛」目前只能靠历史文本 + 重新取数。
 - 共享包由 `packages/Dockerfile` 编一次，各服务 `FROM an-movie-packages AS packages` 再 `COPY --from=packages`。不要用 `additional_contexts`（旧 BuildKit 没有 named context）。须先 `docker compose build packages` 再 `up --build`。`packages` 服务只产镜像，启动后立刻退出，`compose ps` 里 Exited 是正常的。

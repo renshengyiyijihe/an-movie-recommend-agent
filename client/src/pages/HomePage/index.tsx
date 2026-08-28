@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import classNames from "classnames";
-import Drawer from "@mui/material/Drawer";
+import Add from "@mui/icons-material/Add";
 import { ApiError, isChatTimeoutError, isSessionExpiredError, request, streamChat } from "@/api";
 import {
   CANCEL_REASON,
@@ -10,36 +10,27 @@ import {
   type ChatStreamStageEvent,
 } from "@an-movie/contracts";
 import useAuth from "@/store/auth";
-import { usePreferences } from "@/store/preferences";
 import { toast } from "@/store/toast";
 import AuthModal from "@/components/AuthModal";
 import AppLogo from "@/components/AppLogo";
+import ChatTranscript from "@/components/ChatTranscript";
 import ConfigModal from "@/components/ConfigModal";
-import ConversationSidebar from "@/components/ConversationSidebar";
-import RecommendationPoster from "@/components/RecommendationPoster";
+import HistoryModal from "@/components/HistoryModal";
 import TopBar from "@/components/TopBar";
 import {
   API_PATH,
-  conversationDetailPath,
-  LAYOUT,
   TEXT,
 } from "@/constant";
 import styles from "./index.module.less";
 import {
   convertConversationToMessages,
-  chatMessageMovies,
-  chatMessageText,
-  getRecommendationGenres,
-  renderMessageText,
   toAssistantMessage,
 } from "@/utils/chatUtils";
 import { resolveActiveConversationTitle } from "@/utils/conversation";
-import { getTmdbImage } from "@/utils/tmdb";
 import type {
   ChatMessage,
   ConversationDetail,
   ConversationSummary,
-  RecommendationItem,
 } from "@/types";
 
 const quickPrompts = [
@@ -47,8 +38,6 @@ const quickPrompts = [
   "想要轻松爱情片，适合晚上放松",
   "推荐几部张力强、节奏快的动作片",
 ];
-
-const NARROW_MQ = `(max-width: ${LAYOUT.NARROW_MAX_PX}px)`;
 
 export default function HomePage() {
   const [message, setMessage] = useState("");
@@ -69,12 +58,8 @@ export default function HomePage() {
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [loginEmail, setLoginEmail] = useState("");
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [detailsLoading, setDetailsLoading] = useState(false);
   const [listError, setListError] = useState("");
-  const [sidebarDrawerOpen, setSidebarDrawerOpen] = useState(false);
-  const [isNarrow, setIsNarrow] = useState(
-    () => window.matchMedia(NARROW_MQ).matches,
-  );
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [streamStage, setStreamStage] =
@@ -84,15 +69,11 @@ export default function HomePage() {
   const token = useAuth((s) => s.token);
   const userId = useAuth((s) => s.user?.id ?? null);
   const logout = useAuth((s) => s.logout);
-  const sidebarCollapsed = usePreferences((s) => s.sidebarCollapsed);
-  const toggleSidebarCollapsed = usePreferences((s) => s.toggleSidebarCollapsed);
   const sendingRef = useRef(false);
   const stoppingRef = useRef(false);
   const turnIdRef = useRef<string | null>(null);
   const stopRequestedRef = useRef(false);
   const sessionGen = useRef(0);
-  const conversationLoadGen = useRef(0);
-  const interactionLocked = loading || detailsLoading;
 
   const handleSessionExpired = useCallback(() => {
     logout({ silent: true });
@@ -152,60 +133,24 @@ export default function HomePage() {
     });
   }
 
-  async function loadConversation(targetId: string) {
+  function activateConversation(detail: ConversationDetail) {
+    if (sendingRef.current) return;
+    setSelectedConversation(detail);
+    setConversationId(detail.conversation_id);
+    setMessages(convertConversationToMessages(detail.messages ?? []));
+    setError("");
+    setStreamStage(null);
+  }
+
+  function openHistoryModal() {
     if (!token) {
       setShowLoginModal(true);
       return;
     }
-    if (sendingRef.current) {
-      toast.info(TEXT.workspace.waitUntilIdle);
-      return;
-    }
-    if (targetId === conversationId && !detailsLoading) {
-      setSidebarDrawerOpen(false);
-      return;
-    }
-
-    const sessionAtStart = sessionGen.current;
-    const loadGen = ++conversationLoadGen.current;
-    setDetailsLoading(true);
-    setError("");
-
-    try {
-      const detail = await request<ConversationDetail>({
-        method: "GET",
-        url: conversationDetailPath(targetId),
-      });
-      if (loadGen !== conversationLoadGen.current) return;
-      if (sessionAtStart !== sessionGen.current) return;
-      if (!detail?.conversation_id) {
-        toast.error(TEXT.workspace.detailFailed);
-        return;
-      }
-      setSelectedConversation(detail);
-      setConversationId(detail.conversation_id);
-      setMessages(convertConversationToMessages(detail.messages ?? []));
-      setSidebarDrawerOpen(false);
-    } catch (err) {
-      if (loadGen !== conversationLoadGen.current) return;
-      if (sessionAtStart !== sessionGen.current) return;
-      if (isSessionExpiredError(err)) {
-        handleSessionExpired();
-        return;
-      }
-      toast.error(
-        err instanceof ApiError && err.message
-          ? err.message
-          : TEXT.workspace.detailFailed,
-      );
-    } finally {
-      if (
-        loadGen === conversationLoadGen.current &&
-        sessionAtStart === sessionGen.current
-      ) {
-        setDetailsLoading(false);
-      }
-    }
+    setShowHistoryModal(true);
+    void fetchConversations(sessionGen.current, {
+      silent: conversationList.length > 0,
+    });
   }
 
   function openConfigModal() {
@@ -215,19 +160,6 @@ export default function HomePage() {
     }
 
     setShowConfigModal(true);
-    void fetchConversations();
-  }
-
-  function toggleSidebar() {
-    setSidebarDrawerOpen((open) => !open);
-  }
-
-  function toggleSidebarInPanel() {
-    if (isNarrow) {
-      setSidebarDrawerOpen(false);
-      return;
-    }
-    toggleSidebarCollapsed();
   }
 
   function startNewConversation() {
@@ -235,22 +167,19 @@ export default function HomePage() {
       toast.info(TEXT.workspace.waitUntilIdle);
       return;
     }
-    conversationLoadGen.current += 1;
+    setShowHistoryModal(false);
     setConversationId(undefined);
     setMessages([]);
     setSelectedConversation(null);
     setError("");
     setStreamStage(null);
-    setDetailsLoading(false);
     setMessage("");
     setFile(null);
     setImageData("");
-    setSidebarDrawerOpen(false);
   }
 
   useEffect(() => {
-    const requestGen = ++sessionGen.current;
-    conversationLoadGen.current += 1;
+    sessionGen.current += 1;
     sendingRef.current = false;
     setConversationId(undefined);
     setMessages([]);
@@ -262,24 +191,11 @@ export default function HomePage() {
     setFile(null);
     setImageData("");
     setShowConfigModal(false);
-    setSidebarDrawerOpen(false);
+    setShowHistoryModal(false);
     setLoading(false);
     setStreamStage(null);
     setHistoryLoading(false);
-    setDetailsLoading(false);
-    if (!userId) return;
-    void fetchConversations(requestGen);
-  }, [userId, fetchConversations]);
-
-  useEffect(() => {
-    const media = window.matchMedia(NARROW_MQ);
-    function onViewportChange(event: MediaQueryListEvent) {
-      setIsNarrow(event.matches);
-      if (!event.matches) setSidebarDrawerOpen(false);
-    }
-    media.addEventListener("change", onViewportChange);
-    return () => media.removeEventListener("change", onViewportChange);
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     if (!file) {
@@ -301,7 +217,7 @@ export default function HomePage() {
 
   async function sendMessage() {
     const trimmedMessage = message.trim();
-    if (!trimmedMessage || sendingRef.current || detailsLoading) return;
+    if (!trimmedMessage || sendingRef.current) return;
     if (!token) {
       setShowLoginModal(true);
       return;
@@ -339,7 +255,6 @@ export default function HomePage() {
           if (event.event === STREAM_EVENT.TURN) {
             turnIdRef.current = event.turnId;
             rememberConversationIfNew(event.conversationId, trimmedMessage);
-            void fetchConversations(requestGen, { silent: true });
             if (stopRequestedRef.current) {
               void requestCancelTurn(event.turnId, CANCEL_REASON.USER).catch(
                 (cancelError: unknown) => {
@@ -432,133 +347,6 @@ export default function HomePage() {
     }
   }
 
-  function renderRecommendationCard(item: RecommendationItem, index: number) {
-    const title = item.name || item.title || item.original_title || "未知电影";
-    const subtitle =
-      item.original_title && item.original_title !== title
-        ? item.original_title
-        : "";
-    const reason = item.reason || item.summary || item.overview || "暂无说明";
-    const releaseDate = item.release_date ? item.release_date : "未知日期";
-    const rating =
-      typeof item.vote_average === "number"
-        ? item.vote_average.toFixed(1)
-        : "暂无";
-    const voteCount =
-      typeof item.vote_count === "number" ? `${item.vote_count}` : "0";
-    const popularity =
-      typeof item.popularity === "number"
-        ? `${item.popularity.toFixed(1)}`
-        : "暂无";
-    const language = item.original_language || "未知";
-    const genres = getRecommendationGenres(item);
-    const posterUrl = getTmdbImage(item.poster_url || item.poster_path);
-
-    const cardInner = (
-      <div className={styles.recommendationCard} key={`${title}-${index}`}>
-        <div className={styles.recommendationCardMedia}>
-          <RecommendationPoster src={posterUrl} alt={title} />
-        </div>
-        <div className={styles.recommendationCardBody}>
-          <div className={styles.recommendationCardHeader}>
-            <div>
-              <h4>{title}</h4>
-              {subtitle ? (
-                <p className={styles.recommendationCardSubtitle}>{subtitle}</p>
-              ) : null}
-            </div>
-            {item.tmdb_url ? (
-              <a
-                href={item.tmdb_url}
-                target="_blank"
-                rel="noreferrer"
-                className={styles.recommendationCardLink}
-              >
-                查看详情
-              </a>
-            ) : null}
-          </div>
-          <p
-            title={reason}
-            className={styles.recommendationCardReason}
-            data-tooltip={reason}
-            aria-label={reason}
-          >
-            {reason}
-          </p>
-          <div
-            className={styles.recommendationCardMetaRow}
-            aria-label="影片信息"
-          >
-            <span>上映: {releaseDate}</span>
-            <span>评分: {rating}</span>
-            <span>评分人数: {voteCount}</span>
-            <span>热度: {popularity}</span>
-            <span>语言: {language}</span>
-            {item.adult ? <span>成人内容</span> : null}
-            {item.video ? <span>含视频</span> : null}
-          </div>
-          {genres.length > 0 ? (
-            <div
-              className={styles.recommendationCardChipRow}
-              aria-label="影片类型"
-            >
-              <span className={styles.recommendationCardChipLabel}>
-                类型：
-                {genres.map((genre) => (
-                  <span key={`${title}-${genre}`}>{genre}</span>
-                ))}
-              </span>
-            </div>
-          ) : null}
-        </div>
-      </div>
-    );
-
-    if (item.tmdb_url) {
-      return (
-        <a
-          href={item.tmdb_url}
-          target="_blank"
-          rel="noreferrer"
-          className={styles.recommendationCardLinkWrap}
-          key={`${title}-${index}`}
-        >
-          {cardInner}
-        </a>
-      );
-    }
-
-    return cardInner;
-  }
-
-  function renderAssistantContent(item: ChatMessage) {
-    const text = chatMessageText(item);
-    const movies = chatMessageMovies(item);
-    const paragraphs = text
-      ? renderMessageText(text).map((line, lineIndex) => (
-          <p key={`${item.kind}-${lineIndex}`}>{line}</p>
-        ))
-      : null;
-
-    if (item.kind !== "recommendation") {
-      return paragraphs;
-    }
-
-    return (
-      <div className={styles.assistantBody}>
-        {paragraphs}
-        {movies.length > 0 ? (
-          <div className={styles.recommendationList}>
-            {movies.map((movie, movieIndex) =>
-              renderRecommendationCard(movie, movieIndex),
-            )}
-          </div>
-        ) : null}
-      </div>
-    );
-  }
-
   const activeConversationTitle = resolveActiveConversationTitle({
     conversationId,
     conversations: conversationList,
@@ -566,33 +354,14 @@ export default function HomePage() {
     messages,
   });
 
-  const sidebarProps = {
-    conversations: conversationList,
-    activeConversationId: conversationId,
-    listLoading: historyLoading,
-    listError,
-    interactionLocked,
-    isGuest: !token,
-    onNewConversation: startNewConversation,
-    onSelectConversation: (id: string) => void loadConversation(id),
-    onRetryList: () => void fetchConversations(),
-    onLogin: () => setShowLoginModal(true),
-    onToggleCollapse: toggleSidebarInPanel,
-  };
-
-  const composerDisabled = loading || detailsLoading;
-  const sendOrStopDisabled = detailsLoading || stopping;
-  const sidebarSlotSize = sidebarCollapsed
-    ? LAYOUT.SIDEBAR_RAIL_WIDTH_PX
-    : LAYOUT.SIDEBAR_WIDTH_PX;
+  const composerDisabled = loading;
+  const sendOrStopDisabled = stopping;
 
   return (
     <div className={styles.appShell}>
       <TopBar
+        onOpenHistory={openHistoryModal}
         onOpenConfig={openConfigModal}
-        onToggleSidebar={toggleSidebar}
-        sidebarOpen={sidebarDrawerOpen}
-        showSidebarToggle={isNarrow}
         onOpenLogin={() => {
           setShowLoginModal(true);
         }}
@@ -601,14 +370,23 @@ export default function HomePage() {
         }}
       />
 
+      <HistoryModal
+        visible={showHistoryModal}
+        userId={userId}
+        conversations={conversationList}
+        activeConversationId={conversationId}
+        activeMessages={messages}
+        listLoading={historyLoading}
+        listError={listError}
+        sending={loading}
+        onClose={() => setShowHistoryModal(false)}
+        onRetryList={() => void fetchConversations()}
+        onActivate={activateConversation}
+        onSessionExpired={handleSessionExpired}
+      />
       <ConfigModal
         visible={showConfigModal}
         onClose={() => setShowConfigModal(false)}
-        onSelectConversation={(id: string) => void loadConversation(id)}
-        conversations={conversationList}
-        selectedConversation={selectedConversation}
-        loading={historyLoading}
-        detailLoading={detailsLoading}
       />
       <AuthModal
         visible={showLoginModal}
@@ -637,28 +415,7 @@ export default function HomePage() {
         }}
       />
 
-      <Drawer
-        anchor="left"
-        open={sidebarDrawerOpen}
-        onClose={() => setSidebarDrawerOpen(false)}
-        slotProps={{
-          paper: {
-            className: styles.drawerPaper,
-            style: { width: LAYOUT.SIDEBAR_WIDTH_PX },
-          },
-        }}
-      >
-        <ConversationSidebar {...sidebarProps} collapsed={false} />
-      </Drawer>
-
       <div className={styles.workspace}>
-        <aside
-          className={styles.sidebarSlot}
-          style={{ width: sidebarSlotSize, flexBasis: sidebarSlotSize }}
-        >
-          <ConversationSidebar {...sidebarProps} collapsed={sidebarCollapsed} />
-        </aside>
-
         <section className={styles.chatPanel}>
           {messages.length === 0 ? (
             <header className={styles.heroHeader}>
@@ -684,14 +441,20 @@ export default function HomePage() {
           ) : (
             <header className={styles.chatHeader}>
               <h2>{activeConversationTitle}</h2>
+              {token ? (
+                <button
+                  type="button"
+                  className={styles.newConversationButton}
+                  onClick={startNewConversation}
+                  disabled={loading}
+                  aria-label={TEXT.workspace.newConversationAria}
+                >
+                  <Add className={styles.actionIcon} fontSize="small" />
+                  {TEXT.workspace.newConversation}
+                </button>
+              ) : null}
             </header>
           )}
-
-          {detailsLoading ? (
-            <p className={styles.switchingBanner} role="status">
-              {TEXT.workspace.switching}
-            </p>
-          ) : null}
 
           <div className={styles.messages}>
             {messages.length === 0 ? (
@@ -702,41 +465,7 @@ export default function HomePage() {
               </div>
             ) : (
               <>
-                {messages.map((item, index) => {
-                  const failed =
-                    item.kind === "error" || item.kind === "reject";
-                  return (
-                    <div
-                      key={`${item.role}-${item.kind}-${index}`}
-                      className={classNames(styles.message, {
-                        [styles.userMessage]: item.role === "user",
-                        [styles.assistantErrorMessage]:
-                          item.role !== "user" && failed,
-                        [styles.assistantMessage]:
-                          item.role !== "user" && !failed,
-                      })}
-                    >
-                      <div className={styles.messageRole}>
-                        {item.role === "user"
-                          ? TEXT.chat.userRole
-                          : failed
-                            ? TEXT.chat.assistantErrorRole
-                            : TEXT.chat.assistantRole}
-                      </div>
-                      <div className={styles.messageText}>
-                        {item.role === "user"
-                          ? renderMessageText(chatMessageText(item)).map(
-                              (line, lineIndex) => (
-                                <p key={`${item.kind}-${index}-${lineIndex}`}>
-                                  {line}
-                                </p>
-                              ),
-                            )
-                          : renderAssistantContent(item)}
-                      </div>
-                    </div>
-                  );
-                })}
+                <ChatTranscript messages={messages} />
                 {loading ? (
                   <div
                     className={classNames(

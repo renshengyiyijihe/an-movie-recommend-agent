@@ -12,6 +12,9 @@ jobs:
   deploy:
     needs: quality
     runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-aliyun
+      cancel-in-progress: false
     steps:
       - name: Deploy via SSH and send notification
         id: deploy
@@ -40,6 +43,16 @@ jobs:
             : > "$LOG_FILE"
             exec > >(tee -a "$LOG_FILE") 2>&1
 
+            LOCK_FILE="/tmp/an-movie-deploy.lock"
+            exec 9>"$LOCK_FILE"
+            if command -v flock >/dev/null 2>&1; then
+              echo "Acquiring deploy lock..."
+              flock -w 3600 9 || { echo "Timed out waiting for another deploy to finish"; exit 1; }
+            fi
+
+            EXPECTED_SHA="${{ github.sha }}"
+            export DEPLOY_SKIPPED=0
+
             if [ -d "$DEPLOY_DIR/.git" ]; then
               cd "$DEPLOY_DIR"
               git remote set-url origin "$REPO_URL"
@@ -55,6 +68,12 @@ jobs:
             COMMIT_TITLE="$(git log -1 --pretty=format:%s)"
             export COMMIT_TITLE
 
+            CURRENT_SHA="$(git rev-parse HEAD)"
+            if [ "$CURRENT_SHA" != "$EXPECTED_SHA" ]; then
+              echo "Skipping docker build: this run is $EXPECTED_SHA but origin/main is $CURRENT_SHA"
+              export DEPLOY_SKIPPED=1
+              deploy_status=0
+            else
             mkdir -p backend/movie-service
             cat > backend/.env <<EOF
             JWT_SECRET=${{ secrets.JWT_SECRET }}
@@ -76,8 +95,17 @@ jobs:
             SHA="$(git rev-parse --short=12 HEAD)"
 
             set +e
-            docker compose build packages && docker compose build auth-service movie-service message-service frontend
+            docker compose build packages
             build_status=$?
+            if [ "$build_status" -eq 0 ]; then
+              for svc in auth-service movie-service message-service frontend; do
+                docker compose build "$svc"
+                build_status=$?
+                if [ "$build_status" -ne 0 ]; then
+                  break
+                fi
+              done
+            fi
             if [ "$build_status" -eq 0 ]; then
               for svc in packages auth-service movie-service message-service frontend; do
                 if [ "$svc" = "packages" ]; then
@@ -93,6 +121,7 @@ jobs:
               deploy_status=$build_status
             fi
             set -e
+            fi
 
             echo "DEPLOY_EXIT_CODE=$deploy_status"
             tail -n 40 "$LOG_FILE" > "$SUMMARY_FILE"
@@ -109,8 +138,16 @@ jobs:
             password = os.environ.get('GMAIL_APP_PASSWORD')
             to_addr = os.environ.get('GMAIL_TO')
             deploy_status = int(os.environ['DEPLOY_STATUS'])
-            status_text = 'SUCCESS' if deploy_status == 0 else 'FAILED'
-            emoji = '✅' if deploy_status == 0 else '❌'
+            skipped = os.environ.get('DEPLOY_SKIPPED') == '1'
+            if skipped:
+                status_text = 'SKIPPED'
+                emoji = '⏭️'
+            elif deploy_status == 0:
+                status_text = 'SUCCESS'
+                emoji = '✅'
+            else:
+                status_text = 'FAILED'
+                emoji = '❌'
             summary = Path('/tmp/an-movie-deploy-summary.txt').read_text(encoding='utf-8', errors='replace').strip() or '无日志摘要'
             repo = 'renshengyiyijihe/an-movie-recommend-agent'
             run_url = f"https://github.com/{repo}/actions/runs/{os.environ.get('GITHUB_RUN_ID', 'unknown')}"

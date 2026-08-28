@@ -4,7 +4,9 @@ services:
   # lacks moby.buildkit.frontend.contexts.
   packages:
     image: an-movie-packages
-    pull_policy: build
+    # Local-only image. `build` made `up -d` rebuild it every deploy; `missing`
+    # would try Docker Hub for the un-namespaced name `an-movie-packages`.
+    pull_policy: never
     build:
       context: .
       dockerfile: packages/Dockerfile

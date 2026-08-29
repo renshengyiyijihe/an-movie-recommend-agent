@@ -5,10 +5,18 @@
   align-items: center;
 }
 
+.displayRow {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  width: 100%;
+}
+
 .titleTooltipWrap {
   display: block;
   min-width: 0;
-  width: 100%;
+  flex: 1;
   overflow: hidden;
 }
 
@@ -42,6 +50,42 @@
 }
 
 .titleButton:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+}
+
+.titleText {
+  cursor: default;
+  color: #1f2937;
+}
+
+.editButton:global(.MuiIconButton-root) {
+  flex-shrink: 0;
+  color: #64748b;
+}
+
+.editButton:global(.MuiIconButton-root):hover {
+  color: #4338ca;
+  background: rgba(99, 102, 241, 0.08);
+}
+
+.displayRow:hover .editButton:global(.MuiIconButton-root) {
+  color: #4338ca;
+}
+
+.lockIcon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  color: #94a3b8;
+  cursor: help;
+  border-radius: 50%;
+}
+
+.lockIcon:focus-visible {
   outline: 2px solid #6366f1;
   outline-offset: 2px;
 }

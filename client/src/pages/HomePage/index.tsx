@@ -456,6 +456,11 @@ export default function HomePage() {
                 title={activeConversationTitle}
                 conversationId={conversationId}
                 editable={Boolean(token && conversationId)}
+                disabledReason={
+                  token
+                    ? TEXT.workspace.titleEditPending
+                    : TEXT.workspace.titleEditNeedLogin
+                }
                 onRenamed={applyConversationTitle}
                 onSessionExpired={handleSessionExpired}
               />

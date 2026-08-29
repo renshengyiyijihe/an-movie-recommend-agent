@@ -1,6 +1,9 @@
 import { useLayoutEffect, useRef, useState } from "react";
+import IconButton from "@mui/material/IconButton";
 import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
+import EditOutlined from "@mui/icons-material/EditOutlined";
+import LockOutlined from "@mui/icons-material/LockOutlined";
 import ConfirmPopover from "@/components/ConfirmPopover";
 import { ApiError, isSessionExpiredError, request } from "@/api";
 import {
@@ -19,6 +22,8 @@ interface Props {
   conversationId?: string;
   /** 未登录或还没有 id 时只展示。 */
   editable: boolean;
+  /** 不能编辑时锁图标 Tooltip 的原因；可编辑时忽略。 */
+  disabledReason: string;
   onRenamed: (conversationId: string, title: string) => void;
   onSessionExpired: () => void;
 }
@@ -27,6 +32,7 @@ export default function ConversationTitle({
   title,
   conversationId,
   editable,
+  disabledReason,
   onRenamed,
   onSessionExpired,
 }: Props) {
@@ -172,15 +178,45 @@ export default function ConversationTitle({
           />
         </>
       ) : (
-        <Tooltip
-          title={title}
-          placement="bottom-start"
-          enterDelay={400}
-          disableHoverListener={!overflowing}
-          disableInteractive
-        >
-          <span className={styles.titleTooltipWrap}>{label}</span>
-        </Tooltip>
+        <div className={styles.displayRow}>
+          <Tooltip
+            title={title}
+            placement="bottom-start"
+            enterDelay={400}
+            disableHoverListener={!overflowing}
+            disableInteractive
+          >
+            <span className={styles.titleTooltipWrap}>{label}</span>
+          </Tooltip>
+          {editable ? (
+            <Tooltip
+              title={TEXT.workspace.editTitleHint}
+              placement="bottom"
+              disableInteractive
+            >
+              <IconButton
+                type="button"
+                size="small"
+                className={styles.editButton}
+                onClick={edit.beginEdit}
+                aria-label={TEXT.workspace.editTitleAria}
+              >
+                <EditOutlined fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          ) : (
+            <Tooltip title={disabledReason} placement="bottom" disableInteractive>
+              <span
+                className={styles.lockIcon}
+                tabIndex={0}
+                role="img"
+                aria-label={disabledReason}
+              >
+                <LockOutlined fontSize="small" />
+              </span>
+            </Tooltip>
+          )}
+        </div>
       )}
     </div>
   );

@@ -3,6 +3,13 @@ import eslintConfigPrettier from "eslint-config-prettier";
 import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 import tseslint from "typescript-eslint";
+import maxNestedTernary from "./eslint-rules/max-nested-ternary.mjs";
+
+const localPlugin = {
+  rules: {
+    "max-nested-ternary": maxNestedTernary,
+  },
+};
 
 export default tseslint.config(
   {
@@ -11,6 +18,14 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   eslintConfigPrettier,
+  {
+    plugins: {
+      local: localPlugin,
+    },
+    rules: {
+      "local/max-nested-ternary": ["error", 2],
+    },
+  },
   {
     files: ["**/*.{js,mjs,cjs}"],
     languageOptions: {

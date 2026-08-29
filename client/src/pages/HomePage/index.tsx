@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import classNames from "classnames";
 import Add from "@mui/icons-material/Add";
 import { ApiError, isChatTimeoutError, isSessionExpiredError, request, streamChat } from "@/api";
@@ -6,6 +14,7 @@ import {
   CANCEL_REASON,
   STREAM_EVENT,
   STREAM_STAGE,
+  TURN_STATUS,
   type ChatStreamEvent,
   type ChatStreamStageEvent,
 } from "@an-movie/contracts";
@@ -40,6 +49,9 @@ const quickPrompts = [
   "推荐几部张力强、节奏快的动作片",
 ];
 
+/** 距底部小于该值视为仍贴底，继续跟随新气泡。 */
+const STICK_TO_BOTTOM_PX = 80;
+
 export default function HomePage() {
   const [message, setMessage] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -65,7 +77,6 @@ export default function HomePage() {
   const [stopping, setStopping] = useState(false);
   const [streamStage, setStreamStage] =
     useState<ChatStreamStageEvent | null>(null);
-  const [error, setError] = useState("");
 
   const token = useAuth((s) => s.token);
   const userId = useAuth((s) => s.user?.id ?? null);
@@ -75,6 +86,25 @@ export default function HomePage() {
   const turnIdRef = useRef<string | null>(null);
   const stopRequestedRef = useRef(false);
   const sessionGen = useRef(0);
+  const messagesRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
+
+  function pinMessagesToBottom() {
+    stickToBottomRef.current = true;
+  }
+
+  function scrollMessagesToBottom() {
+    const el = messagesRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "auto" });
+  }
+
+  function onMessagesScroll() {
+    const el = messagesRef.current;
+    if (!el) return;
+    stickToBottomRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight < STICK_TO_BOTTOM_PX;
+  }
 
   const handleSessionExpired = useCallback(() => {
     logout({ silent: true });
@@ -149,8 +179,8 @@ export default function HomePage() {
     if (sendingRef.current) return;
     setSelectedConversation(detail);
     setConversationId(detail.conversation_id);
+    pinMessagesToBottom();
     setMessages(convertConversationToMessages(detail.messages ?? []));
-    setError("");
     setStreamStage(null);
   }
 
@@ -183,7 +213,6 @@ export default function HomePage() {
     setConversationId(undefined);
     setMessages([]);
     setSelectedConversation(null);
-    setError("");
     setStreamStage(null);
     setMessage("");
     setFile(null);
@@ -198,7 +227,6 @@ export default function HomePage() {
     setSelectedConversation(null);
     setConversationList([]);
     setListError("");
-    setError("");
     setMessage("");
     setFile(null);
     setImageData("");
@@ -227,6 +255,12 @@ export default function HomePage() {
     };
   }, [file]);
 
+  useLayoutEffect(() => {
+    if (stickToBottomRef.current) {
+      scrollMessagesToBottom();
+    }
+  }, [messages, loading, streamStage]);
+
   async function sendMessage() {
     const trimmedMessage = message.trim();
     if (!trimmedMessage || sendingRef.current) return;
@@ -243,7 +277,7 @@ export default function HomePage() {
     setStopping(false);
     setLoading(true);
     setStreamStage(null);
-    setError("");
+    pinMessagesToBottom();
 
     const userMessage: ChatMessage = {
       role: "user",
@@ -291,18 +325,13 @@ export default function HomePage() {
           /* 超时气泡照样展示；收口失败则轮次仍可能 running */
         }
       }
-      setError(
-        err instanceof ApiError && err.message
-          ? err.message
-          : TEXT.chat.requestFailed,
-      );
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          kind: "error",
+          kind: TURN_STATUS.ERROR,
           payload: {
-            kind: "error",
+            kind: TURN_STATUS.ERROR,
             message:
               err instanceof ApiError && err.message
                 ? err.message
@@ -479,7 +508,11 @@ export default function HomePage() {
             </header>
           )}
 
-          <div className={styles.messages}>
+          <div
+            className={styles.messages}
+            ref={messagesRef}
+            onScroll={onMessagesScroll}
+          >
             {messages.length === 0 ? (
               <div className={styles.emptyState}>
                 <AppLogo className={styles.emptyStateIcon} size={44} />
@@ -570,7 +603,6 @@ export default function HomePage() {
                 />
               ) : null}
             </div>
-            {error ? <p className={styles.error}>{error}</p> : null}
           </div>
         </section>
       </div>

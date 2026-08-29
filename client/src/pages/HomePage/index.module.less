@@ -260,6 +260,14 @@
   padding: 16px;
   resize: vertical;
   outline: none;
+  background: #ffffff;
+  color: #111827;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.inputCard textarea:focus {
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.16);
 }
 
 .inputCard textarea:disabled {
@@ -297,17 +305,6 @@
 .previewImage {
   width: 100%;
   border-radius: 18px;
-}
-
-.error {
-  margin: 0;
-  color: #b91c1c;
-}
-
-.messageImage {
-  width: 100%;
-  border-radius: 18px;
-  margin-top: 12px;
 }
 
 .assistantMessage {

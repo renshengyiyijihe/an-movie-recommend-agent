@@ -1,4 +1,5 @@
 import classNames from "classnames";
+import { TURN_STATUS } from "@an-movie/contracts";
 import RecommendationPoster from "@/components/RecommendationPoster";
 import { TEXT } from "@/constant";
 import {
@@ -23,22 +24,23 @@ export default function ChatTranscript({ messages }: Props) {
   return (
     <div className={styles.transcript}>
       {messages.map((item, index) => {
-        const failed = item.kind === "error" || item.kind === "reject";
+        const failed =
+          item.kind === TURN_STATUS.ERROR || item.kind === TURN_STATUS.REJECT;
+        const cancelled = item.kind === TURN_STATUS.CANCELLED;
         return (
           <div
             key={`${item.role}-${item.kind}-${index}`}
             className={classNames(styles.message, {
               [styles.userMessage]: item.role === "user",
               [styles.assistantErrorMessage]: item.role !== "user" && failed,
-              [styles.assistantMessage]: item.role !== "user" && !failed,
+              [styles.assistantCancelledMessage]:
+                item.role !== "user" && cancelled,
+              [styles.assistantMessage]:
+                item.role !== "user" && !failed && !cancelled,
             })}
           >
             <div className={styles.messageRole}>
-              {item.role === "user"
-                ? TEXT.chat.userRole
-                : failed
-                  ? TEXT.chat.assistantErrorRole
-                  : TEXT.chat.assistantRole}
+              {messageRoleLabel(item, failed, cancelled)}
             </div>
             <div className={styles.messageText}>
               {item.role === "user"
@@ -54,6 +56,30 @@ export default function ChatTranscript({ messages }: Props) {
       })}
     </div>
   );
+}
+
+/**
+ * 气泡左上角色文案：用户、助手、异常、已停止。
+ *
+ * @param item 当前气泡
+ * @param failed 助手气泡且本轮失败或拒绝
+ * @param cancelled 助手气泡且用户已停止
+ * @returns 展示用角色标签
+ * @example
+ * messageRoleLabel({ role: "user", kind: "user_query" }, false, false)
+ * // "你"
+ * messageRoleLabel({ role: "assistant", kind: "error" }, true, false)
+ * // "智能体（异常）"
+ */
+function messageRoleLabel(
+  item: ChatMessage,
+  failed: boolean,
+  cancelled: boolean,
+): string {
+  if (item.role === "user") return TEXT.chat.userRole;
+  if (failed) return TEXT.chat.assistantErrorRole;
+  if (cancelled) return TEXT.chat.assistantCancelledRole;
+  return TEXT.chat.assistantRole;
 }
 
 function renderAssistantContent(item: ChatMessage) {

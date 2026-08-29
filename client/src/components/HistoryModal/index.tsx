@@ -207,58 +207,14 @@ export default function HistoryModal({
                   </div>
                 ) : null}
 
-                {showInitialLoading ? (
-                  <p className={styles.hint}>{TEXT.workspace.loading}</p>
-                ) : conversations.length === 0 ? (
-                  listError ? null : (
-                    <p className={styles.hint}>{TEXT.workspace.empty}</p>
-                  )
-                ) : (
-                  <ul className={styles.list} aria-label={TEXT.workspace.listAria}>
-                    {conversations.map((conversation) => {
-                      const selected =
-                        conversation.conversation_id === highlightedId;
-                      const isLive =
-                        conversation.conversation_id === activeConversationId;
-                      const itemTitle = conversationDisplayTitle(conversation);
-                      return (
-                        <li key={conversation.conversation_id}>
-                          <button
-                            type="button"
-                            className={classNames(styles.item, {
-                              [styles.itemActive]: selected,
-                            })}
-                            aria-current={selected ? "true" : undefined}
-                            onClick={() =>
-                              void selectConversation(conversation.conversation_id)
-                            }
-                          >
-                            <span className={styles.itemTitle}>
-                              <Tooltip
-                                title={itemTitle}
-                                placement="bottom-start"
-                                enterDelay={400}
-                                disableInteractive
-                              >
-                                <span className={styles.itemTitleText}>
-                                  {itemTitle}
-                                </span>
-                              </Tooltip>
-                              {isLive ? (
-                                <span className={styles.currentBadge}>
-                                  {TEXT.workspace.currentConversation}
-                                </span>
-                              ) : null}
-                            </span>
-                            <span className={styles.itemMeta}>
-                              {formatConversationTimestamp(conversation.created_at)}
-                            </span>
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
+                {renderConversationList({
+                  conversations,
+                  highlightedId,
+                  activeConversationId,
+                  listError,
+                  showInitialLoading,
+                  onSelect: selectConversation,
+                })}
               </div>
             ) : null}
 
@@ -286,48 +242,195 @@ export default function HistoryModal({
                   </div>
                 ) : null}
 
-                {!previewId ? (
-                  <p className={styles.hint}>{TEXT.workspace.pickHint}</p>
-                ) : previewLoading ? (
-                  <p className={styles.hint} role="status">
-                    {TEXT.workspace.detailLoading}
-                  </p>
-                ) : previewError ? (
-                  <div className={styles.errorBanner} role="alert">
-                    <p>{previewError}</p>
-                    <button
-                      type="button"
-                      className={styles.retryButton}
-                      onClick={() => void selectConversation(previewId, true)}
-                    >
-                      {TEXT.workspace.retry}
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    {!isNarrow ? (
-                      <Tooltip
-                        title={previewTitle}
-                        placement="bottom-start"
-                        enterDelay={400}
-                      >
-                        <h4 className={styles.detailTitle}>{previewTitle}</h4>
-                      </Tooltip>
-                    ) : null}
-                    {previewMessages.length === 0 ? (
-                      <p className={styles.hint}>{TEXT.workspace.emptyMessages}</p>
-                    ) : (
-                      <div className={styles.detailMessages}>
-                        <ChatTranscript messages={previewMessages} />
-                      </div>
-                    )}
-                  </>
-                )}
+                {renderDetailBody({
+                  previewId,
+                  previewLoading,
+                  previewError,
+                  previewTitle,
+                  previewMessages,
+                  isNarrow,
+                  onRetry: selectConversation,
+                })}
               </div>
             ) : null}
           </div>
         </div>
       </div>
     </Modal>
+  );
+}
+
+/** 左侧会话列表的展示参数。 */
+interface ConversationListProps {
+  /** 当前用户的会话摘要。 */
+  conversations: ConversationSummary[];
+  /** 右栏正在预览的会话 id。 */
+  highlightedId: string | null;
+  /** 主聊天当前会话，用来标「当前」。 */
+  activeConversationId?: string;
+  /** 拉列表失败文案；有错时不重复渲染空提示。 */
+  listError: string;
+  /** 列表还没回来且本地为空。 */
+  showInitialLoading: boolean;
+  /** 点选一条会话。 */
+  onSelect: (targetId: string) => void;
+}
+
+/**
+ * 历史弹窗左侧会话列表：首载、空列表或条目。
+ *
+ * @param props 列表状态与点选回调
+ * @returns 加载提示、空提示或会话按钮列表
+ * @example
+ * renderConversationList({
+ *   conversations: [],
+ *   highlightedId: null,
+ *   listError: "",
+ *   showInitialLoading: false,
+ *   onSelect: () => undefined,
+ * })
+ * // 空列表提示
+ */
+function renderConversationList({
+  conversations,
+  highlightedId,
+  activeConversationId,
+  listError,
+  showInitialLoading,
+  onSelect,
+}: ConversationListProps) {
+  if (showInitialLoading) {
+    return <p className={styles.hint}>{TEXT.workspace.loading}</p>;
+  }
+  if (conversations.length === 0) {
+    return listError ? null : (
+      <p className={styles.hint}>{TEXT.workspace.empty}</p>
+    );
+  }
+  return (
+    <ul className={styles.list} aria-label={TEXT.workspace.listAria}>
+      {conversations.map((conversation) => {
+        const selected = conversation.conversation_id === highlightedId;
+        const isLive = conversation.conversation_id === activeConversationId;
+        const itemTitle = conversationDisplayTitle(conversation);
+        return (
+          <li key={conversation.conversation_id}>
+            <button
+              type="button"
+              className={classNames(styles.item, {
+                [styles.itemActive]: selected,
+              })}
+              aria-current={selected ? "true" : undefined}
+              onClick={() => void onSelect(conversation.conversation_id)}
+            >
+              <span className={styles.itemTitle}>
+                <Tooltip
+                  title={itemTitle}
+                  placement="bottom-start"
+                  enterDelay={400}
+                  disableInteractive
+                >
+                  <span className={styles.itemTitleText}>{itemTitle}</span>
+                </Tooltip>
+                {isLive ? (
+                  <span className={styles.currentBadge}>
+                    {TEXT.workspace.currentConversation}
+                  </span>
+                ) : null}
+              </span>
+              <span className={styles.itemMeta}>
+                {formatConversationTimestamp(conversation.created_at)}
+              </span>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** 右侧详情区的展示参数。 */
+interface DetailBodyProps {
+  /** 正在预览的会话；未选则为 null。 */
+  previewId: string | null;
+  /** 详情还在 GET。 */
+  previewLoading: boolean;
+  /** 详情失败文案。 */
+  previewError: string;
+  /** 标题栏 / Tooltip 用的展示名。 */
+  previewTitle: string;
+  /** 右栏气泡。 */
+  previewMessages: ChatMessage[];
+  /** 窄屏时标题已在工具栏，这里不再重复。 */
+  isNarrow: boolean;
+  /** 详情失败后重试。 */
+  onRetry: (targetId: string, bypassCache?: boolean) => void;
+}
+
+/**
+ * 历史弹窗右侧详情：未选、加载、失败或消息。
+ *
+ * @param props 当前预览状态
+ * @returns 提示、错误条或气泡列表
+ * @example
+ * renderDetailBody({
+ *   previewId: null,
+ *   previewLoading: false,
+ *   previewError: "",
+ *   previewTitle: "",
+ *   previewMessages: [],
+ *   isNarrow: false,
+ *   onRetry: () => undefined,
+ * })
+ * // 未选会话提示
+ */
+function renderDetailBody({
+  previewId,
+  previewLoading,
+  previewError,
+  previewTitle,
+  previewMessages,
+  isNarrow,
+  onRetry,
+}: DetailBodyProps) {
+  if (!previewId) {
+    return <p className={styles.hint}>{TEXT.workspace.pickHint}</p>;
+  }
+  if (previewLoading) {
+    return (
+      <p className={styles.hint} role="status">
+        {TEXT.workspace.detailLoading}
+      </p>
+    );
+  }
+  if (previewError) {
+    return (
+      <div className={styles.errorBanner} role="alert">
+        <p>{previewError}</p>
+        <button
+          type="button"
+          className={styles.retryButton}
+          onClick={() => void onRetry(previewId, true)}
+        >
+          {TEXT.workspace.retry}
+        </button>
+      </div>
+    );
+  }
+  return (
+    <>
+      {!isNarrow ? (
+        <Tooltip title={previewTitle} placement="bottom-start" enterDelay={400}>
+          <h4 className={styles.detailTitle}>{previewTitle}</h4>
+        </Tooltip>
+      ) : null}
+      {previewMessages.length === 0 ? (
+        <p className={styles.hint}>{TEXT.workspace.emptyMessages}</p>
+      ) : (
+        <div className={styles.detailMessages}>
+          <ChatTranscript messages={previewMessages} />
+        </div>
+      )}
+    </>
   );
 }

@@ -186,7 +186,7 @@ export default function ConversationTitle({
             disableHoverListener={!overflowing}
             disableInteractive
           >
-            <span className={styles.titleTooltipWrap}>{label}</span>
+            {label}
           </Tooltip>
           {editable ? (
             <Tooltip

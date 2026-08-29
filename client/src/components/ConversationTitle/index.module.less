@@ -10,24 +10,16 @@
   align-items: center;
   gap: 2px;
   min-width: 0;
-  width: 100%;
-}
-
-.titleTooltipWrap {
-  display: block;
-  min-width: 0;
-  flex: 1;
-  overflow: hidden;
+  max-width: 100%;
 }
 
 .titleButton,
 .titleText {
-  display: block;
   box-sizing: border-box;
-  width: 100%;
+  flex: 0 1 auto;
   min-width: 0;
   margin: 0;
-  padding: 0;
+  padding: 2px 4px;
   border: none;
   background: transparent;
   font-size: 1.05rem;
@@ -61,6 +53,7 @@
 
 .editButton:global(.MuiIconButton-root) {
   flex-shrink: 0;
+  padding: 4px;
   color: #64748b;
 }
 
@@ -78,8 +71,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   color: #94a3b8;
   cursor: help;
   border-radius: 50%;

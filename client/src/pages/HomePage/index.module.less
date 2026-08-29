@@ -32,16 +32,32 @@
 
 .chatHeader {
   flex-shrink: 0;
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   min-width: 0;
-  margin: -24px -24px 16px;
-  padding: 14px 24px 12px;
-  background: rgba(255, 255, 255, 0.94);
-  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
-  box-shadow: 0 10px 24px -12px rgba(15, 23, 42, 0.22);
+  margin: -24px -24px 4px;
+  padding: 16px 24px 26px;
+  border: none;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.42) 0%,
+      rgba(255, 255, 255, 0.12) 62%,
+      rgba(255, 255, 255, 0) 100%
+    ),
+    linear-gradient(
+      105deg,
+      rgba(248, 251, 255, 0.58) 0%,
+      rgba(237, 233, 254, 0.32) 48%,
+      rgba(99, 150, 219, 0) 100%
+    );
+  backdrop-filter: blur(24px) saturate(170%);
+  -webkit-backdrop-filter: blur(24px) saturate(170%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
 }
 
 .newConversationButton {
@@ -362,8 +378,8 @@
   }
 
   .chatHeader {
-    margin: -18px -18px 14px;
-    padding: 12px 18px 10px;
+    margin: -18px -18px 2px;
+    padding: 12px 18px 22px;
   }
 
   .titleRow,

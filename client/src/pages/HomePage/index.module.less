@@ -16,6 +16,7 @@
 }
 
 .chatPanel {
+  --chat-inset: 24px;
   width: auto;
   flex: 1;
   min-height: 0;
@@ -25,51 +26,43 @@
   border-radius: 0;
   display: flex;
   flex-direction: column;
-  padding: 24px;
+  padding: 0;
   box-shadow: none;
   overflow: hidden;
 }
 
 .chatHeader {
   flex-shrink: 0;
-  position: relative;
-  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   min-width: 0;
-  margin: -24px -24px 4px;
-  padding: 16px 24px 26px;
+  padding: 12px var(--chat-inset);
   border: none;
-  background:
-    linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.42) 0%,
-      rgba(255, 255, 255, 0.12) 62%,
-      rgba(255, 255, 255, 0) 100%
-    ),
-    linear-gradient(
-      105deg,
-      rgba(248, 251, 255, 0.58) 0%,
-      rgba(237, 233, 254, 0.32) 48%,
-      rgba(99, 150, 219, 0) 100%
-    );
-  backdrop-filter: blur(24px) saturate(170%);
-  -webkit-backdrop-filter: blur(24px) saturate(170%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.82) 0%,
+    rgba(255, 255, 255, 0.45) 70%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
 .newConversationButton {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  gap: 4px;
   border: none;
   border-radius: 999px;
   padding: 8px 14px;
   cursor: pointer;
   font-weight: 700;
   font-size: 0.875rem;
+  line-height: 1;
   background: #eef2ff;
   color: #4338ca;
   transition: transform 0.15s ease, background-color 0.15s ease;
@@ -87,13 +80,14 @@
 }
 
 .actionIcon {
-  margin-right: 4px;
+  display: block;
+  flex-shrink: 0;
 }
 
 .heroHeader {
   display: grid;
   gap: 18px;
-  margin-bottom: 24px;
+  margin: var(--chat-inset) var(--chat-inset) 0;
   padding: 18px 20px;
   box-shadow: 0px 10px 10px 10px rgb(132 98 137 / 20%);
   border-radius: 10px;
@@ -190,7 +184,7 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding-right: 4px;
+  padding: 0 var(--chat-inset);
   scroll-behavior: smooth;
 }
 
@@ -245,8 +239,8 @@
 }
 
 .inputArea {
-  margin-top: 24px;
   flex-shrink: 0;
+  padding: var(--chat-inset);
 }
 
 .inputCard {
@@ -374,12 +368,7 @@
 
 @media (max-width: 760px) {
   .chatPanel {
-    padding: 18px;
-  }
-
-  .chatHeader {
-    margin: -18px -18px 2px;
-    padding: 12px 18px 22px;
+    --chat-inset: 18px;
   }
 
   .titleRow,

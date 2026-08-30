@@ -180,6 +180,19 @@ export const TEXT = {
     timeout: "请求超时，请稍后重试。",
     posterLoading: "海报加载中",
     posterUnavailable: "暂无海报",
+    heroTitle: "为你挑选你喜欢的电影",
+    heroSubtitle: "说出你的口味、风格和观影需求，马上帮你推荐合适影片。",
+    emptyTitle: "从一句简单的话开始",
+    emptyHint: "比如“想看一部剧情片，时长2小时以内，最好有温情结局”。",
+    composerPlaceholder:
+      "输入你的观影偏好、类型或心情，比如：想看科幻片，2小时以内，有精彩视觉效果。",
+    uploadImage: "📷 上传图片（可选）",
+    imagePreviewAlt: "图片预览",
+    quickPrompts: [
+      "想看一部科幻大片，时长2小时以内",
+      "想要轻松爱情片，适合晚上放松",
+      "推荐几部张力强、节奏快的动作片",
+    ],
   },
   /** 历史弹窗与「新对话」相关文案 */
   workspace: {

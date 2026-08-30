@@ -1,0 +1,55 @@
+.heroHeader {
+  display: grid;
+  gap: 18px;
+  margin: var(--chat-inset) var(--chat-inset) 0;
+  padding: 18px 20px;
+  box-shadow: 0px 10px 10px 10px rgb(132 98 137 / 20%);
+  border-radius: 10px;
+}
+
+.titleRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.quickPrompts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.chipButton {
+  border: none;
+  border-radius: 999px;
+  padding: 10px 16px;
+  cursor: pointer;
+  font-weight: 700;
+  background: #eef2ff;
+  color: #4338ca;
+  transition: all 0.2s ease;
+}
+
+.chipButton:hover {
+  transform: translateY(-1px);
+}
+
+.emptyState {
+  display: grid;
+  place-items: center;
+  gap: 12px;
+  padding: 64px 0;
+  text-align: center;
+}
+
+.emptyStateIcon {
+  display: block;
+}
+
+@media (max-width: 760px) {
+  .titleRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

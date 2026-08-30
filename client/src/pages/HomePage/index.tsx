@@ -42,11 +42,16 @@ export default function HomePage() {
 
   /**
    * 目录 hook 先于本轮 / 滚动创建。跨 hook 动作走 ref，避免循环依赖。
+   * 初始 `() => false` 必须写成 `() => boolean`，否则 tsc 会把字面量收成 `() => false`。
    */
   const pinRef = useRef(() => {});
-  const turnApiRef = useRef({
+  const turnApiRef = useRef<{
+    isSending: () => boolean;
+    replaceMessages: (next: ChatMessage[]) => void;
+    resetForNewConversation: () => void;
+  }>({
     isSending: () => false,
-    replaceMessages: (_next: ChatMessage[]) => {},
+    replaceMessages: () => {},
     resetForNewConversation: () => {},
   });
 

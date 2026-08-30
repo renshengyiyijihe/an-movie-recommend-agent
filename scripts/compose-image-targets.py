@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Which compose services need an image rebuild because `build:` / `image:` changed."""
+"""Which compose services need an image rebuild because `build:` / `image:` changed.
+
+The deploy host is CPython 3.6. Do not use 3.7+ subprocess kwargs
+(`capture_output`, `text=`); CI Ubuntu will not catch that.
+"""
 import subprocess
 import sys
 
@@ -15,9 +19,10 @@ IMAGE_KEYS = frozenset({"build", "image"})
 
 def git_show(sha, path):
     proc = subprocess.run(
-        ["git", "show", f"{sha}:{path}"],
-        capture_output=True,
-        text=True,
+        ["git", "show", "%s:%s" % (sha, path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True,
     )
     if proc.returncode != 0:
         return ""

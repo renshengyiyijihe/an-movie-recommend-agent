@@ -206,33 +206,33 @@ services:
         condition: service_healthy
     restart: always
 
-  prometheus:
-    image: prom/prometheus:v3.14.0
-    command:
-      - --config.file=/etc/prometheus/prometheus.yml
-      - --storage.tsdb.path=/prometheus
-      - --storage.tsdb.retention.time=15d
-    volumes:
-      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
-    restart: always
+  # prometheus:
+  #   image: prom/prometheus:v3.14.0
+  #   command:
+  #     - --config.file=/etc/prometheus/prometheus.yml
+  #     - --storage.tsdb.path=/prometheus
+  #     - --storage.tsdb.retention.time=15d
+  #   volumes:
+  #     - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+  #     - prometheus_data:/prometheus
+  #   restart: always
 
-  grafana:
-    image: grafana/grafana:13.2.0
-    ports:
-      - "3000:3000"
-    environment:
-      GF_USERS_ALLOW_SIGN_UP: "false"
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: yangjinhu
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
-      - ./observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ./observability/grafana/dashboards:/etc/grafana/dashboards:ro
-    depends_on:
-      - prometheus
-    restart: always
+  # grafana:
+  #   image: grafana/grafana:13.2.0
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     GF_USERS_ALLOW_SIGN_UP: "false"
+  #     GF_SECURITY_ADMIN_USER: admin
+  #     GF_SECURITY_ADMIN_PASSWORD: yangjinhu
+  #   volumes:
+  #     - grafana_data:/var/lib/grafana
+  #     - ./observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+  #     - ./observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+  #     - ./observability/grafana/dashboards:/etc/grafana/dashboards:ro
+  #   depends_on:
+  #     - prometheus
+  #   restart: always
 
   portainer:
     image: portainer/portainer-ce:latest
@@ -249,6 +249,6 @@ volumes:
   milvus_data:
   milvus_etcd:
   milvus_minio:
-  prometheus_data:
-  grafana_data:
+  # prometheus_data:
+  # grafana_data:
   portainer_data:

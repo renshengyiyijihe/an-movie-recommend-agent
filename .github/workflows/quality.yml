@@ -8,6 +8,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check deploy image plan
+        run: bash scripts/deploy-images.sh --self-test
 
       - uses: pnpm/action-setup@v6
         with:

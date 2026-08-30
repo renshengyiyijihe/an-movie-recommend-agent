@@ -118,22 +118,29 @@ _MINIMAL = """services:
     build:
       context: .
       dockerfile: backend/auth-service/Dockerfile
+      args:
+        PACKAGES_IMAGE: an-movie-packages
     environment:
       PORT: 3002
   movie-service:
     build:
       context: .
       dockerfile: backend/movie-service/Dockerfile
+      args:
+        PACKAGES_IMAGE: an-movie-packages
   message-service:
     build:
       context: .
       dockerfile: backend/message-service/Dockerfile
+      args:
+        PACKAGES_IMAGE: an-movie-packages
   frontend:
     build:
       context: .
       dockerfile: client/Dockerfile
       args:
         VITE_API_BASE_URL: /
+        PACKAGES_IMAGE: an-movie-packages
   grafana:
     image: grafana/grafana:13.2.0
     environment:

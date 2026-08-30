@@ -1,4 +1,6 @@
-FROM an-movie-packages AS packages
+# Name-only FROM becomes docker.io/library/… and the deploy-host mirror 403s it.
+ARG PACKAGES_IMAGE=an-movie-packages
+FROM ${PACKAGES_IMAGE} AS packages
 FROM node:24-alpine AS build
 
 WORKDIR /app

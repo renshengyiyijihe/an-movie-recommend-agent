@@ -23,7 +23,13 @@
 #     → no image rebuild, just `up -d`
 #
 # After a packages rebuild, app builds use --no-cache. Server BuildKit is old
-# and may keep FROM an-movie-packages by name instead of the new image id.
+# and may keep a named FROM by cache key instead of the new image id.
+#
+# App Dockerfiles FROM ${PACKAGES_IMAGE}. A name-only FROM is rewritten to
+# docker.io/library/an-movie-packages; BuildKit HEADs the registry mirror even
+# when the image is local. DaoCloud (docker.m.daocloud.io) 403s that unofficial
+# library name and the build dies. Pass the local sha256 id so it never looks
+# up Hub. Do not use additional_contexts or FROM --pull=never (old BuildKit).
 #
 # Intentionally not done:
 # - compose down / rm the running stack
@@ -244,6 +250,18 @@ run_self_test() {
   apply_packages_source_plan
   expect_eq "packages/auth-client → backends only" "$(plan_digits)" "11110" || failed=1
 
+  local df
+  for df in client/Dockerfile backend/auth-service/Dockerfile \
+    backend/movie-service/Dockerfile backend/message-service/Dockerfile; do
+    if grep -q '^FROM an-movie-packages' "$df" \
+      || ! grep -q 'ARG PACKAGES_IMAGE' "$df"; then
+      echo "FAIL ${df}: FROM must use PACKAGES_IMAGE, not a Hub name" >&2
+      failed=1
+    else
+      echo "OK ${df} uses PACKAGES_IMAGE"
+    fi
+  done
+
   if [ "$failed" -ne 0 ]; then
     echo "deploy-images self-test failed" >&2
     return 1
@@ -264,14 +282,37 @@ tag_built() {
   fi
 }
 
+# Local content id. BuildKit will not HEAD docker.io for FROM sha256:….
+export_local_packages_image() {
+  if ! docker image inspect an-movie-packages >/dev/null 2>&1; then
+    log "an-movie-packages missing locally → building packages"
+    need_packages=1
+    build_and_tag packages
+  fi
+  PACKAGES_IMAGE="$(docker image inspect -f '{{.Id}}' an-movie-packages)"
+  if [ -z "$PACKAGES_IMAGE" ]; then
+    log "ERROR could not read id of an-movie-packages"
+    return 1
+  fi
+  export PACKAGES_IMAGE
+  log "PACKAGES_IMAGE=${PACKAGES_IMAGE}"
+}
+
 build_and_tag() {
   local svc="$1"
-  if [ "$need_packages" -eq 1 ] && [ "$svc" != packages ]; then
-    log "docker compose build --no-cache ${svc} (packages image changed)"
-    docker compose build --no-cache "$svc"
-  else
+  if [ "$svc" = packages ]; then
     log "docker compose build ${svc}"
     docker compose build "$svc"
+  elif [ "$need_packages" -eq 1 ]; then
+    log "docker compose build --no-cache ${svc} (packages image changed)"
+    docker compose build --no-cache \
+      --build-arg "PACKAGES_IMAGE=${PACKAGES_IMAGE:?export_local_packages_image must run before app builds}" \
+      "$svc"
+  else
+    log "docker compose build ${svc}"
+    docker compose build \
+      --build-arg "PACKAGES_IMAGE=${PACKAGES_IMAGE:?export_local_packages_image must run before app builds}" \
+      "$svc"
   fi
   tag_built "$svc"
 }
@@ -321,6 +362,10 @@ if [ "$need_packages" -eq 1 ]; then
 fi
 
 # Serial on purpose. See file header.
+if [ "$need_auth" -eq 1 ] || [ "$need_movie" -eq 1 ] \
+  || [ "$need_message" -eq 1 ] || [ "$need_frontend" -eq 1 ]; then
+  export_local_packages_image
+fi
 if [ "$need_auth" -eq 1 ]; then
   build_and_tag auth-service
 fi

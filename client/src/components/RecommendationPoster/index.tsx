@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
-import classNames from 'classnames';
-import styles from './index.module.less';
+import { useEffect, useState } from "react";
+import classNames from "classnames";
+import LocalMoviesOutlined from "@mui/icons-material/LocalMoviesOutlined";
+import { TEXT } from "@/constant";
+import styles from "./index.module.less";
 
 interface Props {
   src?: string;
@@ -18,8 +20,9 @@ export default function RecommendationPoster({ src, alt }: Props) {
 
   if (!src || failed) {
     return (
-      <div className={styles.posterPlaceholder} aria-label="海报加载中">
-        <span className={styles.spinner} />
+      <div className={styles.posterPlaceholder}>
+        <LocalMoviesOutlined className={styles.emptyIcon} aria-hidden />
+        <span>{TEXT.chat.posterUnavailable}</span>
       </div>
     );
   }
@@ -27,7 +30,10 @@ export default function RecommendationPoster({ src, alt }: Props) {
   return (
     <>
       {!loaded ? (
-        <div className={styles.posterPlaceholder} aria-label="海报加载中">
+        <div
+          className={styles.posterPlaceholder}
+          aria-label={TEXT.chat.posterLoading}
+        >
           <span className={styles.spinner} />
         </div>
       ) : null}

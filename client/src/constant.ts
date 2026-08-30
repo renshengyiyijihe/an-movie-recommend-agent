@@ -178,6 +178,8 @@ export const TEXT = {
     requestFailedBubble: "请求失败，请稍后再试。",
     streamIncomplete: "连接中断，请稍后重试。",
     timeout: "请求超时，请稍后重试。",
+    posterLoading: "海报加载中",
+    posterUnavailable: "暂无海报",
   },
   /** 历史弹窗与「新对话」相关文案 */
   workspace: {

@@ -172,7 +172,7 @@ docker compose up --build
 | 入口 | 地址 |
 | --- | --- |
 | 产品 | http://localhost |
-| Grafana | http://localhost:3000（默认 `admin` / `admin`，进 UI 立刻改密） |
+| Grafana | http://localhost:3000（默认 `admin` / `yangjinhu`） |
 | movie / auth / message | `:3001` / `:3002` / `:3003` |
 | Portainer | http://localhost:9000 |
 

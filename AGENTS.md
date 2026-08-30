@@ -67,7 +67,7 @@ Grafana         ──HTTP──► Prometheus:9090
 | auth-service | http://localhost:3002 |
 | message-service | http://localhost:3003 |
 | Portainer | http://localhost:9000 |
-| Grafana | http://localhost:3000（默认 admin/admin，进 UI 改密码） |
+| Grafana | http://localhost:3000（默认 admin / yangjinhu） |
 
 ## 对话主链路（改这里前先读）
 
@@ -343,4 +343,4 @@ Prompt 入口（改提示词只动这个文件）：
 - 部署不再 `compose down` / `rm -f` 整栈；密钥仍写服务器 `.env`。镜像构建在 `scripts/deploy-images.sh`：对照 `.last-deploy-sha`（上次 **成功** `up -d` 的 commit，gitignore）用 `git diff` pathspec 决定编谁；没改 `packages/`、`backend/`、`client/`、`.dockerignore`、`docker-compose.yml` 就只 `up -d`。`packages/` / `.dockerignore` / `docker-compose.yml` 一变仍会带上四个应用。真正要编时仍然 **一次只编一个服务**（Milvus / Grafana 占内存），并且只给本次编过的镜像打 12 位 sha tag。**不要**改成一次传入多个服务、不要打开 `COMPOSE_BAKE`（旧 BuildKit；Bake 关着时合并 build 仍会按服务传 context，还可能并行打满内存）。**不要**用镜像 tag 反推上次 sha。`deploy.yml` 的 deploy job 用 `concurrency` 排队，**不要**改成 `cancel-in-progress: true`（会掐断服务器上的 docker build）。排队的 run 若 `origin/main` 已不是该次 sha 则跳过构建（仍会 `git reset`，但不会写 `.last-deploy-sha`）。
 - Compose 的 movie-service `env_file` 是 `backend/movie-service/.env`，auth/message 用 `backend/.env`。
 - auth-service 用原始 `pg` Pool，message-service 用 TypeORM。`users` 表只归 auth-service，message 不要碰。
-- Prometheus 不映射宿主机端口；看指标走 Grafana。总览盘会预置进去，网页里改完点保存会留下；只有仓库里那份仪表盘 JSON 以后又改了并重新部署，出厂布局才会再盖过来。删 `grafana_data` volume 会丢网页上改过的盘和密码。默认 admin/admin，公网 3000 务必立刻改密。
+- Prometheus 不映射宿主机端口；看指标走 Grafana。总览盘会预置进去，网页里改完点保存会留下；只有仓库里那份仪表盘 JSON 以后又改了并重新部署，出厂布局才会再盖过来。删 `grafana_data` volume 会丢网页上改过的盘和密码。默认账号 `admin` / `yangjinhu`（`GF_SECURITY_ADMIN_*`）；已有 volume 不会因改环境变量自动改密，需 `grafana-cli admin reset-admin-password`。

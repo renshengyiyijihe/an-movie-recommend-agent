@@ -145,11 +145,14 @@ export class MessageGrpcService {
     this.logger.log(
       `gRPC GetConversation conversation_id=${request.conversation_id}`,
     );
+    // 不传 limit：Agent 的历史投影要整会话，不走 REST 那套翻页。
     const conversation = await this.messageService.getConversation(
       request.conversation_id,
     );
     return {
-      ...conversation,
+      conversation_id: conversation.conversation_id,
+      user_id: conversation.user_id,
+      title: conversation.title,
       messages: conversation.messages.map(toProtoChatItem),
     };
   }

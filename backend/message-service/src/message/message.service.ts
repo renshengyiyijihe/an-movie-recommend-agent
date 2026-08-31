@@ -25,6 +25,7 @@ import {
   TurnEventEntity,
 } from "./entities";
 import { parseJsonObject, toChatItem } from "./chat-item";
+import { decodeMessageCursor, encodeMessageCursor } from "./message-cursor";
 import { MemoryItem } from "./message.grpc";
 import { TurnInProgressError } from "./turn-in-progress.error";
 
@@ -328,26 +329,77 @@ export class MessageService implements OnApplicationBootstrap, OnModuleDestroy {
     return { conversations };
   }
 
-  async getConversation(conversationId: string) {
+  /**
+   * 会话可见气泡。不传 `options.limit` 时返回整会话（gRPC 历史投影走这条），
+   * 传了就按 `(created_at, id)` 倒序取最近一页，再翻转成升序返回。
+   */
+  async getConversation(
+    conversationId: string,
+    options?: { limit?: number; before?: string },
+  ) {
     const conversation = await this.requireConversation(conversationId);
 
     // 已完成轮次返回全部气泡；running 轮次只返回用户消息，
     // 让用户刷新后仍能看到自己刚发的问题（assistant 消息本来只在轮次完成时写入）。
-    const messages = await this.messageRepository
+    const query = this.messageRepository
       .createQueryBuilder("message")
       .innerJoin("message.turn", "turn")
       .where("message.conversation_id = :conversationId", { conversationId })
       .andWhere("(turn.status IN (:...statuses) OR message.role = 'user')", {
         statuses: FINISHED_TURN_STATUSES,
-      })
-      .orderBy("message.created_at", "ASC")
+      });
+
+    const limit = options?.limit;
+    if (!limit) {
+      const all = await query.orderBy("message.created_at", "ASC").getMany();
+      return {
+        conversation_id: conversation.conversation_id,
+        user_id: conversation.user_id,
+        title: conversation.title,
+        messages: all.map(toChatItem),
+        has_more: false,
+        before_cursor: null,
+      };
+    }
+
+    const cursor = options?.before
+      ? decodeMessageCursor(options.before)
+      : null;
+    if (cursor) {
+      // 行值比较，与 (created_at DESC, id DESC) 的排序键一致。
+      query.andWhere(
+        "(message.created_at, message.id) < (:cursorAt, :cursorId)",
+        { cursorAt: cursor.createdAt, cursorId: cursor.id },
+      );
+    }
+
+    // 多取一条只用来判断还有没有更早的，不返回给客户端。
+    // 用 limit 而不是 take：一条 message 只 join 到一个 turn，不会出现行放大，
+    // 不需要 TypeORM 的 distinct-id 子查询。
+    const page = await query
+      .orderBy("message.created_at", "DESC")
+      .addOrderBy("message.id", "DESC")
+      .limit(limit + 1)
       .getMany();
+
+    const hasMore = page.length > limit;
+    const visible = hasMore ? page.slice(0, limit) : page;
+    visible.reverse();
+    const earliest = visible[0];
 
     return {
       conversation_id: conversation.conversation_id,
       user_id: conversation.user_id,
       title: conversation.title,
-      messages: messages.map(toChatItem),
+      messages: visible.map(toChatItem),
+      has_more: hasMore,
+      before_cursor:
+        hasMore && earliest
+          ? encodeMessageCursor({
+              createdAt: earliest.created_at,
+              id: earliest.id,
+            })
+          : null,
     };
   }
 

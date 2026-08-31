@@ -12,7 +12,8 @@ import type { Dispatch, SetStateAction } from "react";
 
 /** 把 SSE 事件写进主聊天 state 时用的 setter。 */
 export interface ApplyChatStreamSetters {
-  setConversationId: Dispatch<SetStateAction<string | undefined>>;
+  /** 会话 id 存在地址栏，这里是一次 navigate，不是 setState。 */
+  setConversationId: (conversationId: string) => void;
   setMessages: Dispatch<SetStateAction<ChatMessage[]>>;
   setStreamStage: Dispatch<SetStateAction<ChatStreamStageEvent | null>>;
 }

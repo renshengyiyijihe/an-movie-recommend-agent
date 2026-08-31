@@ -16,17 +16,32 @@ if (!script) {
   console.error("Usage: node scripts/run-in-packages.mjs <script>");
   process.exit(1);
 }
+// Windows 下会拼进 shell 命令串，只放行普通脚本名。
+if (!/^[\w.:-]+$/.test(script)) {
+  console.error(`Invalid script name: ${script}`);
+  process.exit(1);
+}
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-const pnpmBin = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+// Node 20.12 起不再直接 spawn .cmd/.bat（CVE-2024-27980），Windows 只能交给 shell；
+// 命令与参数合成一整串，避开 shell + args 数组的 DEP0190。
+const isWindows = process.platform === "win32";
+const [command, args] = isWindows
+  ? [`pnpm ${script}`, []]
+  : ["pnpm", [script]];
 
 for (const dir of PACKAGES) {
   console.log(`\n> ${dir}: pnpm ${script}`);
-  const result = spawnSync(pnpmBin, [script], {
+  const result = spawnSync(command, args, {
     cwd: path.join(root, dir),
     stdio: "inherit",
+    shell: isWindows,
   });
+  if (result.error) {
+    console.error(`${dir}: ${result.error.message}`);
+    process.exit(1);
+  }
   if (result.status !== 0) {
     process.exit(result.status ?? 1);
   }

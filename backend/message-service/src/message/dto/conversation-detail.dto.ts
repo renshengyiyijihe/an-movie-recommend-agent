@@ -12,4 +12,6 @@ export class ConversationDetailDto {
   user_id?: string | null;
   title?: string | null;
   messages: ConversationChatItemDto[] = [];
+  has_more = false;
+  before_cursor: string | null = null;
 }

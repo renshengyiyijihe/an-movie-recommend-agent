@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ApiError, isChatTimeoutError, isSessionExpiredError, request, streamChat } from "@/api";
 import {
   CANCEL_REASON,
@@ -15,8 +15,11 @@ import { applyChatStreamEvent } from "../utils/apply-chat-stream";
 
 interface ChatTurnOptions {
   getSessionGen: () => number;
-  setConversationId: Dispatch<SetStateAction<string | undefined>>;
+  /** 会话 id 在地址栏上，这里是一次 navigate。 */
+  setConversationId: (conversationId: string) => void;
   rememberConversationIfNew: (id: string, title: string) => void;
+  /** 本轮刚建好的会话不需要再去拉历史，直接标记成已加载。 */
+  markConversationLoaded: (id: string) => void;
   onSessionExpired: () => void;
   onNeedLogin: () => void;
   pinMessagesToBottom: () => void;
@@ -56,6 +59,12 @@ export function useChatTurn(options: ChatTurnOptions) {
     setStreamStage(null);
   }
 
+  /** 上滑翻页拿到的更早气泡接在最前面。 */
+  function prependMessages(older: ChatMessage[]) {
+    if (older.length === 0) return;
+    setMessages((prev) => [...older, ...prev]);
+  }
+
   function resetForNewConversation() {
     setMessages([]);
     setStreamStage(null);
@@ -91,8 +100,12 @@ export function useChatTurn(options: ChatTurnOptions) {
       return;
     }
 
-    const { getSessionGen, setConversationId, rememberConversationIfNew } =
-      optionsRef.current;
+    const {
+      getSessionGen,
+      setConversationId,
+      rememberConversationIfNew,
+      markConversationLoaded,
+    } = optionsRef.current;
     const requestGen = getSessionGen();
     sendingRef.current = true;
     stoppingRef.current = false;
@@ -123,6 +136,9 @@ export function useChatTurn(options: ChatTurnOptions) {
           if (event.event === STREAM_EVENT.TURN) {
             turnIdRef.current = event.turnId;
             rememberConversationIfNew(event.conversationId, trimmedMessage);
+            // 先认领会话，再让 setConversationId 改地址，
+            // 否则地址变化会触发一次拉历史，把本轮刚发的气泡冲掉。
+            markConversationLoaded(event.conversationId);
             if (stopRequestedRef.current) {
               void requestCancelTurn(event.turnId, CANCEL_REASON.USER).catch(
                 (cancelError: unknown) => {
@@ -213,6 +229,7 @@ export function useChatTurn(options: ChatTurnOptions) {
     send,
     stopGenerating,
     replaceMessages,
+    prependMessages,
     resetForNewConversation,
   };
 }

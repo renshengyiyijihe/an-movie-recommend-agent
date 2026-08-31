@@ -155,9 +155,25 @@ export interface ConversationChatItem {
   created_at: string;
 }
 
+/**
+ * 会话详情按「最近一页」返回，前端上滑再取更早的。
+ * gRPC `GetConversation` 不带分页，仍是整会话。
+ */
+export const CONVERSATION_PAGE = {
+  /** 未指定 `limit` 时一页的气泡条数。 */
+  DEFAULT_SIZE: 20,
+  /** `limit` 上限，超过按校验失败拒绝。 */
+  MAX_SIZE: 100,
+} as const;
+
 export interface ConversationDetail {
   conversation_id: string;
   user_id?: string | null;
   title?: string | null;
+  /** 按 `created_at` 升序的一页气泡；分页时是最近一页。 */
   messages: ConversationChatItem[];
+  /** 这一页之前是否还有更早的气泡。 */
+  has_more: boolean;
+  /** 取更早一页时回传给 `before` 的游标；没有更早则为 null。 */
+  before_cursor: string | null;
 }

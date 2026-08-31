@@ -2,6 +2,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
@@ -10,6 +11,8 @@ import { ConversationEntity } from "./conversation.entity";
 import { TurnEntity } from "./turn.entity";
 
 @Entity({ name: "messages" })
+// 会话详情按 (created_at, id) 倒序翻页，没有这条索引会退化成整表扫描。
+@Index("messages_conversation_created_idx", ["conversation_id", "created_at"])
 export class MessageEntity {
   @PrimaryGeneratedColumn("uuid")
   id!: string;

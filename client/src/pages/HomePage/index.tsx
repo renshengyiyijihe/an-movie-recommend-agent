@@ -4,7 +4,7 @@ import ChatTranscript from "@/components/ChatTranscript";
 import ConfigModal from "@/components/ConfigModal";
 import HistoryModal from "@/components/HistoryModal";
 import TopBar from "@/components/TopBar";
-import { TEXT } from "@/constant";
+import { CONVERSATION_PAGE, TEXT } from "@/constant";
 import useAuth from "@/store/auth";
 import { toast } from "@/store/toast";
 import type { ChatMessage, ConversationDetail } from "@/types";
@@ -13,9 +13,11 @@ import { resolveActiveConversationTitle } from "@/utils/conversation";
 import { ChatComposer } from "./components/ChatComposer";
 import { ChatHeaderBar } from "./components/ChatHeaderBar";
 import { ChatEmptyState, ChatHero } from "./components/ChatHero";
+import { ChatHistoryHint } from "./components/ChatHistoryHint";
 import { ChatLoadingBubble } from "./components/ChatLoadingBubble";
 import { useChatTurn } from "./hooks/useChatTurn";
 import { useComposer } from "./hooks/useComposer";
+import { useConversationHistory } from "./hooks/useConversationHistory";
 import { useConversationWorkspace } from "./hooks/useConversationWorkspace";
 import { useStickToBottom } from "./hooks/useStickToBottom";
 import styles from "./index.module.less";
@@ -41,18 +43,31 @@ export default function HomePage() {
   }, []);
 
   /**
-   * 目录 hook 先于本轮 / 滚动创建。跨 hook 动作走 ref，避免循环依赖。
+   * 目录 hook 先于历史 / 本轮 / 滚动创建。跨 hook 动作走 ref，避免循环依赖。
    * 初始 `() => false` 必须写成 `() => boolean`，否则 tsc 会把字面量收成 `() => false`。
    */
-  const pinRef = useRef(() => {});
+  const scrollApiRef = useRef<{
+    pin: () => void;
+    captureTopAnchor: () => void;
+  }>({
+    pin: () => {},
+    captureTopAnchor: () => {},
+  });
   const turnApiRef = useRef<{
     isSending: () => boolean;
     replaceMessages: (next: ChatMessage[]) => void;
+    prependMessages: (older: ChatMessage[]) => void;
     resetForNewConversation: () => void;
   }>({
     isSending: () => false,
     replaceMessages: () => {},
+    prependMessages: () => {},
     resetForNewConversation: () => {},
+  });
+  const historyApiRef = useRef<{
+    adoptDetail: (detail: ConversationDetail) => void;
+  }>({
+    adoptDetail: () => {},
   });
 
   const composer = useComposer();
@@ -62,7 +77,8 @@ export default function HomePage() {
     onNeedLogin: openLogin,
     isSending: () => turnApiRef.current.isSending(),
     onOpenConversation: (detail: ConversationDetail) => {
-      pinRef.current();
+      historyApiRef.current.adoptDetail(detail);
+      scrollApiRef.current.pin();
       turnApiRef.current.replaceMessages(
         convertConversationToMessages(detail.messages ?? []),
       );
@@ -73,13 +89,27 @@ export default function HomePage() {
     },
   });
 
+  const history = useConversationHistory({
+    conversationId: workspace.conversationId,
+    isSending: () => turnApiRef.current.isSending(),
+    onSessionExpired: handleSessionExpired,
+    onNeedLogin: openLogin,
+    replaceMessages: (next) => turnApiRef.current.replaceMessages(next),
+    prependMessages: (older) => turnApiRef.current.prependMessages(older),
+    onLeaveConversation: () => turnApiRef.current.resetForNewConversation(),
+    captureTopAnchor: () => scrollApiRef.current.captureTopAnchor(),
+    pinMessagesToBottom: () => scrollApiRef.current.pin(),
+    onDetailLoaded: workspace.setSelectedConversation,
+  });
+
   const turn = useChatTurn({
     getSessionGen: workspace.getSessionGen,
     setConversationId: workspace.setConversationId,
     rememberConversationIfNew: workspace.rememberConversationIfNew,
+    markConversationLoaded: history.markLoaded,
     onSessionExpired: handleSessionExpired,
     onNeedLogin: openLogin,
-    pinMessagesToBottom: () => pinRef.current(),
+    pinMessagesToBottom: () => scrollApiRef.current.pin(),
     onStarted: composer.clearDraftAndFile,
     onSettled: composer.clearImageData,
   });
@@ -88,13 +118,21 @@ export default function HomePage() {
     turn.messages,
     turn.loading,
     turn.streamStage,
+    () => void history.loadEarlier(),
   );
 
-  pinRef.current = scroll.pin;
+  scrollApiRef.current = {
+    pin: scroll.pin,
+    captureTopAnchor: scroll.captureTopAnchor,
+  };
   turnApiRef.current = {
     isSending: turn.isSending,
     replaceMessages: turn.replaceMessages,
+    prependMessages: turn.prependMessages,
     resetForNewConversation: turn.resetForNewConversation,
+  };
+  historyApiRef.current = {
+    adoptDetail: history.adoptDetail,
   };
 
   useEffect(() => {
@@ -125,6 +163,8 @@ export default function HomePage() {
   });
 
   const hasMessages = turn.messages.length > 0;
+  // 直达 /chat/:id 时先展示会话骨架，别闪一下 hero 再跳回来。
+  const showConversation = hasMessages || history.loadingInitial;
 
   return (
     <div className={styles.appShell}>
@@ -186,7 +226,7 @@ export default function HomePage() {
 
       <div className={styles.workspace}>
         <section className={styles.chatPanel}>
-          {hasMessages ? (
+          {showConversation ? (
             <ChatHeaderBar
               title={activeConversationTitle}
               conversationId={workspace.conversationId}
@@ -205,8 +245,17 @@ export default function HomePage() {
             ref={scroll.containerRef}
             onScroll={scroll.onScroll}
           >
-            {hasMessages ? (
+            {showConversation ? (
               <>
+                <ChatHistoryHint
+                  loadingInitial={history.loadingInitial}
+                  loadingEarlier={history.loadingEarlier}
+                  error={history.error}
+                  hasMore={history.hasMore}
+                  showStart={
+                    turn.messages.length >= CONVERSATION_PAGE.DEFAULT_SIZE
+                  }
+                />
                 <ChatTranscript messages={turn.messages} />
                 {turn.loading ? (
                   <ChatLoadingBubble stage={turn.streamStage} />

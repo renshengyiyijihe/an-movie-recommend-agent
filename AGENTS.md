@@ -159,6 +159,7 @@ LLM：只读 `LLM_API_KEY`（缺了就起不来）和可选 `LLM_BASE_URL`（默
 ### message-service
 
 - REST（`JwtAuthGuard`）：`POST /message/conversations`、`GET /message/conversations`、`GET /message/conversations/:id`、`PATCH /message/conversations/:id`（改标题，body `{ title }`，最长 `CONVERSATION_TITLE_MAX_LENGTH`）。
+- 会话详情**分页**：`GET /message/conversations/:id?limit=&before=`（`GetConversationQueryDto`），默认与上限见 contracts 的 `CONVERSATION_PAGE`。返回体多了 `has_more` / `before_cursor`（往更早翻，值直接回填 `before`，不要叫 `next_cursor`），`messages` 仍是升序，只是**最近一页**。游标是 `(created_at, id)` 的 base64url（`message-cursor.ts`），keyset 翻页，不要改成 offset。`MessageService.getConversation` 不传 `options.limit` 时仍是整会话，gRPC `GetConversation` 走的就是这条，proto 不带分页。
 - gRPC：`CreateConversation`、`StartTurn`、`AppendTurnEvent`、`CompleteTurn`、`GetConversation`、`GetTurn`、`SearchSimilarContext`。调用身份走 metadata `user-id`（`GrpcUserGuard`），proto 请求体不带 `user_id`。只允许会话主人，无主会话和越权一律按「不存在」处理。内部清扫僵死轮次走 `finishTurn`，不经过用户上下文。
 - TypeORM `synchronize: true`，表 `conversations` / `turns` / `messages` / `turn_events`。
 - `turns` 只管一轮的 `running | success | reject | error | cancelled`，不存问答正文。
@@ -233,15 +234,17 @@ Prompt 入口（改提示词只动这个文件）：
 
 ## 前端
 
-- 单页：`client/src/pages/HomePage`。路由只有 `/`。
+- 单页：`client/src/pages/HomePage`。两条路由都渲染它：`/`（新对话）与 `/chat/:conversationId`（已有会话），其余路径 `Navigate` 回 `/`。路径写在 `ROUTE` / `chatRoutePath()`，不要在组件里拼字面量。两条 `Route` 必须共用同一个 `<HomePage />`，react-router 才会复用实例，首条消息发完 `navigate` 到 `/chat/:id` 时气泡不会丢。
+- **当前会话 id 只认地址栏。** `useConversationWorkspace` 用 `useParams()` 读，不再自己 `useState`；`setConversationId`（SSE `turn`）用 `navigate(..., { replace: true })`，历史点选用 push，「新对话」和换号 `navigate(ROUTE.home)`。换号那个 effect 只在 `userId` 真的变了才重置，且「未登录 → 登录」不重置，否则会冲掉直达链接。
+- 主聊天历史在 `hooks/useConversationHistory`：地址栏 id 变了就拉最近一页，滚到顶部 `loadEarlier()` 往前翻。`adoptDetail()` 接管历史弹窗已经拉过的详情（不重复请求），`markLoaded()` 认领本轮新建的会话（不然地址一变就把刚发的气泡冲掉）。404 提示后回 `/`，未登录直达只弹登录框不发请求，发送中换 URL（含浏览器前进后退）会被拽回当前会话。
 - 布局：TopBar + 全宽主聊天。登录后顶栏为「历史」「配置」。点「历史」打开 `HistoryModal`：左会话列表、右消息详情（与主聊天同款气泡）。点列表某条才 `GET` 该条详情填右栏；空闲时同时把主聊天切过去，生成中只预览不改 `conversationId`。弹窗不关。窄屏同一弹窗：先列表，点选后全屏详情，有返回。不要常驻左侧会话栏、不要汉堡 Drawer。未登录不渲染历史/配置，不请求会话 API。「新对话」只在有消息时的会话顶栏右侧出现一次（发送中禁用该按钮），不要放进历史弹窗，也不要放进应用 TopBar。左侧标题可点按编辑；回车或点标题外先出 MUI `Popover` 二次确认，确认才 `PATCH`，取消或点空白处恢复原标题。不要靠输入框 `onBlur` 收口。超出单行省略，悬停用 MUI `Tooltip` 看全文，不要自封装 tooltip。成功后只改本地列表 / 当前详情，不要为此再拉列表。
-- 会话目录不是配置弹窗。打开历史弹窗才 `GET /api/message/conversations` 拉列表；内存里已有则先展示再 silent 刷新。点选 `GET /api/message/conversations/:id`（`conversationDetailPath`）填右栏；同一条已打开过则用内存详情，不必再打。详情未成功前不要改当前 `conversationId`。路径写在 `API_PATH`，不要在页面里再写死 `/api/message/...`。发送和 SSE **不要**拉列表或详情。
-- 「新对话」只清本地 `conversationId` / `messages`，**不要**预先 `POST /message/conversations`（会留下无标题空行）。首条发送仍由 movie-service `ensureConversation` 创建（title = 用户原话）。SSE `turn` 后若列表没有该项则本地插入，**不要**为此再拉列表。
+- 会话目录不是配置弹窗。打开历史弹窗才 `GET /api/message/conversations` 拉列表；内存里已有则先展示再 silent 刷新。点选 `GET /api/message/conversations/:id`（`conversationDetailPath`）填右栏；同一条已打开过则用内存详情，不必再打。详情未成功前不要改地址栏。路径写在 `API_PATH`，不要在页面里再写死 `/api/message/...`。发送和 SSE **不要**拉列表或详情。历史弹窗右栏只看最近一页，不做上翻。
+- 「新对话」只 `navigate('/')` 并清本地 `messages`，**不要**预先 `POST /message/conversations`（会留下无标题空行）。首条发送仍由 movie-service `ensureConversation` 创建（title = 用户原话）。SSE `turn` 后若列表没有该项则本地插入，**不要**为此再拉列表。
 - 发送中禁止新建对话；历史弹窗仍可打开、点选预览。断开 SSE **不会**取消后端轮次，工作流会继续并 `CompleteTurn`。点「停止」走 `POST /api/movie/chat/cancel`，不要 abort 那条 chat 流。
 - `ConfigModal` 与 TopBar「配置」**保留**，只管家账号。弹窗两栏：左目录右详情，打开时选中第一项并展示其详情；目前目录只有「帐户」，窄屏也保持两栏。用户名在右侧资料行内编辑（右侧编辑按钮，回车 / 点空白 `Popover` 确认后再请求），不要第二层弹窗，也不要确认用户名。改密码仍是帐户详情里的按钮，点了再开独立表单弹窗。不要在配置里再放会话列表或消息预览。
 - 状态：Zustand 为 `store/auth.ts`（token 在 `localStorage`）、toast、`store/preferences.ts`（用户本地偏好预留，当前无界面字段）。会话列表 / 当前对话放 `HomePage` 本地 state（`pages/HomePage/hooks/`），不要为历史数据再加全局 store。主聊天展示块放 `pages/HomePage/components/`（每个一块一个文件夹），不要抬到全局 `client/src/components/`。工作台重置只听 `userId`，不要听 `token`。
 - HTTP：`api.ts` 的 `request()` 自动带 Bearer；`baseURL: '/'`。**只有 chat 走 `streamChat()` 读 SSE**，其它接口继续 `request()`。鉴权失效用 `isSessionExpiredError()`（登录 401「密码错误」、改密 401「当前密码错误」都不算过期）。Docker 下由 nginx 反代；本地 `vite` 默认 **没有** 把 `/api` 转到后端。
-- 组件：`TopBar`、`HistoryModal`、`ChatTranscript`、`ConversationTitle`、`AuthModal`、`ConfigModal`、`ConfirmPopover`、`RecommendationPoster`。主聊天私有块在 `pages/HomePage/components/`（`ChatHero` / `ChatHeaderBar` / `ChatComposer` / `ChatLoadingBubble`）。会话标题/时间在 `utils/conversation.ts`。行内二次确认编辑用 `useConfirmableEdit` + `ConfirmPopover`（会话标题、配置用户名）。界面文案进 `TEXT`（`TEXT.workspace` 是历史弹窗、新对话与改标题，`TEXT.chat` 含主聊天 hero / 输入文案，`TEXT.config` 是配置弹窗）。样式用 Less CSS Modules。
+- 组件：`TopBar`、`HistoryModal`、`ChatTranscript`、`ConversationTitle`、`AuthModal`、`ConfigModal`、`ConfirmPopover`、`RecommendationPoster`。主聊天私有块在 `pages/HomePage/components/`（`ChatHero` / `ChatHeaderBar` / `ChatComposer` / `ChatLoadingBubble` / `ChatHistoryHint`）。会话标题/时间在 `utils/conversation.ts`。行内二次确认编辑用 `useConfirmableEdit` + `ConfirmPopover`（会话标题、配置用户名）。界面文案进 `TEXT`（`TEXT.workspace` 是历史弹窗、新对话与改标题，`TEXT.chat` 含主聊天 hero / 输入文案，`TEXT.config` 是配置弹窗）。样式用 Less CSS Modules。
 - 登录/注册/改密表单用 `react-hook-form` + MUI `TextField`；密码框用 `AuthField`（`InputAdornment` + `@mui/icons-material` Visibility），不要再手写一套校验 state 或 SVG 眼睛图标。改用户名在配置帐户详情就地编辑，不要再做确认用户名表单。改密、改用户名成功后换新 token，不登出。
 - UI 只用 MUI 9，不要再引入另一套组件库。
 - 发送前必须登录。后端 `/movie/chat` 无 token 或验票失败返回 `401` JSON，前端会弹出登录框。图片以 Data URL 传 `imageData`，**后端 Orchestrator 当前未使用图片**；上传预览只留在输入区，不进聊天消息。
@@ -319,7 +322,9 @@ Prompt 入口（改提示词只动这个文件）：
 | 模型与规划类型 | `backend/movie-service/src/movie/types.ts`、`model/model.provider.ts` |
 | 会话与向量 | `backend/message-service/src/message/message.service.ts` |
 | 登录鉴权 | `backend/auth-service/src/auth/auth.service.ts` |
-| 前端聊天 | `client/src/pages/HomePage/`（`index.tsx` 接线，`hooks/useConversationWorkspace` / `hooks/useChatTurn`）、`client/src/api.ts` |
+| 前端聊天 | `client/src/pages/HomePage/`（`index.tsx` 接线，`hooks/useConversationWorkspace` / `hooks/useChatTurn` / `hooks/useConversationHistory`）、`client/src/api.ts` |
+| 前端路由 | `client/src/App.tsx`、`client/src/constant.ts` 的 `ROUTE` / `chatRoutePath` |
+| 会话消息分页 | `backend/message-service/src/message/message-cursor.ts`、`message.service.ts` 的 `getConversation`、`client/src/pages/HomePage/hooks/useConversationHistory.ts`、`hooks/useStickToBottom.ts` |
 | 前端停止生成 | `POST /api/movie/chat/cancel`；`AbortContext` / `TurnAbortRegistry` |
 | 前端历史记录 | `client/src/components/HistoryModal/`、`client/src/components/ChatTranscript/`、`client/src/utils/conversation.ts` |
 | 前端会话标题 | `client/src/components/ConversationTitle/`；`PATCH /message/conversations/:id` |
@@ -339,6 +344,9 @@ Prompt 入口（改提示词只动这个文件）：
 - chat 开流后客户端断开不会取消工作流；轮次会一直跑到 `CompleteTurn`。立刻重发仍可能撞「上一轮还在处理」。前端发送中禁用「新对话」；历史弹窗仍可预览其它会话，但不切换当前 `conversationId`。点「停止」或等待超时会 `POST /movie/chat/cancel` 解开 `running`。
 - Relation 未做：计数/排名、多跳路径、公司/系列。规划应标 `unsupported` 或直接 `search`，不要假装能算。
 - 工作副本不跨请求保留；指代「刚才那批结果再筛」目前只能靠历史文本 + 重新取数。
+- 主聊天滚动容器 `.messages` 是 `scroll-behavior: smooth`。上翻插入更早气泡时要先 `captureTopAnchor()`，还原 `scrollTop` 期间临时把 `scroll-behavior` 置成 `auto`，否则会看到一段跳动。海报是异步加载的，锚点只按插入瞬间的高度差算。
+- 根级 `pnpm typecheck` / `pnpm build` 在 Windows 上要靠 `scripts/run-in-packages.mjs` 的 shell 分支：Node 20.12 起不再直接 spawn `pnpm.cmd`（EINVAL），而 `shell: true` 配 args 数组又会触发 DEP0190，所以 Windows 下把 `pnpm <script>` 合成一整串再交给 shell，非 Windows 仍是命令 + args。别把这个分支「简化」掉。
+- 改了 `packages/contracts` 必须先 `pnpm --dir packages/contracts build`，其它包吃的是 `dist`，否则 tsc 会报「has no exported member」。
 - 共享包源码在 `packages/`。各应用 Dockerfile 自己 `FROM node:24-alpine AS packages`，COPY 源码后编，再 `COPY --from=packages`。前端只编 contracts；三个后端编 contracts + auth-client。**不要** `FROM an-movie-packages`，也不要 `FROM sha256:…`：BuildKit 都会收成 `docker.io/library/…` 并对镜像源做 HEAD，部署机 `docker.m.daocloud.io` 对非官方 library 名一律 403。不要用 `additional_contexts`（旧 BuildKit 没有 named context）。`packages` compose 服务仍用 `packages/Dockerfile` 产一份制品，`pull_policy: never` 避免 `up -d` 再编或去 Hub 拉；应用镜像不再依赖它。该服务启动后立刻退出，`compose ps` 里 Exited 是正常的。
 - 部署不再 `compose down` / `rm -f` 整栈；密钥仍写服务器 `.env`。镜像构建在 `scripts/deploy-images.sh`：对照 `.last-deploy-sha`（上次 **成功** `up -d` 的 commit，gitignore）用 `git diff` pathspec 决定编谁。只改 Grafana / Prometheus / 端口 / 环境变量不要重编应用镜像（compose 只看各构建服务的 `build:` / `image:`）。`packages/contracts`、`packages/Dockerfile`、`.dockerignore` 一变：packages + 四个应用（前端也 `COPY` contracts）。只改 `packages/auth-client`：packages + 三个后端，**不要**编 frontend。compose 里 `packages` 的 `build:` / `image:` 变了才带上四个应用。packages 源码刚变过时，后面的应用 build 必须 `--no-cache`（内联的 packages 阶段不要沿用旧层）。真正要编时仍然 **一次只编一个服务**，并且只给本次编过的镜像打 12 位 sha tag；`up -d` 成功后删掉不是本次 sha 的旧 tag。**不要**改成一次传入多个服务、不要打开 `COMPOSE_BAKE`。**不要**用镜像 tag 反推上次 sha。改规划后跑 `bash scripts/deploy-images.sh --self-test`。`compose-image-targets.py` 必须兼容部署机 **CPython 3.6**（没有 `capture_output` / `text=`）；quality 跑在更新的 Ubuntu Python 上，自检过不代表服务器能跑。`deploy.yml` 的 deploy job 用 `concurrency` 排队，**不要**改成 `cancel-in-progress: true`。排队的 run 若 `origin/main` 已不是该次 sha 则跳过构建（仍会 `git reset`，但不会写 `.last-deploy-sha`）。
 - Compose 的 movie-service `env_file` 是 `backend/movie-service/.env`，auth/message 用 `backend/.env`。

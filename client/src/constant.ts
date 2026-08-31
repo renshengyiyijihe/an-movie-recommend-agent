@@ -5,6 +5,7 @@ import {
   AUTH_PASSWORD_MIN_LENGTH,
   AUTH_USERNAME_MAX_LENGTH,
   AUTH_USERNAME_MIN_LENGTH,
+  CONVERSATION_PAGE,
   CONVERSATION_TITLE_MAX_LENGTH,
   ERROR_CODE,
   STREAM_STAGE,
@@ -14,8 +15,32 @@ export {
   AUTH_PASSWORD_MIN_LENGTH,
   AUTH_USERNAME_MAX_LENGTH,
   AUTH_USERNAME_MIN_LENGTH,
+  CONVERSATION_PAGE,
   CONVERSATION_TITLE_MAX_LENGTH,
 };
+
+/**
+ * 浏览器地址栏路由。当前会话写在 URL 上，刷新 / 分享 / 前进后退都靠它。
+ * 新对话停在 {@link ROUTE.home}，会话建好后再换成 {@link ROUTE.chatDetail}。
+ */
+export const ROUTE = {
+  /** 新对话，尚未创建会话 */
+  home: "/",
+  /** 已有会话；`:conversationId` 与后端 `conversation_id` 同一个值 */
+  chatDetail: "/chat/:conversationId",
+} as const;
+
+/**
+ * 某个会话的页面地址。
+ *
+ * @param conversationId 会话 id
+ * @returns `/chat/{id}`，id 会做 URL 编码
+ * @example
+ * chatRoutePath("a1b2-c3") // "/chat/a1b2-c3"
+ */
+export function chatRoutePath(conversationId: string): string {
+  return `/chat/${encodeURIComponent(conversationId)}`;
+}
 
 /** 浏览器请求路径。Vite / Docker nginx 都从站点根反代。 */
 export const API_PATH = {
@@ -39,15 +64,25 @@ export const PREFERENCES_STORAGE_KEY = {
 } as const;
 
 /**
- * 单条会话详情的 REST 路径。
+ * 单条会话详情的 REST 路径。不传 `page` 时后端按默认页大小给最近一页。
  *
  * @param conversationId 会话 id
- * @returns `/api/message/conversations/{id}`，id 会做 URL 编码
+ * @param page 翻页参数：`limit` 一页条数，`before` 上一页回传的游标
+ * @returns `/api/message/conversations/{id}` 加可选 query，id 会做 URL 编码
  * @example
- * conversationDetailPath("a1b2-c3") // "/api/message/conversations/a1b2-c3"
+ * conversationDetailPath("a1b2-c3", { limit: 20, before: "MjAyNi0w" })
+ * // "/api/message/conversations/a1b2-c3?limit=20&before=MjAyNi0w"
  */
-export function conversationDetailPath(conversationId: string): string {
-  return `${API_PATH.conversations}/${encodeURIComponent(conversationId)}`;
+export function conversationDetailPath(
+  conversationId: string,
+  page?: { limit?: number; before?: string },
+): string {
+  const base = `${API_PATH.conversations}/${encodeURIComponent(conversationId)}`;
+  const query = new URLSearchParams();
+  if (page?.limit) query.set("limit", String(page.limit));
+  if (page?.before) query.set("before", page.before);
+  const search = query.toString();
+  return search ? `${base}?${search}` : base;
 }
 
 /** 与 axios 实例相同的等待上限，chat 流式也用。 */
@@ -209,6 +244,10 @@ export const TEXT = {
     loadFailed: "会话列表加载失败",
     detailFailed: "无法打开该会话，请稍后重试。",
     detailLoading: "加载会话详情中...",
+    conversationMissing: "会话不存在或已被删除。",
+    loadingEarlier: "正在加载更早的消息...",
+    historyStart: "已经是最早的消息",
+    historyLoadFailed: "加载更早的消息失败，向上滚动可重试。",
     pickHint: "选择一条会话查看消息",
     emptyMessages: "该会话还没有消息。",
     backToList: "返回列表",

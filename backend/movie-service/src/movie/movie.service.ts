@@ -246,13 +246,19 @@ export class MovieService {
   private outcomeFromOrchestrator(
     result: OrchestratorResult,
   ): ChatOutcome {
-    if (result.intent_type === INTENT_TYPE.OUT_OF_SCOPE) {
+    if (
+      result.intent_type === INTENT_TYPE.OUT_OF_SCOPE ||
+      result.intent_type === INTENT_TYPE.UNKNOWN
+    ) {
+      const fallback =
+        result.intent_type === INTENT_TYPE.UNKNOWN
+          ? MESSAGE_CONSTANTS.DEFAULT_UNKNOWN_INTENT_MESSAGE
+          : MESSAGE_CONSTANTS.DEFAULT_OUT_OF_SCOPE_MESSAGE;
       return {
         status: TURN_STATUS.REJECT,
         payload: {
-          kind: "reject",
-          message:
-            result.result || MESSAGE_CONSTANTS.DEFAULT_OUT_OF_SCOPE_MESSAGE,
+          kind: TURN_STATUS.REJECT,
+          message: result.result || fallback,
         },
       };
     }

@@ -39,7 +39,7 @@ export type RecommendationPayload = {
   movies: RecommendationItem[];
 };
 
-/** 域外拒绝气泡。 */
+/** 拒绝继续处理的气泡（域外或意图无法识别）。 */
 export type RejectPayload = {
   kind: "reject";
   message: string;

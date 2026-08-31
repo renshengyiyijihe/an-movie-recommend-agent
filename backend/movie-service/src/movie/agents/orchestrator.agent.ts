@@ -10,7 +10,7 @@ import {
   tryParseJson,
   truncateText,
 } from "../helpers";
-import { WORKFLOW_CONSTANTS } from "../constants";
+import { MESSAGE_CONSTANTS, WORKFLOW_CONSTANTS } from "../constants";
 import { RelationAgent } from "./relation.agent";
 import { SearchAgent } from "./search.agent";
 import { WorkflowContext } from "./workflow-context";
@@ -77,7 +77,8 @@ export class OrchestratorAgent {
 
       if (ctx.shared.intent.type === INTENT_TYPE.OUT_OF_SCOPE) {
         ctx.shared.finalResult =
-          ctx.shared.intent.reason || "这个查询与电影或演员无关";
+          ctx.shared.intent.reason ||
+          MESSAGE_CONSTANTS.DEFAULT_OUT_OF_SCOPE_MESSAGE;
         return {
           success: false,
           intent_type: INTENT_TYPE.OUT_OF_SCOPE,
@@ -86,10 +87,10 @@ export class OrchestratorAgent {
         };
       }
 
-      // 意图无法识别时立即短路，不再浪费后续规划/检索/汇总的调用。
+      // 意图无法识别时立即短路，走 reject，不要把格式失败当成系统故障。
       if (ctx.shared.intent.type === INTENT_TYPE.UNKNOWN) {
         ctx.shared.finalResult =
-          ctx.shared.intent.reason || "无法识别本次查询的意图，请换个说法再试";
+          MESSAGE_CONSTANTS.DEFAULT_UNKNOWN_INTENT_MESSAGE;
         return {
           success: false,
           intent_type: INTENT_TYPE.UNKNOWN,

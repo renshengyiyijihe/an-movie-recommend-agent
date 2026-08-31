@@ -24,23 +24,22 @@ export default function ChatTranscript({ messages }: Props) {
   return (
     <div className={styles.transcript}>
       {messages.map((item, index) => {
-        const failed =
-          item.kind === TURN_STATUS.ERROR || item.kind === TURN_STATUS.REJECT;
+        const isError = item.kind === TURN_STATUS.ERROR;
         const cancelled = item.kind === TURN_STATUS.CANCELLED;
         return (
           <div
             key={`${item.role}-${item.kind}-${index}`}
             className={classNames(styles.message, {
               [styles.userMessage]: item.role === "user",
-              [styles.assistantErrorMessage]: item.role !== "user" && failed,
+              [styles.assistantErrorMessage]: item.role !== "user" && isError,
               [styles.assistantCancelledMessage]:
                 item.role !== "user" && cancelled,
               [styles.assistantMessage]:
-                item.role !== "user" && !failed && !cancelled,
+                item.role !== "user" && !isError && !cancelled,
             })}
           >
             <div className={styles.messageRole}>
-              {messageRoleLabel(item, failed, cancelled)}
+              {messageRoleLabel(item, isError, cancelled)}
             </div>
             <div className={styles.messageText}>
               {item.role === "user"
@@ -59,10 +58,10 @@ export default function ChatTranscript({ messages }: Props) {
 }
 
 /**
- * 气泡左上角色文案：用户、助手、异常、已停止。
+ * 气泡左上角色文案：用户、助手、异常、已停止。reject 不当系统故障。
  *
  * @param item 当前气泡
- * @param failed 助手气泡且本轮失败或拒绝
+ * @param isError 助手气泡且本轮是系统故障
  * @param cancelled 助手气泡且用户已停止
  * @returns 展示用角色标签
  * @example
@@ -70,14 +69,16 @@ export default function ChatTranscript({ messages }: Props) {
  * // "你"
  * messageRoleLabel({ role: "assistant", kind: "error" }, true, false)
  * // "智能体（异常）"
+ * messageRoleLabel({ role: "assistant", kind: "reject" }, false, false)
+ * // "智能体"
  */
 function messageRoleLabel(
   item: ChatMessage,
-  failed: boolean,
+  isError: boolean,
   cancelled: boolean,
 ): string {
   if (item.role === "user") return TEXT.chat.userRole;
-  if (failed) return TEXT.chat.assistantErrorRole;
+  if (isError) return TEXT.chat.assistantErrorRole;
   if (cancelled) return TEXT.chat.assistantCancelledRole;
   return TEXT.chat.assistantRole;
 }

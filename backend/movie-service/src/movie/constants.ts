@@ -83,6 +83,9 @@ export const MESSAGE_CONSTANTS = {
   /** 默认拒绝消息 */
   DEFAULT_OUT_OF_SCOPE_MESSAGE:
     "我主要负责电影推荐或介绍。如果你想问电影类型、演员、风格、时长或推荐电影，我可以继续帮你。",
+  /** 意图无法识别：请用户换个说法，不要当系统故障 */
+  DEFAULT_UNKNOWN_INTENT_MESSAGE:
+    "没能理解这次提问，请换个说法再试。可以说想看的类型、演员或一部具体的电影。",
   /** 同一会话已有 running 轮次 */
   TURN_IN_PROGRESS: "上一轮还在处理，请稍后再发",
   /** StartTurn 失败且不是「轮次冲突」 */

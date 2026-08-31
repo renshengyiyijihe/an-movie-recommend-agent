@@ -81,7 +81,7 @@ Grafana         ──HTTP──► Prometheus:9090
    - 调用 `OrchestratorAgent.orchestrate(model, ctx)`；`ctx.shared.turns` 为结构化历史，prompt 按阶段投影，不要提前拼成一段字符串。完整检索数据进 `ctx.workspace`（本轮内存工作副本），`publish` 只给精简视图。工作流过程通过 `ctx.record()` 写入 `turn_events`；`toStreamStageEvent`（`chat-stream.ts`）把 `intent` / `plan` / `tool_call` / `agent_result` 推成 `stage`。`llm_usage` / `error` 不推；汇总开始也不单独推。
    - 结束时 `CompleteTurn` 写入一条 assistant JSONB（`recommendation` / `reject` / `error`）。**先写入再推 `final`**；`final` 的 `type` / `data` 与写入的 payload 同一份。写入失败不得推 `success` / `reject`。
    - 开流后未能收成 `final` 的内部失败推 `error`（文案用 `MESSAGE_CONSTANTS.UNEXPECTED_FAILURE`，不要把异常原文推到浏览器）。
-5. Orchestrator：意图分类 → 任务规划（`TaskPlan`：`agents` + 可选 `relation`）→ 按 plan 执行 Agent → Relation 失败则补一次 Search → `synthesizeResults` 再调 LLM，把**视图**整理成推荐 JSON。意图为 `out_of_scope` 或 `unknown` 时立即短路。域外 `final` 为 `{ type: "reject", data: RejectPayload }`；成功则 `parseRecommendation()` 后 `{ type: "success", data: RecommendationPayload }`。
+5. Orchestrator：意图分类 → 任务规划（`TaskPlan`：`agents` + 可选 `relation`）→ 按 plan 执行 Agent → Relation 失败则补一次 Search → `synthesizeResults` 再调 LLM，把**视图**整理成推荐 JSON。意图为 `out_of_scope` 或 `unknown` 时立即短路，`final` 均为 `{ type: "reject", data: RejectPayload }`（unknown 文案是请换个说法，不要当系统故障）；成功则 `parseRecommendation()` 后 `{ type: "success", data: RecommendationPayload }`。
 
 检索参数由 SearchAgent 按 tool schema 填写。`MovieService.parseRecommendation()` 只解析，不负责生成。关系计划在规划那一次给全，RelationAgent 不再另调 LLM，也不再调用 `SearchAgent.run`。nginx 对 `location = /api/movie/chat` 单独 `proxy_buffering off`，超时 300s；其余 `/api/movie/*` 仍走默认 location。
 
@@ -248,7 +248,7 @@ Prompt 入口（改提示词只动这个文件）：
 - 登录/注册/改密表单用 `react-hook-form` + MUI `TextField`；密码框用 `AuthField`（`InputAdornment` + `@mui/icons-material` Visibility），不要再手写一套校验 state 或 SVG 眼睛图标。改用户名在配置帐户详情就地编辑，不要再做确认用户名表单。改密、改用户名成功后换新 token，不登出。
 - UI 只用 MUI 9，不要再引入另一套组件库。
 - 发送前必须登录。后端 `/movie/chat` 无 token 或验票失败返回 `401` JSON，前端会弹出登录框。图片以 Data URL 传 `imageData`，**后端 Orchestrator 当前未使用图片**；上传预览只留在输入区，不进聊天消息。
-- 聊天列表与后端 `ChatItem` 对齐：`role` 只有 `user` | `assistant`，`kind` 为 `user_query` | `recommendation` | `reject` | `error`，一条助手消息一个气泡（`text` 下方可选 `movies` 卡片）。`final` 收成气泡；`stage` 只更新加载文案，不进消息列表。有消息时收起 hero，会话顶栏左侧显示当前会话标题（可点按编辑）、右侧「新对话」。
+- 聊天列表与后端 `ChatItem` 对齐：`role` 只有 `user` | `assistant`，`kind` 为 `user_query` | `recommendation` | `reject` | `error`，一条助手消息一个气泡（`text` 下方可选 `movies` 卡片）。`reject` 走普通助手气泡，不要和 `error` 共用「智能体（异常）」样式。`final` 收成气泡；`stage` 只更新加载文案，不进消息列表。有消息时收起 hero，会话顶栏左侧显示当前会话标题（可点按编辑）、右侧「新对话」。
 - nginx：`/api/movie/chat` 关缓冲；movie / message 代理超时 300s，与 `HTTP_CONSTANTS.REQUEST_TIMEOUT_MS`（5min，axios 与 chat 流式共用）对齐。
 
 ## 环境变量（不要提交 .env）

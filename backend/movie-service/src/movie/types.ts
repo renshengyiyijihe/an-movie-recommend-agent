@@ -98,7 +98,7 @@ export const INTENT_TYPE = {
 	IN_SCOPE: "in_scope",
 	/** 域外，直接拒绝，不跑 Agent */
 	OUT_OF_SCOPE: "out_of_scope",
-	/** 模型输出无效或调用失败，短路为错误 */
+	/** 模型输出无效，短路为拒绝（请用户换个说法），不跑 Agent */
 	UNKNOWN: "unknown",
 } as const;
 
@@ -146,7 +146,7 @@ export interface AgentExecutionResult {
 export interface OrchestratorResult {
 	/** 是否产出了可解析的推荐 JSON；域外/未知意图为 false */
 	success: boolean;
-	/** 本轮意图，决定 HTTP 走 reject 还是推荐 */
+	/** 本轮意图：in_scope 走推荐；out_of_scope / unknown 走 reject */
 	intent_type: IntentType;
 	/** 成功时是推荐 JSON 字符串；失败时是说明文本 */
 	result: string;

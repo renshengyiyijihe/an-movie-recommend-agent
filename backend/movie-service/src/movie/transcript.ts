@@ -3,7 +3,8 @@
  * message-service 原样存 JSONB，不解析 kind。
  */
 import type { RecommendationItem, RecommendationPayload } from "@an-movie/contracts";
-import { getStringValue } from "./helpers";
+import { TMDB_CONSTANTS } from "./constants";
+import { getStringValue, readFiniteNumber } from "./helpers";
 
 export type {
   AssistantPayload,
@@ -39,10 +40,23 @@ export function recommendationFromParsed(
 }
 
 /**
- * 从解析后的对象取出片单数组。
+ * 从解析后的对象取出片单数组。有 id 时由代码拼 tmdb_url，丢掉模型填的外链。
  * @param parsed 推荐 JSON 对象
  * @returns movies；没有或不是数组则返回空数组
+ * @example
+ * `{ movies: [{ id: 27205, name: "盗梦空间" }] }`
+ * → `[{ id: 27205, name: "盗梦空间", tmdb_url: "https://www.themoviedb.org/movie/27205" }]`
  */
 export function moviesFromParsed(parsed: Record<string, unknown>): RecommendationItem[] {
-  return Array.isArray(parsed.movies) ? (parsed.movies as RecommendationItem[]) : [];
+  if (!Array.isArray(parsed.movies)) return [];
+  return parsed.movies.map((item) => {
+    const movie = item as RecommendationItem & { movie_id?: unknown };
+    const id = readFiniteNumber(movie.id ?? movie.movie_id);
+    return {
+      ...movie,
+      ...(id !== undefined
+        ? { id, tmdb_url: `${TMDB_CONSTANTS.MOVIE_PAGE_PREFIX}/${id}` }
+        : { tmdb_url: undefined }),
+    };
+  });
 }

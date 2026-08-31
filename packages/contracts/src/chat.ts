@@ -1,6 +1,6 @@
 import { constValues, omitKey } from "./const-map";
 
-/** 推荐卡片上的影片字段。后端汇总 JSON 与前端展示共用，别名字段是历史兼容。 */
+/** 推荐卡片上的影片字段。后端汇总 JSON 与前端展示共用，别名字段是历史兼容。`tmdb_url` 有 id 时由代码拼接，不要让模型填。 */
 export interface RecommendationItem {
   id?: number;
   name?: string;

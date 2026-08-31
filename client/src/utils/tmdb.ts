@@ -1,7 +1,15 @@
 const TMDB_IMAGE_PREFIX = "https://image.tmdb.org";
+const TMDB_MOVIE_PAGE = "https://www.themoviedb.org/movie";
 
 const TMDB_IMAGE_PROXY =
   process.env.TMDB_API_URL || "https://tmdb.yangjinhu.asia";
+
+/** 有 TMDB id 时拼影片页；没有则回退已有外链（历史气泡可能只存了 tmdb_url）。 */
+export function getTmdbMoviePage(id?: number, fallback?: string) {
+  return typeof id === "number" && Number.isFinite(id)
+    ? `${TMDB_MOVIE_PAGE}/${id}`
+    : fallback || "";
+}
 
 export function getTmdbImage(url?: string) {
   if (!url) {

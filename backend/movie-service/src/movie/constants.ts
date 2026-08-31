@@ -52,6 +52,8 @@ export const TMDB_CONSTANTS = {
   MAX_MOVIE_CREW: 40,
   /** 默认语言 */
   DEFAULT_LANGUAGE: "zh-CN",
+  /** 影片站点页前缀。有 id 时拼 `{prefix}/{id}`，不要让模型填 tmdb_url */
+  MOVIE_PAGE_PREFIX: "https://www.themoviedb.org/movie",
 } as const;
 
 /**

@@ -8,7 +8,7 @@ import {
   getRecommendationGenres,
   renderMessageText,
 } from "@/utils/chatUtils";
-import { getTmdbImage } from "@/utils/tmdb";
+import { getTmdbImage, getTmdbMoviePage } from "@/utils/tmdb";
 import type { ChatMessage, RecommendationItem } from "@/types";
 import styles from "./index.module.less";
 
@@ -131,6 +131,7 @@ function renderRecommendationCard(item: RecommendationItem, index: number) {
   const language = item.original_language || "未知";
   const genres = getRecommendationGenres(item);
   const posterUrl = getTmdbImage(item.poster_url || item.poster_path);
+  const tmdbUrl = getTmdbMoviePage(item.id, item.tmdb_url);
 
   const cardInner = (
     <div className={styles.recommendationCard}>
@@ -145,9 +146,9 @@ function renderRecommendationCard(item: RecommendationItem, index: number) {
               <p className={styles.recommendationCardSubtitle}>{subtitle}</p>
             ) : null}
           </div>
-          {item.tmdb_url ? (
+          {tmdbUrl ? (
             <a
-              href={item.tmdb_url}
+              href={tmdbUrl}
               target="_blank"
               rel="noreferrer"
               className={styles.recommendationCardLink}
@@ -193,10 +194,10 @@ function renderRecommendationCard(item: RecommendationItem, index: number) {
     </div>
   );
 
-  if (item.tmdb_url) {
+  if (tmdbUrl) {
     return (
       <a
-        href={item.tmdb_url}
+        href={tmdbUrl}
         target="_blank"
         rel="noreferrer"
         className={styles.recommendationCardLinkWrap}

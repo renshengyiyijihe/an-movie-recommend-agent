@@ -219,7 +219,7 @@ OrchestratorAgent
 - `person_search` — TMDB `/search/person`
 - `person_detail` — TMDB `/person/{id}`（`movie_credits` 同时保留 cast 与 crew）
 
-所有 Tool 实现 `ITool`（`name` / `description` / `schema` / `execute`），结果统一 `ToolResult`。公共参数 schema 在 `tools/common.ts`。默认语言 `zh-CN`。`poster_path` 是相对路径，域名前缀由前端 `getTmdbImage` 拼接，后端不要拼完整图片 URL。
+所有 Tool 实现 `ITool`（`name` / `description` / `schema` / `execute`），结果统一 `ToolResult`。公共参数 schema 在 `tools/common.ts`。默认语言 `zh-CN`。`poster_path` 是相对路径，域名前缀由前端 `getTmdbImage` 拼接，后端不要拼完整图片 URL。卡片 `tmdb_url` 有 id 时由 `moviesFromParsed` 拼 `https://www.themoviedb.org/movie/{id}`，不要写进汇总 prompt 让模型填。
 
 Prompt 入口（改提示词只动这个文件）：
 

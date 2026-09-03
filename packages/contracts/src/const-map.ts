@@ -30,3 +30,27 @@ export function omitKey<const T extends Record<string, unknown>, K extends keyof
   const { [key]: _dropped, ...rest } = obj;
   return rest as Omit<T, K>;
 }
+
+/**
+ * 从常量对象抽出若干键，运行时对应 {@link Pick}。值仍是源对象上的同一份。
+ *
+ * @param obj 源对象
+ * @param keys 要保留的键，顺序与返回对象的插入顺序相同
+ * @returns 只含这些键的浅拷贝
+ * @example
+ * pickKeys(
+ *   { INTENT: "intent", PLAN: "plan", LLM_USAGE: "llm_usage" },
+ *   ["INTENT", "PLAN"],
+ * )
+ * // → { INTENT: "intent", PLAN: "plan" }
+ */
+export function pickKeys<
+  const T extends Record<string, unknown>,
+  const K extends readonly (keyof T)[],
+>(obj: T, keys: K): Pick<T, K[number]> {
+  const picked = {} as Pick<T, K[number]>;
+  for (const key of keys) {
+    picked[key] = obj[key];
+  }
+  return picked;
+}

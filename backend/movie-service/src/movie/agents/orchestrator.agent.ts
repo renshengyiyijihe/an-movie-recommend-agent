@@ -1,3 +1,4 @@
+import { TURN_EVENT_KIND } from "@an-movie/contracts";
 import { Injectable, Logger } from "@nestjs/common";
 import { PromptTemplateService } from "../services/prompt-template.service";
 import { RetryableFormatError } from "../errors/retryable-format.error";
@@ -67,7 +68,7 @@ export class OrchestratorAgent {
     try {
       ctx.shared.intent = await this.classifyIntent(model, ctx);
       await ctx.record({
-        kind: "intent",
+        kind: TURN_EVENT_KIND.INTENT,
         actor: "orchestrator",
         intent: ctx.shared.intent,
       });
@@ -103,7 +104,7 @@ export class OrchestratorAgent {
       ctx.shared.plan = taskPlan.agents;
       ctx.shared.relationPlan = taskPlan.relation;
       await ctx.record({
-        kind: "plan",
+        kind: TURN_EVENT_KIND.PLAN,
         actor: "orchestrator",
         agents: ctx.shared.plan,
         relation: ctx.shared.relationPlan,
@@ -146,7 +147,7 @@ export class OrchestratorAgent {
       this.logger.error(`[Orchestrator] Error: ${message}`);
       ctx.shared.finalResult = `处理失败: ${message}`;
       await ctx.record({
-        kind: "error",
+        kind: TURN_EVENT_KIND.ERROR,
         actor: "orchestrator",
         message,
       });
@@ -305,7 +306,7 @@ export class OrchestratorAgent {
         result: "",
       };
     await ctx.record({
-      kind: "agent_result",
+      kind: TURN_EVENT_KIND.AGENT_RESULT,
       actor: AGENT_TYPE.SEARCH,
       success: recorded.success,
       result: this.parseAgentResult(recorded.result),
@@ -349,7 +350,7 @@ export class OrchestratorAgent {
 
       const output = ctx.shared.agentOutputs[agentType];
       await ctx.record({
-        kind: "agent_result",
+        kind: TURN_EVENT_KIND.AGENT_RESULT,
         actor: agentType,
         success: output?.success ?? false,
         result: this.parseAgentResult(output?.result),

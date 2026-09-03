@@ -1,3 +1,4 @@
+import { TURN_EVENT_KIND } from "@an-movie/contracts";
 import {
   AGENT_TYPE,
   ChatMessage,
@@ -57,7 +58,7 @@ async function recordUsage(
 ): Promise<void> {
   if (!options.record) return;
   await options.record({
-    kind: "llm_usage",
+    kind: TURN_EVENT_KIND.LLM_USAGE,
     actor: options.actor,
     stage: options.stage,
     durationMs: usage.durationMs,

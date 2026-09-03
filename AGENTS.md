@@ -73,12 +73,12 @@ Grafana         ──HTTP──► Prometheus:9090
 
 1. 前端 `HomePage` 走 `streamChat()`（`client/src/api.ts`），`POST /api/movie/chat`，带 `message`、可选 `imageData`、`conversationId`，Header `Authorization: Bearer <jwt>`，`Accept: text/event-stream`。其它接口仍走 `request()`。
 2. 鉴权 / DTO 失败（无 token、验票失败、校验失败）仍返回 JSON `{ code, message }`，**不开流**，不进入 Agent。`JwtAuthGuard` + `@CurrentUser()`；请求体经 `ChatDto` + 全局 `ValidationPipe`。
-3. 通过后 `MovieController` 调用 `openChatSse`，固定 `200` + `text/event-stream`。之后只推 SSE，不再返回 JSON 成功体。事件名与 JSON 形状在 `packages/contracts/src/stream.ts`（`STREAM_EVENT` / `STREAM_STAGE`）。
+3. 通过后 `MovieController` 调用 `openChatSse`，固定 `200` + `text/event-stream`。之后只推 SSE，不再返回 JSON 成功体。事件名与 JSON 形状在 `packages/contracts/src/stream.ts`（`STREAM_EVENT` / `TURN_EVENT_KIND` / `STREAM_STAGE`）。
 4. `MovieService.chat(payload, emit)`：
    - 当前用户放进 `UserContext`；movie → message 的 gRPC 在 metadata `user-id` 里带身份，**请求体不传 `user_id`**。
    - `ensureConversation` / `loadConversationHistory`（gRPC `GetConversation`）/ `StartTurn` 写入本轮用户问题。同一会话同时只能有一个 `running` 轮次；冲突或 StartTurn 失败推 SSE `final`（`type: error`），不是 HTTP 4xx。message-service 从上下文取当前用户，只允许会话主人读写；无主会话、非本人一律按「不存在」处理。
    - StartTurn 成功后推 `turn`（`conversationId` + `turnId`）。
-   - 调用 `OrchestratorAgent.orchestrate(model, ctx)`；`ctx.shared.turns` 为结构化历史，prompt 按阶段投影，不要提前拼成一段字符串。完整检索数据进 `ctx.workspace`（本轮内存工作副本），`publish` 只给精简视图。工作流过程通过 `ctx.record()` 写入 `turn_events`；`toStreamStageEvent`（`chat-stream.ts`）把 `intent` / `plan` / `tool_call` / `agent_result` 推成 `stage`。`llm_usage` / `error` 不推；汇总开始也不单独推。
+   - 调用 `OrchestratorAgent.orchestrate(model, ctx)`；`ctx.shared.turns` 为结构化历史，prompt 按阶段投影，不要提前拼成一段字符串。完整检索数据进 `ctx.workspace`（本轮内存工作副本），`publish` 只给精简视图。工作流过程通过 `ctx.record()` 写入 `turn_events`（`kind` 用 `TURN_EVENT_KIND`）。`toStreamStageEvent`（`chat-stream.ts`）把列入 `STREAM_STAGE` 的 kind **原样**推成 `stage`（值不改名）。`llm_usage` / `memory` / `error` 不推；汇总开始也不单独推。
    - 结束时 `CompleteTurn` 写入一条 assistant JSONB（`recommendation` / `reject` / `error`）。**先写入再推 `final`**；`final` 的 `type` / `data` 与写入的 payload 同一份。写入失败不得推 `success` / `reject`。
    - 开流后未能收成 `final` 的内部失败推 `error`（文案用 `MESSAGE_CONSTANTS.UNEXPECTED_FAILURE`，不要把异常原文推到浏览器）。
 5. Orchestrator：意图分类 → 任务规划（`TaskPlan`：`agents` + 可选 `relation`）→ 按 plan 执行 Agent → Relation 失败则补一次 Search → `synthesizeResults` 再调 LLM，把**视图**整理成推荐 JSON。意图为 `out_of_scope` 或 `unknown` 时立即短路，`final` 均为 `{ type: "reject", data: RejectPayload }`（unknown 文案是请换个说法，不要当系统故障）；成功则 `parseRecommendation()` 后 `{ type: "success", data: RecommendationPayload }`。
@@ -94,7 +94,7 @@ POST /api/movie/chat   Accept: text/event-stream
   ├─ 401 / 400 → JSON { code, message }     不开流
   └─ 200 text/event-stream
        event: turn      StartTurn 成功（conversationId + turnId）
-       event: stage     可多条：intent → plan → tool* → agent
+       event: stage     可多条：intent → plan → tool_call* → agent_result
        event: final     CompleteTurn 之后的业务结论
     或 event: error     开流后未能收成 final（泛化文案）
 ```
@@ -108,14 +108,14 @@ POST /api/movie/chat   Accept: text/event-stream
 
 `final.type` 为 `success` / `reject` / `error` / `cancelled`（`TURN_STATUS` 去掉 `running`，即 `FinishedTurnStatus`）。用户点「停止」走 `POST /api/movie/chat/cancel`（JSON，不是 SSE），`reason` 为 `user` 或 `timeout`。取消令牌用 movie-service 的 `AbortContext`（ALS），不要把 `signal` 从 Orchestrator 传到 Tool。断线 / 刷新**不**取消工作流；只有停止按钮和前端超时会 abort + CAS 收口。汇总已经算出可写结果时，仍按成功落库（与 cancel 并发由 `finishTurn` 行锁决定）。写入失败不得推 `success` / `reject` / `cancelled`。不要用 `EventSource`（它只支持 GET）；前端用 `fetch` + `streamChat()`。停止时不要 `abort()` 那条 SSE，等原来的 `final`。
 
-`stage` 由 `turn_events.kind` 精简而来，不是 kind 全集：
+`stage` 是 `TURN_EVENT_KIND` 的子集，值与 kind 同一份，不是另一套名字：
 
-| `stage` | 来自 | 不推 |
-| --- | --- | --- |
-| `intent` | `intent` | `llm_usage` |
-| `plan` | `plan` | `error`（工作流内部） |
-| `tool` | `tool_call`（每个 tool 返回后立刻 record） | 汇总开始（没有单独 stage） |
-| `agent` | `agent_result` | |
+| `STREAM_STAGE`（= kind） | 不推的 kind |
+| --- | --- |
+| `intent` | `llm_usage` |
+| `plan` | `memory` |
+| `tool_call`（每个 tool 返回后立刻 record） | `error`（工作流内部；不是气泡 `kind`） |
+| `agent_result` | 汇总开始（没有单独 kind / stage） |
 
 `final.type` 与气泡 `kind`、SSE `event` 不是同一套字。
 
@@ -194,7 +194,7 @@ OrchestratorAgent
 - `publish` / 汇总只收 `AgentEvidenceView`：`answer` 为 `movies` | `people` | `fact`，影片卡片对齐前端字段，人物带标量（含由生日算出的 `age`）。
 - 列表进模型的条数看 `VIEW_CONSTANTS`（默认 8），不是 `TMDB_CONSTANTS.DEFAULT_MAX_RESULTS`（列表工具未指定 `max_results` 时默认 3）。
 - 规划可带 `relation.view`（`includeCredits` / `includeBiography`）。未写则不要把传记和整表作品塞进视图。
-- `turn_events` 的 `tool_call.output` 只记摘要（成功、error、id/条数），`actor` 为 `search` 或 `relation`。Search / Relation 都是每个 tool 返回后立刻 `record`，不要等全部跑完再批量写（SSE `stage: tool` 从这里推）。
+- `turn_events` 的 `tool_call.output` 只记摘要（成功、error、id/条数），`actor` 为 `search` 或 `relation`。Search / Relation 都是每个 tool 返回后立刻 `record`，不要等全部跑完再批量写（SSE `stage: tool_call` 从这里推）。
 
 不要把工作副本改成每步都写 Postgres「用完再删」；跨轮复用中间结果若以后要做，单独加带 TTL 的缓存，和本轮内存副本分开。
 
@@ -281,8 +281,8 @@ Prompt 入口（改提示词只动这个文件）：
 - HTTP 鉴权用 `JwtAuthGuard`，当前用户用 `@CurrentUser()` / `UserContext`，不要在每个方法里读 `Authorization` 或传 `userId`。
 - movie → message 的身份走 gRPC metadata `user-id`，由客户端从 `UserContext` 注入。proto 请求不要带 `user_id`。会话表 / `GetConversation` 响应里的 `user_id` 是会话主人字段，不是调用身份。
 - 新增 **Agent**：扩展 `AGENT_TYPE` / `AGENT_TYPES`，在 `OrchestratorAgent` 的 `agentExecutors` 用 `AGENT_TYPE.*` 注册，不要改执行循环本身。
-- 新增 **工作流事件**：扩展 `TurnEventBody`，在 Agent 里 `runtime.record()` / `ctx.record()`。message-service 只存 JSONB，不要在那边 switch kind。要推到浏览器再改 `toStreamStageEvent`（默认不推 `llm_usage` / `error`）。
-- 新增 **SSE 事件 / stage**：先改 `packages/contracts/src/stream.ts` 的 `STREAM_EVENT` / `STREAM_STAGE`，再改 `chat-stream.ts` 编码和 `client/src/utils/chat-stream.ts` 解码。不要在 controller 里手写帧格式。
+- 新增 **工作流事件**：先加 `packages/contracts/src/stream.ts` 的 `TURN_EVENT_KIND`，再扩展 `TurnEventBody`，在 Agent 里 `runtime.record()` / `ctx.record()`（`kind` 引用常量）。message-service 只存 JSONB，不要在那边 switch kind。默认不推浏览器。
+- 新增 **SSE 事件 / stage**：事件名改 `STREAM_EVENT`。要推的阶段把该 `TURN_EVENT_KIND` 的 key 加进 `STREAM_STAGE`（值引用 kind，不要另写字符串、不要改名），再改 `toStreamStageEvent` 和 `client/src/utils/chat-stream.ts` 解码。不要在 controller 里手写帧格式。
 - 前端会话列表 UI 放 `HistoryModal`，拉取列表 / 打开弹窗 / 空闲时切主聊天放 `HomePage/hooks/useConversationWorkspace`。发流 / 停止放 `hooks/useChatTurn`。`index.tsx` 只接线，不要把 SSE 或列表面再写回去。「新对话」只放会话顶栏右侧，不要写进 `HistoryModal`、`ConfigModal` 或应用 TopBar，也不要为切换会话预先 POST 空会话。气泡渲染用 `ChatTranscript`。会话顶栏标题用 `ConversationTitle`：点按编辑，回车 / 点标题外用 MUI `Popover` 确认后再 `PATCH`；不要靠 input `onBlur` 收口。超出用 MUI `Tooltip`，不要自封装 tooltip。
 - 可见聊天消息只走 `StartTurn` / `CompleteTurn`，payload 类型在 `transcript.ts`。SSE `final` 的 `data` 与写入 payload 同一份。
 - 新增 **Tool**：实现 `ITool`，在 `ToolsRegistry.registerTools()` 注册。SearchAgent 会自动拿到 schema，不要在 Agent 里再写一份参数定义。调 TMDB 用 `TmdbProvider.get` / `post`，不要在 Tool 里 `fetch`。
@@ -291,7 +291,7 @@ Prompt 入口（改提示词只动这个文件）：
 - 会话历史投影：用 `conversation-history.ts`。`error` / `reject` 气泡不要进 prompt。用户正文用 `<user_query>` / `<conversation_history>` 包起来。
 - 工作副本读写：用 `WorkingSet` / `buildEvidenceView`，不要把 Tool `data` 整包 `JSON.stringify` 进汇总 prompt。人物/影片加**标量**字段：改 `PersonRecord` / `MovieRecord`，并只在 `readPersonRecord` / `readMovieRecord` 取值；不要再给 `upsert*` 手写一遍赋值。只有需要去重合并的数组才进 `PERSON_COLLECTIONS` / `MOVIE_COLLECTIONS`。
 - 类型：Agent / 规划 / 视图合同在 `types.ts`；工作副本记录类型在 `working-set.ts`。genre 映射在 `constants.ts`。不要在 agent 文件里再声明一份公用联合类型。公共类型用 **TSDoc**（即 JSDoc 的 `/** */`）：常量对象、联合类型、接口以及**每个字段**都要写清含义；函数写 `@param` / `@returns`。**工具函数**（把一种数据收成另一种）必须写 `@example`：**一条业务数据就够**，但要看得出从哪来、中间丢掉了什么、输出字段写全（不要 `{ id: 1 }` 或 `...`）。编排、Agent、HTTP 入口不必硬凑示例。
-- **禁止硬编码封闭取值。** `AGENT_TYPE`、`INTENT_TYPE`、`RELATION_STRATEGY`、`RELATION_ROLE`、`TOOL_NAME`、`VIEW_ANSWER`、`HISTORY_PROJECTION_KIND`、`LLM_STAGE` 等已在 `types.ts` 定义的常量，以及 contracts 里的 `STREAM_EVENT` / `STREAM_STAGE` / `TURN_STATUS`，业务代码、Zod、prompt 插值一律引用常量，不要写 `"search"` / `"relation"` / `"final"` 这种字面量。新增封闭集合时先加常量对象，值列表用 `constValues` 从对象导出，不要再手抄一份。TMDB 响应字段名（如 JSON 里的 `cast` 属性）和 HTTP 对外 JSON 字段（如汇总里的 `movies` 数组）属于外部契约，不在此列。
+- **禁止硬编码封闭取值。** `AGENT_TYPE`、`INTENT_TYPE`、`RELATION_STRATEGY`、`RELATION_ROLE`、`TOOL_NAME`、`VIEW_ANSWER`、`HISTORY_PROJECTION_KIND`、`LLM_STAGE` 等已在 `types.ts` 定义的常量，以及 contracts 里的 `STREAM_EVENT` / `TURN_EVENT_KIND` / `STREAM_STAGE` / `TURN_STATUS`，业务代码、Zod、prompt 插值一律引用常量，不要写 `"search"` / `"relation"` / `"final"` 这种字面量。新增封闭集合时先加常量对象，值列表用 `constValues` 从对象导出，子集用 `pickKeys` / `omitKey`，不要再手抄一份。TMDB 响应字段名（如 JSON 里的 `cast` 属性）和 HTTP 对外 JSON 字段（如汇总里的 `movies` 数组）属于外部契约，不在此列。
 - LLM 结构化输出必须可被 `tryParseJson` 解析；成功回复的可见字段是 `text` + `movies`，拒绝/失败是 `message`。视图的 `answer` 为 `people` / `fact` 时，不要把人物 id 写进 `movies`。
 - 跨服务契约先改 `backend/proto/*.proto`，再改 client/server 实现。
 - 日志用 `Logger`，关键路径已有 `query` / `intent` / `tool` 日志，保持同风格。
@@ -304,14 +304,14 @@ Prompt 入口（改提示词只动这个文件）：
 | 目的 | 文件 |
 | --- | --- |
 | 对话入口与会话 | `backend/movie-service/src/movie/movie.service.ts` |
-| chat SSE | `packages/contracts/src/stream.ts`、`backend/movie-service/src/movie/chat-stream.ts`、`client/src/utils/chat-stream.ts` |
+| chat SSE | `packages/contracts/src/stream.ts`（`STREAM_EVENT` / `TURN_EVENT_KIND` / `STREAM_STAGE`）、`backend/movie-service/src/movie/chat-stream.ts`、`client/src/utils/chat-stream.ts` |
 | HTTP / gRPC 鉴权 | `packages/auth-client/`、`backend/message-service/src/auth/grpc-user.guard.ts` |
 | 工作流上下文 | `backend/movie-service/src/movie/agents/workflow-context.ts` |
 | 工作副本 / 视图 | `backend/movie-service/src/movie/working-set.ts` |
 | 任务规划校验 | `backend/movie-service/src/movie/task-plan.ts` |
 | 业务错误 | `backend/movie-service/src/movie/errors/` |
 | 历史投影 | `backend/movie-service/src/movie/conversation-history.ts` |
-| 可见消息 / 事件类型 | `packages/contracts/`（`chat.ts` / `stream.ts`）、`backend/movie-service/src/movie/transcript.ts`、`turn-events.ts` |
+| 可见消息 / 事件类型 | `packages/contracts/`（`chat.ts` / `stream.ts` 的 `TURN_EVENT_KIND`）、`backend/movie-service/src/movie/transcript.ts`、`turn-events.ts` |
 | 轮次状态 | `packages/contracts` 的 `TURN_STATUS`；已结束取值是 `FinishedTurnStatus` / `FINISHED_TURN_STATUSES`（去掉 `running`），不要在 entity 里再抄一份 |
 | 会话 gRPC | `backend/movie-service/src/movie/message.grpc.ts`、`backend/proto/message.proto` |
 | 意图与调度 | `backend/movie-service/src/movie/agents/orchestrator.agent.ts` |

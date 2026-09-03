@@ -3,7 +3,7 @@
  * 鉴权 / DTO 失败仍走 JSON 错误体；开流之后只推这些事件。
  */
 import type { ChatTurnResult } from "./chat";
-import { constValues } from "./const-map";
+import { constValues, pickKeys } from "./const-map";
 
 /** SSE 帧里的 `event:` 名，也写在 JSON 的 `event` 字段上，丢了帧头仍能认。 */
 export const STREAM_EVENT = {
@@ -24,19 +24,42 @@ export const STREAM_EVENTS = constValues(STREAM_EVENT);
 export type StreamEventName = (typeof STREAM_EVENTS)[number];
 
 /**
- * 推给前端的阶段。由 turn_events 精简而来，不是 turn_events.kind 的全集。
- * `llm_usage` / `error` 不推；汇总开始也不单独推一条。
+ * `turn_events.body.kind` 全量。业务代码写事件只引用这里，不要再写字面量。
+ * 气泡 payload 的 `kind`（`user_query` / `recommendation` 等）是另一套，不要混用。
  */
-export const STREAM_STAGE = {
+export const TURN_EVENT_KIND = {
   /** 意图分类完成 */
   INTENT: "intent",
   /** 任务规划完成 */
   PLAN: "plan",
   /** 一次 Tool 调用结束 */
-  TOOL: "tool",
+  TOOL_CALL: "tool_call",
   /** 一个 Agent publish 结束 */
-  AGENT: "agent",
+  AGENT_RESULT: "agent_result",
+  /** 一次 LLM 调用的用量；只写库 */
+  LLM_USAGE: "llm_usage",
+  /** 跨会话记忆召回；只写库 */
+  MEMORY: "memory",
+  /** 工作流内部失败；只写库，不是气泡 `kind` */
+  ERROR: "error",
 } as const;
+
+/** `turn_events.body.kind` 列表，供 `includes` 校验。 */
+export const TURN_EVENT_KINDS = constValues(TURN_EVENT_KIND);
+
+/** `turn_events.body.kind`。 */
+export type TurnEventKind = (typeof TURN_EVENT_KINDS)[number];
+
+/**
+ * 推给前端的阶段。从 {@link TURN_EVENT_KIND} {@link pickKeys} 出来，值不另写。
+ * 新增 kind 默认不推；要推再把 key 加进列表。
+ */
+export const STREAM_STAGE = pickKeys(TURN_EVENT_KIND, [
+  "INTENT",
+  "PLAN",
+  "TOOL_CALL",
+  "AGENT_RESULT",
+]);
 
 /** 阶段名列表。 */
 export const STREAM_STAGES = constValues(STREAM_STAGE);
@@ -82,7 +105,7 @@ export type ChatStreamPlanStage = {
 /** Tool 阶段。 */
 export type ChatStreamToolStage = {
   event: typeof STREAM_EVENT.STAGE;
-  stage: typeof STREAM_STAGE.TOOL;
+  stage: typeof STREAM_STAGE.TOOL_CALL;
   /** 已注册工具名，例如 `movie_search` */
   toolName: string;
   /** 这次调用是否成功 */
@@ -92,7 +115,7 @@ export type ChatStreamToolStage = {
 /** Agent 收口阶段。 */
 export type ChatStreamAgentStage = {
   event: typeof STREAM_EVENT.STAGE;
-  stage: typeof STREAM_STAGE.AGENT;
+  stage: typeof STREAM_STAGE.AGENT_RESULT;
   /** `search` / `relation` */
   actor: string;
   /** publish 是否成功 */

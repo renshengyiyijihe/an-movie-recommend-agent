@@ -71,12 +71,12 @@ export function applyChatStreamEvent(
  * @returns `TEXT.chat.stages` 或失败 / 等待兜底
  * @example
  * chatStageLabel(null) // TEXT.chat.stagePending
- * chatStageLabel({ event: "stage", stage: STREAM_STAGE.TOOL, ok: false })
+ * chatStageLabel({ event: "stage", stage: STREAM_STAGE.TOOL_CALL, ok: false })
  * // TEXT.chat.stageToolFailed
  */
 export function chatStageLabel(stage: ChatStreamStageEvent | null): string {
   if (!stage) return TEXT.chat.stagePending;
-  if (stage.stage === STREAM_STAGE.TOOL && !stage.ok) {
+  if (stage.stage === STREAM_STAGE.TOOL_CALL && !stage.ok) {
     return TEXT.chat.stageToolFailed;
   }
   return TEXT.chat.stages[stage.stage];

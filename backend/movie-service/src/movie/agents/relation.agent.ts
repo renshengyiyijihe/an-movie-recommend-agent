@@ -1,3 +1,4 @@
+import { TURN_EVENT_KIND } from "@an-movie/contracts";
 import { Injectable, Logger } from "@nestjs/common";
 import { RELATION_CONSTANTS } from "../constants";
 import {
@@ -314,7 +315,7 @@ export class RelationAgent {
     const output = await this.toolsRegistry.execute(toolName, input);
     runtime.workspace.ingestToolData(toolName, output.data);
     await runtime.record({
-      kind: "tool_call",
+      kind: TURN_EVENT_KIND.TOOL_CALL,
       actor: AGENT_TYPE.RELATION,
       tool_name: toolName,
       input,

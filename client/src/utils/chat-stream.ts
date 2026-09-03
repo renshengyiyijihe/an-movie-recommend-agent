@@ -151,7 +151,7 @@ function toStageEvent(
         agents: record.agents,
       };
     }
-    case STREAM_STAGE.TOOL: {
+    case STREAM_STAGE.TOOL_CALL: {
       if (typeof record.toolName !== "string" || typeof record.ok !== "boolean") {
         return null;
       }
@@ -162,7 +162,7 @@ function toStageEvent(
         ok: record.ok,
       };
     }
-    case STREAM_STAGE.AGENT: {
+    case STREAM_STAGE.AGENT_RESULT: {
       if (
         typeof record.actor !== "string" ||
         typeof record.success !== "boolean"

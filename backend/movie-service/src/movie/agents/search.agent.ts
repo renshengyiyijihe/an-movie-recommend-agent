@@ -1,3 +1,4 @@
+import { TURN_EVENT_KIND } from "@an-movie/contracts";
 import { Injectable, Logger } from "@nestjs/common";
 import { ToolsRegistry } from "./tools/tools.registry";
 import { PromptTemplateService } from "../services/prompt-template.service";
@@ -157,7 +158,7 @@ export class SearchAgent {
           output,
         });
         await record?.({
-          kind: "tool_call",
+          kind: TURN_EVENT_KIND.TOOL_CALL,
           actor: AGENT_TYPE.SEARCH,
           tool_name: plannedCall.tool_name,
           input: plannedCall.input,

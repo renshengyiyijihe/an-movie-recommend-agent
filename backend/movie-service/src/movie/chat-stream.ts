@@ -4,6 +4,7 @@ import {
   SSE_WIRE,
   STREAM_EVENT,
   STREAM_STAGE,
+  TURN_EVENT_KIND,
 } from "@an-movie/contracts";
 import { asRecord } from "./helpers";
 import { TurnEventBody } from "./turn-events";
@@ -98,29 +99,29 @@ export function toStreamStageEvent(
   body: TurnEventBody,
 ): ChatStreamStageEvent | null {
   switch (body.kind) {
-    case "intent":
+    case TURN_EVENT_KIND.INTENT:
       return {
         event: STREAM_EVENT.STAGE,
         stage: STREAM_STAGE.INTENT,
         intentType: body.intent.type,
       };
-    case "plan":
+    case TURN_EVENT_KIND.PLAN:
       return {
         event: STREAM_EVENT.STAGE,
         stage: STREAM_STAGE.PLAN,
         agents: [...body.agents],
       };
-    case "tool_call":
+    case TURN_EVENT_KIND.TOOL_CALL:
       return {
         event: STREAM_EVENT.STAGE,
-        stage: STREAM_STAGE.TOOL,
+        stage: STREAM_STAGE.TOOL_CALL,
         toolName: body.tool_name,
         ok: toolOutputOk(body.output),
       };
-    case "agent_result":
+    case TURN_EVENT_KIND.AGENT_RESULT:
       return {
         event: STREAM_EVENT.STAGE,
-        stage: STREAM_STAGE.AGENT,
+        stage: STREAM_STAGE.AGENT_RESULT,
         actor: body.actor,
         success: body.success,
       };

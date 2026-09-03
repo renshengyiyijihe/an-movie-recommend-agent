@@ -3,6 +3,7 @@ import { status as GrpcStatus } from "@grpc/grpc-js";
 import {
   CANCEL_REASON,
   STREAM_EVENT,
+  TURN_EVENT_KIND,
   TURN_STATUS,
   isFinishedTurnStatus,
   type CancelReason,
@@ -213,7 +214,7 @@ export class MovieService {
       });
       // 固定记一条：0 条召回和"根本没召回"要能区分开。
       await ctx.record({
-        kind: "memory",
+        kind: TURN_EVENT_KIND.MEMORY,
         actor: "orchestrator",
         recalled: memories.length,
         topScore: memories[0]?.score ?? 0,

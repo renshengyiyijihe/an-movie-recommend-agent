@@ -1,3 +1,4 @@
+import { TURN_EVENT_KIND } from "@an-movie/contracts";
 import {
   AgentType,
   IntentClassification,
@@ -9,35 +10,35 @@ export type WorkflowActor = "orchestrator" | AgentType;
 
 /**
  * 一轮工作流的内部时间线。写入 turn_events.body。
- * 新增 kind 时只扩展这个联合，不要再加 stage 字符串。
+ * 新增 kind 时先加 {@link TURN_EVENT_KIND}，再扩展这个联合。
  */
 export type TurnEventBody =
   | {
-      kind: "intent";
+      kind: typeof TURN_EVENT_KIND.INTENT;
       actor: "orchestrator";
       intent: IntentClassification;
     }
   | {
-      kind: "plan";
+      kind: typeof TURN_EVENT_KIND.PLAN;
       actor: "orchestrator";
       agents: AgentType[];
       relation?: RelationPlan;
     }
   | {
-      kind: "tool_call";
+      kind: typeof TURN_EVENT_KIND.TOOL_CALL;
       actor: AgentType;
       tool_name: string;
       input: Record<string, unknown>;
       output: unknown;
     }
   | {
-      kind: "agent_result";
+      kind: typeof TURN_EVENT_KIND.AGENT_RESULT;
       actor: AgentType;
       success: boolean;
       result: unknown;
     }
   | {
-      kind: "error";
+      kind: typeof TURN_EVENT_KIND.ERROR;
       actor: WorkflowActor;
       message: string;
     }
@@ -48,7 +49,7 @@ export type TurnEventBody =
  * 本轮跨会话记忆的召回情况。只为排查"记忆有没有起作用"，不推给浏览器。
  */
 export interface MemoryRecallTurnEvent {
-  kind: "memory";
+  kind: typeof TURN_EVENT_KIND.MEMORY;
   actor: "orchestrator";
   /** 进入汇总 prompt 的记忆条数，0 表示本轮没有可用记忆 */
   recalled: number;
@@ -60,7 +61,7 @@ export interface MemoryRecallTurnEvent {
  * 一次 LLM 调用的用量。message-service 只存不解析。
  */
 export interface LlmUsageTurnEvent {
-  kind: "llm_usage";
+  kind: typeof TURN_EVENT_KIND.LLM_USAGE;
   /** orchestrator 或发起这次调用的 Agent */
   actor: WorkflowActor;
   /** 意图 / 规划 / 选工具 / 汇总 */

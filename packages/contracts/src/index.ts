@@ -1,7 +1,7 @@
 export { ERROR_CODE } from "./error-codes";
 export type { ErrorCode, ErrorResponseBody } from "./error-codes";
 
-export { constValues, omitKey } from "./const-map";
+export { constValues, omitKey, pickKeys } from "./const-map";
 
 export {
   AUTH_PASSWORD_MAX_LENGTH,
@@ -43,6 +43,8 @@ export {
   STREAM_EVENTS,
   STREAM_STAGE,
   STREAM_STAGES,
+  TURN_EVENT_KIND,
+  TURN_EVENT_KINDS,
 } from "./stream";
 export type {
   ChatStreamAgentStage,
@@ -56,4 +58,5 @@ export type {
   ChatStreamTurnEvent,
   StreamEventName,
   StreamStage,
+  TurnEventKind,
 } from "./stream";

@@ -207,8 +207,8 @@ export const TEXT = {
     stages: {
       [STREAM_STAGE.INTENT]: "正在判断是否与电影相关",
       [STREAM_STAGE.PLAN]: "正在规划检索任务",
-      [STREAM_STAGE.TOOL]: "正在检索影片信息",
-      [STREAM_STAGE.AGENT]: "检索完成，正在继续处理",
+      [STREAM_STAGE.TOOL_CALL]: "正在检索影片信息",
+      [STREAM_STAGE.AGENT_RESULT]: "检索完成，正在继续处理",
     },
     requestFailedBubble: "请求失败，请稍后再试。",
     streamIncomplete: "连接中断，请稍后重试。",
